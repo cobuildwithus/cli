@@ -1,44 +1,50 @@
-name: Test and Coverage
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  verify:
+  checks:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
         with:
-          version: 9
+          fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Check agent docs drift
+        run: bash scripts/check-agent-docs-drift.sh
+
+      - name: Check doc gardening
+        run: bash scripts/doc-gardening.sh --fail-on-issues
+
+      - name: Ensure generated doc artifacts are committed
+        run: git diff --exit-code -- agent-docs/generated/doc-inventory.md agent-docs/generated/doc-gardening-report.md
+
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
-          cache: pnpm
+
+      - name: Enable Corepack (pnpm)
+        run: |
+          corepack enable pnpm
+          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Run typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Run tests
         run: pnpm test
-
-      - name: Coverage gates
-        run: pnpm test:coverage
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage/
