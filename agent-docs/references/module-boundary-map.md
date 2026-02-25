@@ -18,7 +18,7 @@
 
 - Path: `src/transport.ts`
 - Responsibility: endpoint normalization, POST request dispatch, response normalization.
-- Rule: command handlers should not construct fetch calls directly.
+- Rule: command handlers should not construct fetch calls directly, and transport resolves requests against the interface base URL only.
 
 ### Governance tooling boundary
 

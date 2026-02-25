@@ -8,9 +8,9 @@
 
 ## Endpoint Routing Expectations
 
-- Commands that target interface endpoints must not silently switch to chat-api endpoints.
-- Commands that target chat-api endpoints must explicitly route there via transport configuration.
-- Configuration output must make endpoint assignments visible to users.
+- Command transport must always resolve against configured interface API base URL.
+- `docs` and `tools` must use interface routes with unchanged path names (`/api/docs/search`, `/api/buildbot/tools/*`).
+- Configuration output must only expose interface routing state.
 
 ## Configuration Expectations
 

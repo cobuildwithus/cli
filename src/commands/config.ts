@@ -6,7 +6,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const CONFIG_SET_USAGE =
-  "Usage: buildbot config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
+  "Usage: buildbot config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
 
 export async function handleConfigCommand(args: string[], deps: CliDeps): Promise<void> {
   const subcommand = args[0];
@@ -19,7 +19,6 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
     const parsed = parseArgs({
       options: {
         url: { type: "string" },
-        "chat-api-url": { type: "string" },
         token: { type: "string" },
         "token-file": { type: "string" },
         "token-stdin": { type: "boolean" },
@@ -55,7 +54,6 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
 
     const hasUpdate =
       typeof parsed.values.url === "string" ||
-      typeof parsed.values["chat-api-url"] === "string" ||
       tokenFromOption !== undefined ||
       typeof parsed.values.agent === "string";
     if (!hasUpdate) {
@@ -66,9 +64,6 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
     const next = { ...current };
     if (typeof parsed.values.url === "string") {
       next.url = parsed.values.url;
-    }
-    if (typeof parsed.values["chat-api-url"] === "string") {
-      next.chatApiUrl = parsed.values["chat-api-url"];
     }
     if (tokenFromOption !== undefined) {
       next.token = tokenFromOption;
@@ -86,7 +81,6 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
     const current = readConfig(deps);
     printJson(deps, {
       interfaceUrl: current.url ?? null,
-      chatApiUrl: current.chatApiUrl ?? null,
       token: maskToken(current.token),
       agent: current.agent ?? null,
       path: configPath(deps),

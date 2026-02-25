@@ -17,20 +17,18 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 
 ### `config`
 
-- `config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]`
+- `config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]`
 - `config show`
 - Owns config persistence and masked display.
 
 ### `setup`
 
-- `setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
+- `setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
 - Persists config and performs wallet bootstrap call.
 - If token is absent and a TTY is available, opens interface `/home` and waits for secure browser approval over a one-time localhost callback session.
 - Default interface URL is `https://co.build` when no URL is configured; `--dev` defaults to `http://localhost:3000`.
-- Default chat API URL is `https://chat-api.co.build` when no URL is configured; `--dev` defaults to `http://localhost:4000`.
 - Bare host inputs are normalized (`co.build` -> `https://co.build/`, `localhost:3000` -> `http://localhost:3000/`).
 - If non-interactive first-time setup URL comes only from `BUILD_BOT_URL`, setup fails closed and still requires explicit `--url`.
-- If non-interactive first-time chat API URL comes only from `BUILD_BOT_CHAT_API_URL`, setup fails closed and requires explicit `--chat-api-url`.
 - Falls back to hidden token prompt only if browser approval fails/times out.
 
 ### `wallet`
@@ -41,7 +39,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 ### `docs`
 
 - `docs <query> [--limit <n>]`
-- Calls `/api/docs/search` with query payload via chat API base URL.
+- Calls `/api/docs/search` with query payload via interface API base URL.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
 ### `tools`
@@ -50,8 +48,8 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
 - `tools cobuild-ai-context`
-- Calls `/api/buildbot/tools/*` endpoints with command-specific payloads via chat API base URL.
-- Intended for read-only access to chat-api tool routes.
+- Calls `/api/buildbot/tools/*` endpoints with command-specific payloads via interface API base URL.
+- Intended for read-only access to interface tool routes.
 
 ### `send`
 
@@ -77,7 +75,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 2. Local config boundary
 
 - Only config helpers should touch `~/.buildbot/config.json`.
-- Config stores separate interface + chat-api URLs (`url`, `chatApiUrl`).
+- Config stores interface URL and auth metadata (`url`, `token`, `agent`).
 - Config structure changes require migration strategy + docs updates.
 
 3. Network boundary

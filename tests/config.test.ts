@@ -36,6 +36,22 @@ describe("config", () => {
     });
   });
 
+  it("strips deprecated chatApiUrl when writing config", () => {
+    const { deps, configFile, files } = createHarness();
+    writeConfig(
+      deps,
+      {
+        url: "https://api.example",
+        token: "bbt_123",
+        agent: "alpha",
+        chatApiUrl: "https://chat.example",
+      } as unknown as ReturnType<typeof readConfig>
+    );
+
+    const raw = files.get(configFile) ?? "{}";
+    expect(raw).not.toContain("chatApiUrl");
+  });
+
   it("writes config atomically without leaving temp files", () => {
     const harness = createHarness();
     writeConfig(harness.deps, {
@@ -71,43 +87,30 @@ describe("config", () => {
 
     expect(requireConfig(deps)).toEqual({
       url: "https://api.example",
-      chatApiUrl: "https://api.example",
       token: "bbt_abc",
       agent: "ops",
     });
   });
 
-  it("derives chat-api.co.build from www.co.build interface URL", () => {
+  it("ignores deprecated chatApiUrl values in existing configs", () => {
     const { deps } = createHarness({
-      config: {
-        url: "https://www.co.build",
-        token: "bbt_abc",
-      },
+      rawConfig: JSON.stringify(
+        {
+          url: "https://api.example",
+          chatApiUrl: "https://chat.example",
+          token: "bbt_abc",
+          agent: "ops",
+        },
+        null,
+        2
+      ),
     });
 
-    expect(requireConfig(deps).chatApiUrl).toBe("https://chat-api.co.build");
-  });
-
-  it("fails when chat API derivation cannot parse an existing interface URL", () => {
-    const { deps } = createHarness({
-      config: {
-        url: "api.example",
-        token: "bbt_abc",
-      },
+    expect(readConfig(deps)).toEqual({
+      url: "https://api.example",
+      token: "bbt_abc",
+      agent: "ops",
     });
-
-    expect(() => requireConfig(deps)).toThrow("Interface API base URL is invalid. Use an absolute https URL.");
-  });
-
-  it("fails when interface URL includes credentials during chat API derivation", () => {
-    const { deps } = createHarness({
-      config: {
-        url: "https://co.build@evil.example",
-        token: "bbt_abc",
-      },
-    });
-
-    expect(() => requireConfig(deps)).toThrow("Interface API base URL must not include username or password.");
   });
 
   it("masks token values", () => {

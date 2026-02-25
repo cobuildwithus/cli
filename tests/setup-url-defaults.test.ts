@@ -22,7 +22,6 @@ describe("setup URL defaults and normalization", () => {
     expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://co.build",
-      chatApiUrl: "https://chat-api.co.build",
       token: "bbt_secret",
       agent: "default",
     });
@@ -39,7 +38,6 @@ describe("setup URL defaults and normalization", () => {
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "http://localhost:3000",
-      chatApiUrl: "http://localhost:4000",
       token: "bbt_secret",
       agent: "default",
     });
@@ -56,7 +54,6 @@ describe("setup URL defaults and normalization", () => {
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "http://localhost:3000",
-      chatApiUrl: "http://localhost:4000",
       token: "bbt_secret",
       agent: "default",
     });
@@ -76,7 +73,6 @@ describe("setup URL defaults and normalization", () => {
     expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "http://localhost:3000/co.build",
-      chatApiUrl: "http://localhost:4000",
       token: "bbt_secret",
       agent: "default",
     });
@@ -93,13 +89,12 @@ describe("setup URL defaults and normalization", () => {
     expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://co.build",
-      chatApiUrl: "https://chat-api.co.build",
       token: "bbt_secret",
       agent: "default",
     });
   });
 
-  it("derives chat API URL from an explicit interface URL even when --dev is set", async () => {
+  it("prefers explicit interface URL even when --dev is set", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
@@ -108,7 +103,6 @@ describe("setup URL defaults and normalization", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://co.build",
-      chatApiUrl: "https://chat-api.co.build",
       token: "bbt_secret",
       agent: "default",
     });

@@ -58,8 +58,8 @@ buildbot tx --to <address> --data <hex> --value <eth> --network <network> --agen
 
 ## Command Routing
 
-- `docs` calls chat API `POST /api/docs/search`.
-- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call chat API `POST /api/buildbot/tools/*`.
+- `docs` calls interface API `POST /api/docs/search`.
+- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call interface API `POST /api/buildbot/tools/*`.
 - `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
 
 ## Output Contract
