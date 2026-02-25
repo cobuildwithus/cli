@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOF'
+  cat <<'EOT'
 Usage:
   bash scripts/release.sh check
   bash scripts/release.sh <patch|minor|major|prepatch|preminor|premajor|prerelease> [--preid <alpha|beta|rc>] [--no-push] [--allow-non-main]
@@ -11,7 +11,7 @@ Examples:
   bash scripts/release.sh patch
   bash scripts/release.sh preminor --preid alpha
   bash scripts/release.sh check
-EOF
+EOT
 }
 
 ACTION="${1:-patch}"
@@ -52,6 +52,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT"
+
 assert_clean_worktree() {
   if [ -n "$(git status --porcelain)" ]; then
     echo "Working tree is dirty. Commit or stash changes before releasing."
@@ -82,6 +86,9 @@ run_release_checks() {
   echo "==> Building dist artifacts"
   pnpm build
 
+  echo "==> Validating release scripts"
+  bash -n scripts/release.sh scripts/update-changelog.sh scripts/generate-release-notes.sh
+
   echo "==> Validating npm package contents"
   npm pack --dry-run >/dev/null
 }
@@ -92,16 +99,8 @@ resolve_npm_tag() {
     echo ""
     return 0
   fi
-  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
-    echo "alpha"
-    return 0
-  fi
-  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
-    echo "beta"
-    return 0
-  fi
-  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-    echo "rc"
+  if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]; then
+    echo "${BASH_REMATCH[1]}"
     return 0
   fi
 
@@ -131,12 +130,14 @@ assert_main_branch
 
 run_release_checks
 
-npm_version_args=("$ACTION" "-m" "chore(release): %s")
+previous_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+
+npm_version_args=("$ACTION" "--no-git-tag-version")
 if [ -n "$PREID" ]; then
   npm_version_args+=("--preid" "$PREID")
 fi
 
-echo "==> Bumping version and creating release commit/tag"
+echo "==> Bumping version"
 new_tag="$(npm version "${npm_version_args[@]}" | tail -n1 | tr -d '\r')"
 if [[ ! "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
   echo "npm version returned unexpected tag: $new_tag"
@@ -158,10 +159,26 @@ else
   echo "Release tag: $new_tag (npm dist-tag: latest)"
 fi
 
+echo "==> Updating changelog"
+"$SCRIPT_DIR/update-changelog.sh" "$tag_version"
+
+release_notes_path="release-notes/v${tag_version}.md"
+echo "==> Generating release notes at $release_notes_path"
+if [ -n "$previous_tag" ]; then
+  "$SCRIPT_DIR/generate-release-notes.sh" "$tag_version" "$release_notes_path" --from-tag "$previous_tag" --to-ref HEAD
+else
+  "$SCRIPT_DIR/generate-release-notes.sh" "$tag_version" "$release_notes_path" --to-ref HEAD
+fi
+
+echo "==> Creating release commit/tag"
+git add package.json CHANGELOG.md "$release_notes_path"
+git commit -m "chore(release): v${tag_version}"
+git tag -a "v${tag_version}" -m "chore(release): v${tag_version}"
+
 if [ "$PUSH_TAGS" = true ]; then
   echo "==> Pushing release commit and tags"
   git push --follow-tags
-  echo "Pushed $new_tag. GitHub Actions will publish this release to npm."
+  echo "Pushed v${tag_version}. GitHub Actions will publish this release to npm."
 else
   echo "Skipped push (--no-push). Push with: git push --follow-tags"
 fi

@@ -21,7 +21,7 @@ const SETUP_BACKEND_FAILURE_MESSAGE = [
   "Check interface logs, run the Build Bot SQL migrations, and verify CDP env vars are set",
   "(CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).",
 ].join(" ");
-const BUILD_BOT_PACKAGE_NAME = "@cobuildwithus/buildbot";
+const BUILD_BOT_PACKAGE_NAME = "@cobuild/bot";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
 const DEFAULT_INTERFACE_URL = "https://co.build";
@@ -94,10 +94,6 @@ function normalizeApiUrl(rawValue: string, label: "Interface URL"): string {
   }
 
   return parsed.toString();
-}
-
-function normalizeInterfaceUrl(rawValue: string): string {
-  return normalizeApiUrl(rawValue, "Interface URL");
 }
 
 function isAuthFailure(error: unknown): boolean {
@@ -642,7 +638,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     );
   }
 
-  url = normalizeInterfaceUrl(url);
+  url = normalizeApiUrl(url, "Interface URL");
 
   /* c8 ignore start */
   if (interactive) {
