@@ -36,7 +36,7 @@ pnpm start -- --help
 Run from npm (published package):
 
 ```bash
-npx @cobuildwithus/buildbot --help
+npx @cobuild/bot --help
 ```
 
 ## Quick Start (CLI)
@@ -146,7 +146,7 @@ pnpm review:gpt
 Run release checks first:
 
 ```bash
-bash scripts/release.sh check
+pnpm run release:check
 ```
 
 Create and push a release tag (which triggers `.github/workflows/release.yml` to publish):
@@ -162,19 +162,36 @@ bash scripts/release.sh preminor --preid alpha
 # or: bash scripts/release.sh preminor --preid beta
 ```
 
+For exact version and dry-run:
+
+```bash
+bash scripts/release.sh 1.2.3-rc.1 --dry-run
+```
+
 What the release script does:
 - requires a clean git worktree
 - requires the current branch to be `main` (override only with `--allow-non-main`)
+- requires `origin` remote and package name `@cobuild/bot`
 - runs `pnpm verify`, `pnpm build`, and `npm pack --dry-run`
-- bumps version with `npm version` (creates release commit + `v*` tag)
+- bumps version with `npm version --no-git-tag-version`
+- updates `CHANGELOG.md`
+- generates Codex-style release notes at `release-notes/v<version>.md`
+- creates release commit + `v*` tag
 - validates tag/version match
 - pushes commit + tags so GitHub Actions can publish to npm
 
 CI release workflow (`.github/workflows/release.yml`) does:
 - tag/version validation against `package.json`
 - tarball build as an artifact before publish
-- GitHub Release creation from the tag commit message
+- GitHub Release creation from `release-notes/v<version>.md` (fallback: generated on CI)
 - npm Trusted Publishing via OIDC with prerelease dist-tag routing and idempotent publish handling
+
+Changelog + release notes helpers:
+
+```bash
+pnpm run changelog:update -- 0.2.0
+pnpm run release:notes -- 0.2.0 /tmp/release-notes.md
+```
 
 ## Architecture + Process Docs
 

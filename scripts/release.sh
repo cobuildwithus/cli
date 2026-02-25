@@ -2,22 +2,28 @@
 set -euo pipefail
 
 usage() {
-  cat <<'EOT'
+  cat <<'EOF'
 Usage:
   bash scripts/release.sh check
-  bash scripts/release.sh <patch|minor|major|prepatch|preminor|premajor|prerelease> [--preid <alpha|beta|rc>] [--no-push] [--allow-non-main]
+  bash scripts/release.sh <patch|minor|major|prepatch|preminor|premajor|prerelease|x.y.z[-channel.n]> [--preid <alpha|beta|rc>] [--dry-run] [--no-push] [--allow-non-main]
 
 Examples:
   bash scripts/release.sh patch
   bash scripts/release.sh preminor --preid alpha
+  bash scripts/release.sh 1.2.3-rc.1 --dry-run
   bash scripts/release.sh check
-EOT
+EOF
 }
 
-ACTION="${1:-patch}"
-shift || true
+ACTION="${1:-}"
+if [ -z "$ACTION" ]; then
+  usage >&2
+  exit 1
+fi
+shift
 
 PREID=""
+DRY_RUN=false
 PUSH_TAGS=true
 ALLOW_NON_MAIN=false
 
@@ -31,6 +37,11 @@ while [ "$#" -gt 0 ]; do
       fi
       PREID="$2"
       shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      PUSH_TAGS=false
+      shift
       ;;
     --no-push)
       PUSH_TAGS=false
@@ -58,7 +69,7 @@ cd "$ROOT"
 
 assert_clean_worktree() {
   if [ -n "$(git status --porcelain)" ]; then
-    echo "Working tree is dirty. Commit or stash changes before releasing."
+    echo "Error: git working tree must be clean before release." >&2
     exit 1
   fi
 }
@@ -70,20 +81,34 @@ assert_main_branch() {
 
   current_branch="$(git rev-parse --abbrev-ref HEAD)"
   if [ "$current_branch" != "main" ]; then
-    echo "Releases must run from main. Current branch: $current_branch"
-    echo "Use --allow-non-main only if you intentionally need a different branch."
+    echo "Error: releases must run from main (current: $current_branch)." >&2
+    exit 1
+  fi
+}
+
+assert_origin_remote() {
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "Error: git remote 'origin' is not configured." >&2
+    exit 1
+  fi
+}
+
+assert_package_name() {
+  package_name="$(node -p "require('./package.json').name")"
+  if [ "$package_name" != "@cobuild/bot" ]; then
+    echo "Error: unexpected package name '$package_name' (expected @cobuild/bot)." >&2
     exit 1
   fi
 }
 
 run_release_checks() {
-  echo "==> Installing dependencies"
+  echo "Running release checks..."
   pnpm install --frozen-lockfile
 
-  echo "==> Running verification checks"
+  echo "==> Running verify"
   pnpm verify
 
-  echo "==> Building dist artifacts"
+  echo "==> Building"
   pnpm build
 
   echo "==> Validating release scripts"
@@ -91,6 +116,11 @@ run_release_checks() {
 
   echo "==> Validating npm package contents"
   npm pack --dry-run >/dev/null
+}
+
+is_exact_version() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]
 }
 
 resolve_npm_tag() {
@@ -104,12 +134,13 @@ resolve_npm_tag() {
     return 0
   fi
 
-  echo "Unsupported release version format: $version"
-  echo "Expected x.y.z or x.y.z-(alpha|beta|rc).n"
+  echo "Unsupported release version format: $version" >&2
+  echo "Expected x.y.z or x.y.z-(alpha|beta|rc).n" >&2
   exit 1
 }
 
 if [ "$ACTION" = "check" ]; then
+  assert_package_name
   run_release_checks
   echo "Release checks passed."
   exit 0
@@ -119,66 +150,85 @@ case "$ACTION" in
   patch|minor|major|prepatch|preminor|premajor|prerelease)
     ;;
   *)
-    echo "Unsupported release action: $ACTION"
-    usage
-    exit 2
+    if ! is_exact_version "$ACTION"; then
+      echo "Error: unsupported release action or version '$ACTION'." >&2
+      usage >&2
+      exit 2
+    fi
     ;;
-esac
+  esac
+
+if [ -n "$PREID" ]; then
+  if ! [[ "$PREID" =~ ^(alpha|beta|rc)$ ]]; then
+    echo "Error: --preid must be one of alpha|beta|rc." >&2
+    exit 2
+  fi
+
+  case "$ACTION" in
+    prepatch|preminor|premajor|prerelease)
+      ;;
+    *)
+      echo "Error: --preid is only valid with prepatch/preminor/premajor/prerelease." >&2
+      exit 2
+      ;;
+  esac
+fi
 
 assert_clean_worktree
 assert_main_branch
+assert_origin_remote
+assert_package_name
 
 run_release_checks
 
-previous_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+current_version="$(node -p "require('./package.json').version")"
+echo "Current version: $current_version"
 
 npm_version_args=("$ACTION" "--no-git-tag-version")
 if [ -n "$PREID" ]; then
   npm_version_args+=("--preid" "$PREID")
 fi
 
-echo "==> Bumping version"
 new_tag="$(npm version "${npm_version_args[@]}" | tail -n1 | tr -d '\r')"
-if [[ ! "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
-  echo "npm version returned unexpected tag: $new_tag"
-  exit 1
-fi
+new_version="${new_tag#v}"
+npm_dist_tag="$(resolve_npm_tag "$new_version")"
 
-package_version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version)")"
-tag_version="${new_tag#v}"
-
-if [ "$package_version" != "$tag_version" ]; then
-  echo "Tag/version mismatch: tag=$new_tag package.json=$package_version"
-  exit 1
-fi
-
-npm_dist_tag="$(resolve_npm_tag "$tag_version")"
 if [ -n "$npm_dist_tag" ]; then
-  echo "Release tag: $new_tag (npm dist-tag: $npm_dist_tag)"
+  echo "Release channel: $npm_dist_tag"
 else
-  echo "Release tag: $new_tag (npm dist-tag: latest)"
+  echo "Release channel: latest"
 fi
+
+if [ "$DRY_RUN" = true ]; then
+  git restore --worktree --staged package.json >/dev/null 2>&1 || true
+  echo "Dry run only."
+  echo "Would prepare release: @cobuild/bot@$new_version"
+  echo "Would create tag: v$new_version"
+  exit 0
+fi
+
+previous_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
 
 echo "==> Updating changelog"
-"$SCRIPT_DIR/update-changelog.sh" "$tag_version"
+"$SCRIPT_DIR/update-changelog.sh" "$new_version"
 
-release_notes_path="release-notes/v${tag_version}.md"
+release_notes_path="release-notes/v${new_version}.md"
 echo "==> Generating release notes at $release_notes_path"
 if [ -n "$previous_tag" ]; then
-  "$SCRIPT_DIR/generate-release-notes.sh" "$tag_version" "$release_notes_path" --from-tag "$previous_tag" --to-ref HEAD
+  "$SCRIPT_DIR/generate-release-notes.sh" "$new_version" "$release_notes_path" --from-tag "$previous_tag" --to-ref HEAD
 else
-  "$SCRIPT_DIR/generate-release-notes.sh" "$tag_version" "$release_notes_path" --to-ref HEAD
+  "$SCRIPT_DIR/generate-release-notes.sh" "$new_version" "$release_notes_path" --to-ref HEAD
 fi
 
 echo "==> Creating release commit/tag"
 git add package.json CHANGELOG.md "$release_notes_path"
-git commit -m "chore(release): v${tag_version}"
-git tag -a "v${tag_version}" -m "chore(release): v${tag_version}"
+git commit -m "chore(release): v${new_version}"
+git tag -a "v${new_version}" -m "chore(release): v${new_version}"
 
 if [ "$PUSH_TAGS" = true ]; then
   echo "==> Pushing release commit and tags"
   git push --follow-tags
-  echo "Pushed v${tag_version}. GitHub Actions will publish this release to npm."
+  echo "Pushed v${new_version}. GitHub Actions will publish this release to npm."
 else
   echo "Skipped push (--no-push). Push with: git push --follow-tags"
 fi

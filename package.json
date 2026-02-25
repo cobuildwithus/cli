@@ -1,5 +1,5 @@
 {
-  "name": "@cobuildwithus/buildbot",
+  "name": "@cobuild/bot",
   "version": "0.1.0",
   "private": false,
   "publishConfig": {
@@ -8,7 +8,8 @@
   "type": "module",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "bin": {
     "buildbot": "./dist/index.js"
@@ -28,6 +29,10 @@
     "docs:gardening": "bash scripts/doc-gardening.sh --fail-on-issues",
     "review:gpt": "scripts/chatgpt-oracle-review.sh",
     "verify": "pnpm typecheck && pnpm test && pnpm test:coverage",
+    "changelog:update": "bash scripts/update-changelog.sh",
+    "release:notes": "bash scripts/generate-release-notes.sh",
+    "release:check": "bash scripts/release.sh check",
+    "release:dry-run": "bash scripts/release.sh patch --dry-run",
     "release:patch": "bash scripts/release.sh patch",
     "release:minor": "bash scripts/release.sh minor",
     "release:major": "bash scripts/release.sh major"

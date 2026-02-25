@@ -130,15 +130,15 @@ jobs:
           name: npm-tarball
           path: dist/npm
 
-      - name: Generate release notes from tag commit message
+      - name: Resolve release notes body
         id: release_notes
         shell: bash
         run: |
           set -euo pipefail
-          commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
-          notes_path="${RUNNER_TEMP}/release-notes.md"
-          git log -1 --format=%B "${commit}" > "${notes_path}"
-          echo >> "${notes_path}"
+          notes_path="release-notes/v${{ needs.tag-check.outputs.version }}.md"
+          if [ ! -f "${notes_path}" ]; then
+            ./scripts/generate-release-notes.sh "${{ needs.tag-check.outputs.version }}" "${notes_path}"
+          fi
           echo "path=${notes_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Create GitHub Release
