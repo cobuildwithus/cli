@@ -180,6 +180,70 @@ describe("release.sh coverage audit", () => {
     expect(result.stderr).toContain("Error: --preid must be one of alpha|beta|rc.");
   });
 
+  it("rejects --preid when action is not a prerelease bump", () => {
+    const fixture = createRepoFixture();
+
+    const result = runReleaseScript(fixture, ["patch", "--preid", "alpha"]);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "Error: --preid is only valid with prepatch/preminor/premajor/prerelease."
+    );
+  });
+
+  it("requires --preid for prerelease bump actions and keeps dry-run clean", () => {
+    const fixture = createRepoFixture();
+    const before = readFileSync(fixture.packageJsonPath, "utf8");
+
+    const result = runReleaseScript(fixture, ["preminor", "--dry-run"]);
+
+    const after = readFileSync(fixture.packageJsonPath, "utf8");
+    const dirtyStatus = run("git", ["status", "--porcelain"], fixture.repoDir);
+    const tags = run("git", ["tag", "--list"], fixture.repoDir);
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "Error: --preid is required with prepatch/preminor/premajor/prerelease."
+    );
+    expect(after).toBe(before);
+    expect(dirtyStatus.stdout.trim()).toBe("");
+    expect(tags.stdout.trim()).toBe("");
+  });
+
+  it("blocks releases from non-main branches unless explicitly overridden", () => {
+    const fixture = createRepoFixture();
+    expect(run("git", ["checkout", "-b", "feature/release-audit"], fixture.repoDir).status).toBe(0);
+
+    const result = runReleaseScript(fixture, ["patch", "--dry-run"]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Error: releases must run from main (current: feature/release-audit)."
+    );
+  });
+
+  it("routes prerelease dry-runs to the expected channel and keeps the worktree clean", () => {
+    const fixture = createRepoFixture();
+    const before = readFileSync(fixture.packageJsonPath, "utf8");
+
+    const result = runReleaseScript(
+      fixture,
+      ["preminor", "--preid", "beta", "--dry-run"],
+      { NPM_STUB_NEW_TAG: "v0.2.0-beta.3" }
+    );
+
+    const after = readFileSync(fixture.packageJsonPath, "utf8");
+    const dirtyStatus = run("git", ["status", "--porcelain"], fixture.repoDir);
+    const tags = run("git", ["tag", "--list"], fixture.repoDir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Release channel: beta");
+    expect(result.stdout).toContain("Would prepare release: @cobuild/bot@0.2.0-beta.3");
+    expect(after).toBe(before);
+    expect(dirtyStatus.stdout.trim()).toBe("");
+    expect(tags.stdout.trim()).toBe("");
+  });
+
   it("supports exact semver actions and restores package.json in dry-run mode", () => {
     const fixture = createRepoFixture();
     const before = readFileSync(fixture.packageJsonPath, "utf8");

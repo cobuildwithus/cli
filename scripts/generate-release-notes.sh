@@ -81,6 +81,11 @@ else
   range="$to_ref"
 fi
 
+full_changelog_target="$release_tag"
+if [ "$to_ref" != "$release_tag" ]; then
+  full_changelog_target="$to_ref"
+fi
+
 declare -a features
 
 declare -a fixes
@@ -150,7 +155,7 @@ mkdir -p "$(dirname "$output_path")"
 
   echo "Changelog"
   if [ -n "$from_tag" ]; then
-    echo "Full Changelog: ${from_tag}...${release_tag}"
+    echo "Full Changelog: ${from_tag}...${full_changelog_target}"
   else
     echo "Full Changelog: initial release"
   fi
