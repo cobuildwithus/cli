@@ -1,5 +1,5 @@
 {
-  "name": "@cobuild/bot",
+  "name": "@cobuild/cli",
   "version": "0.1.0",
   "private": false,
   "publishConfig": {
@@ -12,7 +12,7 @@
     "CHANGELOG.md"
   ],
   "bin": {
-    "buildbot": "./dist/index.js"
+    "cli": "./dist/index.js"
   },
   "engines": {
     "node": ">=20"
@@ -38,7 +38,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
-    "@cobuild/review-gpt": "file:../review-gpt-cli",
+    "@cobuild/review-gpt": "^0.2.2",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "typescript": "^5.9.3",

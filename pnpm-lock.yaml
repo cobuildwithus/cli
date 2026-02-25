@@ -13,8 +13,8 @@ importers:
         version: 2.46.3(typescript@5.9.3)
     devDependencies:
       '@cobuild/review-gpt':
-        specifier: file:../review-gpt-cli
-        version: file:../review-gpt-cli
+        specifier: ^0.2.2
+        version: 0.2.2
       '@types/node':
         specifier: ^25.2.3
         version: 25.3.0
@@ -54,8 +54,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@cobuild/review-gpt@file:../review-gpt-cli':
-    resolution: {directory: ../review-gpt-cli, type: directory}
+  '@cobuild/review-gpt@0.2.2':
+    resolution: {integrity: sha512-v26hVQgosb5MZXT/mBRf9ZaGlduq2576XPukkuBADvlOPwWqdVYT2Ob4/g+aa3n+ZmibTDnnG3OOeZHkz68+UA==}
     hasBin: true
 
   '@esbuild/aix-ppc64@0.27.3':
@@ -712,7 +712,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@cobuild/review-gpt@file:../review-gpt-cli': {}
+  '@cobuild/review-gpt@0.2.2': {}
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true
