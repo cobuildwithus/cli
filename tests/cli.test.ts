@@ -255,11 +255,87 @@ describe("cli", () => {
     });
   });
 
-  it("setup requires url in non-interactive mode when none is configured", async () => {
-    const harness = createHarness();
-    await expect(runCli(["setup", "--token", "bbt_secret"], harness.deps)).rejects.toThrow(
-      "Missing --url and no config found."
+  it("setup defaults interface url to co.build in non-interactive mode", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--token", "bbt_secret"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "https://co.build",
+      token: "bbt_secret",
+      agent: "default",
+    });
+  });
+
+  it("setup supports --dev default url for localhost", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--dev", "--token", "bbt_secret"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "http://localhost:3000",
+      token: "bbt_secret",
+      agent: "default",
+    });
+  });
+
+  it("setup normalizes bare --url host input", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--url", "localhost:3000", "--token", "bbt_secret"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "http://localhost:3000",
+      token: "bbt_secret",
+      agent: "default",
+    });
+  });
+
+  it("setup normalizes bare localhost host input with a path", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(
+      ["setup", "--url", "localhost:3000/co.build", "--token", "bbt_secret"],
+      harness.deps
     );
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "http://localhost:3000/co.build",
+      token: "bbt_secret",
+      agent: "default",
+    });
+  });
+
+  it("setup normalizes bare public host input to https", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--url", "co.build", "--token", "bbt_secret"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "https://co.build",
+      token: "bbt_secret",
+      agent: "default",
+    });
   });
 
   it("setup requires token in non-interactive mode when none is configured", async () => {
@@ -432,6 +508,145 @@ describe("cli", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       query: "--token-stdin",
     });
+  });
+
+  it("tools requires a known subcommand", async () => {
+    const harness = createHarness();
+
+    await expect(runCli(["tools"], harness.deps)).rejects.toThrow("Usage:");
+    await expect(runCli(["tools", "unknown"], harness.deps)).rejects.toThrow(
+      "Unknown tools subcommand: unknown"
+    );
+  });
+
+  it("tools get-user posts fname payload", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, result: { fid: 1, fname: "alice" } }),
+    });
+
+    await runCli(["tools", "get-user", "alice"], harness.deps);
+
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/tools/get-user");
+    expect(JSON.parse(String(init?.body))).toEqual({ fname: "alice" });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      result: { fid: 1, fname: "alice" },
+    });
+  });
+
+  it("tools get-cast infers URL type and allows explicit type", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, cast: { hash: "0xabc" } }),
+    });
+
+    await runCli(
+      ["tools", "get-cast", "https://warpcast.com/alice/0xabc"],
+      harness.deps
+    );
+    let [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      identifier: "https://warpcast.com/alice/0xabc",
+      type: "url",
+    });
+
+    harness.fetchMock.mockClear();
+    await runCli(["tools", "get-cast", "0xabc", "--type", "hash"], harness.deps);
+    [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      identifier: "0xabc",
+      type: "hash",
+    });
+  });
+
+  it("tools get-cast validates type", async () => {
+    const harness = createHarness();
+    await expect(runCli(["tools", "get-cast", "0xabc", "--type", "other"], harness.deps)).rejects.toThrow(
+      "--type must be either 'hash' or 'url'"
+    );
+  });
+
+  it("tools cast-preview validates required text and embed count", async () => {
+    const harness = createHarness();
+    await expect(runCli(["tools", "cast-preview"], harness.deps)).rejects.toThrow("Usage:");
+    await expect(
+      runCli(
+        [
+          "tools",
+          "cast-preview",
+          "--text",
+          "hello",
+          "--embed",
+          "https://1.example",
+          "--embed",
+          "https://2.example",
+          "--embed",
+          "https://3.example",
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow("A maximum of two --embed values are allowed.");
+  });
+
+  it("tools cast-preview posts normalized payload", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true }),
+    });
+
+    await runCli(
+      [
+        "tools",
+        "cast-preview",
+        "--text",
+        "hello",
+        "--embed",
+        "https://1.example",
+        "--embed",
+        "https://2.example",
+        "--parent",
+        "0xparent",
+      ],
+      harness.deps
+    );
+
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/tools/cast-preview");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      text: "hello",
+      embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
+      parent: "0xparent",
+    });
+  });
+
+  it("tools cobuild-ai-context posts empty payload and rejects unexpected args", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, data: { asOf: "2026-02-25T00:00:00.000Z" } }),
+    });
+
+    await expect(runCli(["tools", "cobuild-ai-context", "extra"], harness.deps)).rejects.toThrow(
+      "Usage:"
+    );
+
+    await runCli(["tools", "cobuild-ai-context"], harness.deps);
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/tools/cobuild-ai-context");
+    expect(JSON.parse(String(init?.body))).toEqual({});
   });
 
   it("send validates required positionals", async () => {

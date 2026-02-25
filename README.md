@@ -44,6 +44,7 @@ npx @cobuildwithus/buildbot --help
 ```bash
 # 1) Configure and bootstrap wallet access
 pnpm start -- setup --url http://localhost:3000 --network base-sepolia --agent default
+# or: pnpm start -- setup --dev --network base-sepolia --agent default
 
 # 2) Verify config (token is masked)
 pnpm start -- config show
@@ -80,9 +81,10 @@ install-skill-from-github.py --repo <owner>/<repo> --path skills/buildbot-cli
 ## Setup Details
 
 `setup` supports secure browser approval and non-interactive token sources.
+It defaults to `https://co.build` when no URL is configured; use `--dev` to default to `http://localhost:3000`.
 
 ```bash
-buildbot setup [--url <interface-url>] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
 ```
 
 - Browser approval flow:

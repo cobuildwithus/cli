@@ -28,6 +28,7 @@ buildbot/
   - `config`: local config read/write/inspect.
   - `wallet`: wallet lookup via interface API.
   - `docs`: docs search query via docs search API.
+  - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `cobuild-ai-context`).
   - `send`: token transfer execution envelope.
   - `tx`: arbitrary transaction execution envelope.
 
@@ -75,6 +76,7 @@ buildbot/
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
 - `docs` always targets `/api/docs/search`.
+- `tools` targets `/api/buildbot/tools/*` read-only endpoints.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -96,12 +98,14 @@ buildbot/
 
 1. Parse `setup` options (`--url`, `--token`, `--agent`, `--network`).
 2. Resolve defaults from config and environment fallbacks (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`).
-3. If first-time setup is non-interactive and URL comes only from `BUILD_BOT_URL`, fail closed and require explicit `--url`.
-4. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
-5. If token is missing and TTY is available, start one-time localhost callback session.
-6. Open interface `/home` with setup query params (`buildBotSetup`, callback URL, state) and wait for browser approval.
-7. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
-8. If approval fails/times out, fall back to hidden manual token prompt.
+3. Apply interface URL fallback when still missing: `https://co.build` (or `http://localhost:3000` with `--dev`).
+4. If first-time setup is non-interactive and URL comes only from `BUILD_BOT_URL`, fail closed and require explicit `--url`.
+5. Normalize/validate interface URL (auto-add scheme; reject non-loopback `http`).
+6. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
+7. If token is missing and TTY is available, start one-time localhost callback session.
+8. Open interface `/home` with setup query params (`buildBotSetup`, callback URL, state) and wait for browser approval.
+9. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
+10. If approval fails/times out, fall back to hidden manual token prompt.
 
 ### Wallet lookup flow
 
@@ -129,6 +133,16 @@ buildbot/
 2. Validate non-empty query and `--limit` integer range.
 3. Build payload and POST `/api/docs/search`.
 4. Print normalized JSON result.
+
+### Buildbot tools flow
+
+1. Parse `tools` subcommand and validate command-specific flags/arguments.
+2. Build payload and POST one of:
+- `/api/buildbot/tools/get-user`
+- `/api/buildbot/tools/get-cast`
+- `/api/buildbot/tools/cast-preview`
+- `/api/buildbot/tools/cobuild-ai-context`
+3. Print normalized JSON result.
 
 ## Documentation Map
 

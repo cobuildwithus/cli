@@ -8,6 +8,7 @@
   - `config` -> `handleConfigCommand`
   - `wallet` -> `handleWalletCommand`
   - `docs` -> `handleDocsCommand`
+  - `tools` -> `handleToolsCommand`
   - `send` -> `handleSendCommand`
   - `tx` -> `handleTxCommand`
 
@@ -20,19 +21,20 @@
 
 ## Setup Flow
 
-1. Parse `setup` options (`--url`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
-2. Resolve defaults from config + environment (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`).
+1. Parse `setup` options (`--url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
+2. Resolve defaults from config + environment (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
 3. In non-interactive first-time setup, fail closed when URL comes only from `BUILD_BOT_URL` (require explicit `--url`).
-4. Prompt for missing URL when interactive.
-5. If token is missing and interactive:
+4. Prompt for missing URL when interactive, using resolved default value.
+5. Normalize/validate interface URL (auto-add scheme; non-loopback `http` rejected).
+6. If token is missing and interactive:
 - start one-time localhost callback session with random state,
 - open interface `/home` with setup query params,
 - wait for origin-checked callback approval payload.
-6. Accept at most one token source (`--token`, `--token-file`, `--token-stdin`) and fail on conflicts.
-7. If browser approval fails/times out, fall back to hidden token prompt.
-8. Persist config locally.
-9. Bootstrap wallet via `/api/buildbot/wallet`.
-10. Print wallet/bootstrap output and next-step guidance.
+7. Accept at most one token source (`--token`, `--token-file`, `--token-stdin`) and fail on conflicts.
+8. If browser approval fails/times out, fall back to hidden token prompt.
+9. Persist config locally.
+10. Bootstrap wallet via `/api/buildbot/wallet`.
+11. Print wallet/bootstrap output and next-step guidance.
 
 ## Config and Agent Resolution Flow
 
@@ -56,6 +58,17 @@
 2. Validate query is non-empty and `--limit` is an integer in range.
 3. POST `/api/docs/search` with `{ query, limit? }`.
 4. Print JSON response from the docs endpoint.
+
+## Tools Flow
+
+1. Parse `tools` subcommand and options.
+2. Validate command-specific argument shape.
+3. Dispatch to one of:
+- `POST /api/buildbot/tools/get-user`
+- `POST /api/buildbot/tools/get-cast`
+- `POST /api/buildbot/tools/cast-preview`
+- `POST /api/buildbot/tools/cobuild-ai-context`
+4. Print JSON response.
 
 ## Idempotency Flow (`send` / `tx`)
 
