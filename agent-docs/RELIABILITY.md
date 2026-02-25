@@ -7,6 +7,7 @@
 3. API failures normalize to actionable, bounded CLI errors.
 4. Local config writes are atomic full rewrites with deterministic JSON formatting.
 5. `send` and `tx` always send explicit network values (never rely on server-side default network).
+6. `send` and `tx` must expose the effective idempotency key in request-failure errors.
 
 ## Reliability-Critical Surfaces
 
@@ -45,6 +46,14 @@
 7. Invalid idempotency key
 
 - CLI rejects non-UUID-v4 `--idempotency-key` values before network calls.
+
+8. Invalid transfer/tx irreversible input values
+
+- CLI rejects malformed destination addresses, malformed tx calldata, and malformed amount/value decimals before network calls.
+
+9. Hung network call
+
+- Transport aborts request after default timeout and returns actionable timeout error text.
 
 ## Verification Matrix
 

@@ -13,6 +13,7 @@ export interface FsLike {
     data: string,
     options?: BufferEncoding | { encoding?: BufferEncoding; mode?: number }
   ): void;
+  chmodSync?: (path: string, mode: number) => void;
   renameSync?: (oldPath: string, newPath: string) => void;
   unlinkSync?: (path: string) => void;
 }
@@ -29,6 +30,7 @@ export type FetchLike = (
     method?: string;
     headers?: Record<string, string>;
     body?: string;
+    signal?: AbortSignal;
   }
 ) => Promise<FetchResponseLike>;
 

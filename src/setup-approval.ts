@@ -87,10 +87,12 @@ export function buildSetupApprovalUrl(params: {
 
   const url = new URL("/home", params.baseUrl);
   url.searchParams.set("buildBotSetup", "1");
-  url.searchParams.set("buildBotCallback", params.callbackUrl);
-  url.searchParams.set("buildBotState", params.state);
   url.searchParams.set("buildBotNetwork", params.network);
   url.searchParams.set("buildBotAgent", params.agent);
+  const fragmentParams = new URLSearchParams();
+  fragmentParams.set("buildBotCallback", params.callbackUrl);
+  fragmentParams.set("buildBotState", params.state);
+  url.hash = fragmentParams.toString();
   return url.toString();
 }
 

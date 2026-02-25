@@ -4,6 +4,7 @@ import { createHarness } from "./helpers.js";
 
 const GENERATED_UUID = "8e03978e-40d5-43e8-bc93-6894a57f9324";
 const EXPLICIT_UUID = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
+const VALID_TO = "0x000000000000000000000000000000000000dEaD";
 
 function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
@@ -680,22 +681,32 @@ describe("cli", () => {
   it("send validates decimals", async () => {
     const harness = createHarness();
     await expect(
-      runCli(["send", "usdc", "1.0", "0xabc", "--decimals", "1.1"], harness.deps)
+      runCli(["send", "usdc", "1.0", VALID_TO, "--decimals", "1.1"], harness.deps)
     ).rejects.toThrow("--decimals must be an integer");
   });
 
   it("send validates decimals bounds", async () => {
     const harness = createHarness();
     await expect(
-      runCli(["send", "usdc", "1.0", "0xabc", "--decimals", "256"], harness.deps)
+      runCli(["send", "usdc", "1.0", VALID_TO, "--decimals", "256"], harness.deps)
     ).rejects.toThrow("--decimals must be between 0 and 255");
+  });
+
+  it("send validates amount and to address", async () => {
+    const harness = createHarness();
+    await expect(runCli(["send", "usdc", "1e3", VALID_TO], harness.deps)).rejects.toThrow(
+      "amount must be a non-negative decimal string"
+    );
+    await expect(
+      runCli(["send", "usdc", "1.0", "0xdeadbeef", "--idempotency-key", EXPLICIT_UUID], harness.deps)
+    ).rejects.toThrow("to must be a 20-byte hex address");
   });
 
   it("send rejects invalid idempotency keys", async () => {
     const harness = createHarness();
     await expect(
       runCli(
-        ["send", "usdc", "1.0", "0xabc", "--idempotency-key", "not-a-uuid"],
+        ["send", "usdc", "1.0", VALID_TO, "--idempotency-key", "not-a-uuid"],
         harness.deps
       )
     ).rejects.toThrow("Idempotency key must be a UUID v4");
@@ -753,9 +764,22 @@ describe("cli", () => {
 
   it("tx requires --to and --data", async () => {
     const harness = createHarness();
-    await expect(runCli(["tx", "--to", "0xabc"], harness.deps)).rejects.toThrow(
+    await expect(runCli(["tx", "--to", VALID_TO], harness.deps)).rejects.toThrow(
       "Usage: buildbot tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]"
     );
+  });
+
+  it("tx validates address, calldata, and value", async () => {
+    const harness = createHarness();
+    await expect(runCli(["tx", "--to", "0xabc", "--data", "0xdeadbeef"], harness.deps)).rejects.toThrow(
+      "--to must be a 20-byte hex address"
+    );
+    await expect(runCli(["tx", "--to", VALID_TO, "--data", "0xabc"], harness.deps)).rejects.toThrow(
+      "--data must be a hex string with even length"
+    );
+    await expect(
+      runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--value", "abc"], harness.deps)
+    ).rejects.toThrow("--value must be a non-negative decimal string");
   });
 
   it("tx supports explicit idempotency key and default value", async () => {
@@ -771,7 +795,7 @@ describe("cli", () => {
       [
         "tx",
         "--to",
-        "0xabc",
+        VALID_TO,
         "--data",
         "0xdeadbeef",
         "--idempotency-key",
@@ -793,7 +817,7 @@ describe("cli", () => {
       kind: "tx",
       network: "base-sepolia",
       agentKey: "manual-agent",
-      to: "0xabc",
+      to: VALID_TO,
       data: "0xdeadbeef",
       valueEth: "0",
     });
@@ -809,8 +833,46 @@ describe("cli", () => {
   it("tx rejects invalid idempotency keys", async () => {
     const harness = createHarness();
     await expect(
-      runCli(["tx", "--to", "0xabc", "--data", "0xdeadbeef", "--idempotency-key", "custom-key"], harness.deps)
+      runCli(
+        ["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--idempotency-key", "custom-key"],
+        harness.deps
+      )
     ).rejects.toThrow("Idempotency key must be a UUID v4");
+  });
+
+  it("runCliFromProcess includes send idempotency key when request fails", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: false, error: "backend unavailable" }, 503),
+    });
+
+    await runCliFromProcess(["node", "buildbot", "send", "usdc", "1.0", VALID_TO], harness.deps);
+
+    expect(harness.errors[0]).toContain("Request failed (status 503): backend unavailable");
+    expect(harness.errors[0]).toContain(`idempotency key: ${GENERATED_UUID}`);
+    expect(harness.exitCodes).toEqual([1]);
+  });
+
+  it("runCliFromProcess includes tx idempotency key when request fails", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: false, error: "backend unavailable" }, 503),
+    });
+
+    await runCliFromProcess(
+      ["node", "buildbot", "tx", "--to", VALID_TO, "--data", "0xdeadbeef"],
+      harness.deps
+    );
+
+    expect(harness.errors[0]).toContain("Request failed (status 503): backend unavailable");
+    expect(harness.errors[0]).toContain(`idempotency key: ${GENERATED_UUID}`);
+    expect(harness.exitCodes).toEqual([1]);
   });
 
   it("uses default agent when none is set", async () => {

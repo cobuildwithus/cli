@@ -371,13 +371,28 @@ function printSetupSuccessSummary(params: {
   }
 }
 
-async function maybeOpenInterface(url: string, deps: CliDeps): Promise<void> {
-  deps.stdout(`Opening ${url} in your browser...`);
+function redactApprovalUrlForDisplay(value: string): string {
+  try {
+    const url = new URL(value);
+    if (!url.hash) return url.toString();
+    url.hash = "#<redacted>";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+async function maybeOpenInterface(
+  openUrl: string,
+  displayUrl: string,
+  deps: CliDeps
+): Promise<boolean> {
+  deps.stdout(`Opening ${displayUrl} in your browser...`);
 
   let opened = false;
   if (deps.openExternal) {
     try {
-      opened = await deps.openExternal(url);
+      opened = await deps.openExternal(openUrl);
     } catch {
       opened = false;
     }
@@ -385,11 +400,12 @@ async function maybeOpenInterface(url: string, deps: CliDeps): Promise<void> {
 
   if (!opened) {
     deps.stdout("Could not open a browser automatically.");
-    deps.stdout(`Open this URL manually: ${url}`);
-    return;
+    deps.stdout(`Open this URL manually: ${openUrl}`);
+    return false;
   }
 
   deps.stdout("Browser opened.");
+  return true;
 }
 
 type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
@@ -419,10 +435,13 @@ async function requestTokenViaBrowser(params: {
       network,
       agent,
     });
+    const approvalUrlForDisplay = redactApprovalUrlForDisplay(approvalUrl);
 
     deps.stdout("Approve token generation in the browser to continue.");
-    await maybeOpenInterface(approvalUrl, deps);
-    deps.stdout(`If a browser did not open, visit: ${approvalUrl}`);
+    const opened = await maybeOpenInterface(approvalUrl, approvalUrlForDisplay, deps);
+    if (!opened) {
+      deps.stdout(`If a browser did not open, visit: ${approvalUrl}`);
+    }
     deps.stdout("Waiting for secure approval...");
 
     const token = await session.waitForToken;

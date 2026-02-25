@@ -63,6 +63,54 @@ describe("transport", () => {
       },
       body: JSON.stringify({ hello: "world" }),
     });
+    expect(init?.signal).toBeDefined();
+  });
+
+  it("rejects custom headers that override reserved auth/content headers", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      apiPost(harness.deps, "/api/buildbot/wallet", {}, { headers: { authorization: "Bearer other" } })
+    ).rejects.toThrow("Custom headers must not override reserved header: authorization");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid timeout values before dispatch", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {}, { timeoutMs: 0 })).rejects.toThrow(
+      "Request timeout must be a positive number of milliseconds."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("times out hung requests", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (_input, init) =>
+        await new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+          });
+        }),
+    });
+
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {}, { timeoutMs: 5 })).rejects.toThrow(
+      "Request timed out after 5ms"
+    );
   });
 
   it("routes docs endpoint requests through the interface URL", async () => {

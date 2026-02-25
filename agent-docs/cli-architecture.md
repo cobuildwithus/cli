@@ -26,6 +26,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - `setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
 - Persists config and performs wallet bootstrap call.
 - If token is absent and a TTY is available, opens interface `/home` and waits for secure browser approval over a one-time localhost callback session.
+- Setup approval URL keeps callback/state in the URL fragment and redacts fragment values in terminal display output.
 - Default interface URL is `https://co.build` when no URL is configured; `--dev` defaults to `http://localhost:3000`.
 - Bare host inputs are normalized (`co.build` -> `https://co.build/`, `localhost:3000` -> `http://localhost:3000/`).
 - If non-interactive first-time setup URL comes only from `BUILD_BOT_URL`, setup fails closed and still requires explicit `--url`.
@@ -55,14 +56,16 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 
 - `send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]`
 - Calls `/api/buildbot/exec` with `kind: transfer` envelope.
-- Enforces UUID v4 idempotency keys, forwards both idempotency headers, and includes the key in success output.
+- Validates amount and destination address format before request dispatch.
+- Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
 - Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 
 ### `tx`
 
 - `tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
 - Calls `/api/buildbot/exec` with `kind: tx` envelope.
-- Enforces UUID v4 idempotency keys, forwards both idempotency headers, and includes the key in success output.
+- Validates address/calldata/value format before request dispatch.
+- Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
 - Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 
 ## Boundary Rules
@@ -83,6 +86,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - `apiPost` is the only POST transport path for commands.
 - Endpoint composition goes through `toEndpoint` (never raw string concat in handlers).
 - Transport enforces secure base URL policy (`https`, except loopback `http`) and rejects embedded credentials.
+- Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
 - `send`/`tx` include both `X-Idempotency-Key` and `Idempotency-Key`.
 
 4. Output boundary

@@ -3,6 +3,7 @@ import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
 
 const EXPLICIT_UUID = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
+const VALID_TO = "0x000000000000000000000000000000000000dEaD";
 
 function createJsonResponder(body: unknown) {
   return async () => ({
@@ -23,7 +24,7 @@ describe("tx network defaults", () => {
     });
 
     await runCli(
-      ["tx", "--to", "0xabc", "--data", "0xdeadbeef", "--idempotency-key", EXPLICIT_UUID],
+      ["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--idempotency-key", EXPLICIT_UUID],
       harness.deps
     );
 
@@ -32,7 +33,7 @@ describe("tx network defaults", () => {
       kind: "tx",
       network: "base-sepolia",
       agentKey: "default",
-      to: "0xabc",
+      to: VALID_TO,
       data: "0xdeadbeef",
       valueEth: "0",
     });
@@ -54,7 +55,7 @@ describe("tx network defaults", () => {
     process.env.BUILD_BOT_NETWORK = "base";
 
     try {
-      await runCli(["tx", "--to", "0xabc", "--data", "0xdeadbeef", "--network", "base-sepolia"], harness.deps);
+      await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--network", "base-sepolia"], harness.deps);
     } finally {
       if (previous === undefined) {
         delete process.env.BUILD_BOT_NETWORK;
@@ -81,7 +82,7 @@ describe("tx network defaults", () => {
     process.env.BUILD_BOT_NETWORK = "base";
 
     try {
-      await runCli(["tx", "--to", "0xabc", "--data", "0xdeadbeef"], harness.deps);
+      await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef"], harness.deps);
     } finally {
       if (previous === undefined) {
         delete process.env.BUILD_BOT_NETWORK;

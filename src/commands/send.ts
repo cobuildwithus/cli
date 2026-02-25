@@ -9,6 +9,9 @@ import {
   resolveAgentKey,
   resolveExecIdempotencyKey,
   resolveNetwork,
+  throwWithIdempotencyKey,
+  validateEvmAddress,
+  validateNonNegativeDecimal,
   withIdempotencyKey,
 } from "./shared.js";
 
@@ -37,27 +40,35 @@ export async function handleSendCommand(args: string[], deps: CliDeps): Promise<
   if (decimals !== undefined && (decimals < 0 || decimals > 255)) {
     throw new Error("--decimals must be between 0 and 255");
   }
+  validateNonNegativeDecimal(amount, "amount");
+  validateEvmAddress(to, "to");
+
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
   const network = resolveNetwork(parsed.values.network);
   const idempotencyKey = resolveExecIdempotencyKey(parsed.values["idempotency-key"], deps);
 
-  const response = await apiPost(
-    deps,
-    "/api/buildbot/exec",
-    {
-      kind: "transfer",
-      network,
-      agentKey,
-      token,
-      amount,
-      to,
-      decimals,
-    },
-    {
-      headers: buildIdempotencyHeaders(idempotencyKey),
-    }
-  );
+  let response: unknown;
+  try {
+    response = await apiPost(
+      deps,
+      "/api/buildbot/exec",
+      {
+        kind: "transfer",
+        network,
+        agentKey,
+        token,
+        amount,
+        to,
+        decimals,
+      },
+      {
+        headers: buildIdempotencyHeaders(idempotencyKey),
+      }
+    );
+  } catch (error) {
+    throwWithIdempotencyKey(error, idempotencyKey);
+  }
 
   printJson(deps, withIdempotencyKey(idempotencyKey, response));
 }

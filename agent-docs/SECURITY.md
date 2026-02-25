@@ -17,6 +17,7 @@
 
 - `~/.buildbot/config.json` contains sensitive token material.
 - Config writes should use private dir/file modes (`0700`/`0600`) when supported.
+- Config writes should attempt post-write permission tightening (`chmod`) for dir/file best-effort hardening.
 
 3. Network boundary
 
@@ -47,6 +48,7 @@
 - Keep endpoint/path construction centralized to reduce injection mistakes.
 - Fail closed on malformed required inputs.
 - Reject insecure non-loopback transport URLs before sending bearer tokens.
+- Reject caller-provided transport headers that attempt to override reserved auth/content headers.
 - Keep server-originated error output bounded and control-character-sanitized.
 
 ## Current Watchlist

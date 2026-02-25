@@ -74,6 +74,9 @@ export function resolveAgentKey(inputAgent: string | undefined, configAgent: str
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EVM_ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/;
+const HEX_DATA_REGEX = /^0x([0-9a-fA-F]{2})*$/;
+const NON_NEGATIVE_DECIMAL_REGEX = /^(0|[1-9]\d*)(\.\d+)?$/;
 
 export function isUuidV4(value: string): boolean {
   return UUID_V4_REGEX.test(value);
@@ -113,4 +116,27 @@ export function withIdempotencyKey(idempotencyKey: string, response: unknown): R
     ...asRecord(response),
     idempotencyKey,
   };
+}
+
+export function throwWithIdempotencyKey(error: unknown, idempotencyKey: string): never {
+  const message = error instanceof Error ? error.message : String(error);
+  throw new Error(`${message} (idempotency key: ${idempotencyKey})`);
+}
+
+export function validateEvmAddress(value: string, label: string): void {
+  if (!EVM_ADDRESS_REGEX.test(value)) {
+    throw new Error(`${label} must be a 20-byte hex address (0x + 40 hex chars)`);
+  }
+}
+
+export function validateHexData(value: string, label: string): void {
+  if (!HEX_DATA_REGEX.test(value)) {
+    throw new Error(`${label} must be a hex string with even length (0x...)`);
+  }
+}
+
+export function validateNonNegativeDecimal(value: string, label: string): void {
+  if (!NON_NEGATIVE_DECIMAL_REGEX.test(value)) {
+    throw new Error(`${label} must be a non-negative decimal string`);
+  }
 }

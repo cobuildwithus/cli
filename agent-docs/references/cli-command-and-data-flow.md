@@ -28,7 +28,7 @@
 5. Normalize/validate interface URL (auto-add scheme; non-loopback `http` rejected).
 6. If token is missing and interactive:
 - start one-time localhost callback session with random state,
-- open interface `/home` with setup query params,
+- open interface `/home` with setup query params for non-secret fields and fragment params for callback/state,
 - wait for origin-checked callback approval payload.
 7. Accept at most one token source (`--token`, `--token-file`, `--token-stdin`) and fail on conflicts.
 8. If browser approval fails/times out, fall back to hidden token prompt.
@@ -47,10 +47,11 @@
 1. Build payload in handler.
 2. `apiPost(pathname, body, options)` resolves endpoint from interface base URL via `toEndpoint`.
 3. `toEndpoint` enforces secure base URL policy (`https`, loopback-only `http`) and rejects URL credentials.
-4. Send JSON POST with bearer token.
-5. Parse response text to JSON when possible.
-6. Throw bounded, sanitized, status-prefixed errors for non-2xx or `{ ok: false }`.
-7. Emit success payload with `printJson`.
+4. Transport validates caller-provided headers cannot override reserved auth/content headers.
+5. Send JSON POST with bearer token and default timeout+abort semantics.
+6. Parse response text to JSON when possible.
+7. Throw bounded, sanitized, status-prefixed errors for non-2xx or `{ ok: false }`.
+8. Emit success payload with `printJson`.
 
 ## Docs Query Flow
 
@@ -78,6 +79,7 @@
 2. Validate as UUID v4.
 3. Send both `X-Idempotency-Key` and `Idempotency-Key` headers.
 4. Return the effective key in success payload output.
+5. Include the effective key in `send`/`tx` request-failure error text for safe retries.
 
 ## Error and Exit Flow
 

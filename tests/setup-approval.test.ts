@@ -20,9 +20,11 @@ describe("setup approval flow", () => {
     const parsed = new URL(url);
     expect(parsed.pathname).toBe("/home");
     expect(parsed.searchParams.get("buildBotSetup")).toBe("1");
-    expect(parsed.searchParams.get("buildBotCallback")).toContain("127.0.0.1");
-    const callbackUrl = new URL(parsed.searchParams.get("buildBotCallback") ?? "");
+    const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    expect(fragment.get("buildBotCallback")).toContain("127.0.0.1");
+    const callbackUrl = new URL(fragment.get("buildBotCallback") ?? "");
     expect(callbackUrl.pathname.startsWith("/api/buildbot/cli/callback/")).toBe(true);
+    expect(fragment.get("buildBotState")).toBe("state123_state123_state123_state123");
     expect(parsed.searchParams.get("buildBotNetwork")).toBe("base-sepolia");
     expect(parsed.searchParams.get("buildBotAgent")).toBe("default");
   });

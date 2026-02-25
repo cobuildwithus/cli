@@ -14,6 +14,23 @@ export function configPath(deps: Pick<CliDeps, "homedir">): string {
   return path.join(deps.homedir(), ".buildbot", "config.json");
 }
 
+function tightenConfigPermissions(
+  deps: Pick<CliDeps, "fs">,
+  dir: string,
+  file: string
+): void {
+  try {
+    deps.fs.chmodSync?.(dir, 0o700);
+  } catch {
+    // best-effort on platforms/filesystems without chmod support
+  }
+  try {
+    deps.fs.chmodSync?.(file, 0o600);
+  } catch {
+    // best-effort on platforms/filesystems without chmod support
+  }
+}
+
 export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): BuildBotConfig {
   const file = configPath(deps);
   if (!deps.fs.existsSync(file)) {
@@ -52,10 +69,12 @@ export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: BuildBo
       }
       deps.fs.renameSync(tmp, file);
     }
+    tightenConfigPermissions(deps, dir, file);
     return;
   }
 
   deps.fs.writeFileSync(file, payload, { encoding: "utf8", mode: 0o600 });
+  tightenConfigPermissions(deps, dir, file);
 }
 
 export interface RequiredConfig {

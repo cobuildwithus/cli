@@ -55,6 +55,7 @@ export function createHarness(options: CreateHarnessOptions = {}): TestHarness {
       writeFileSync: (file, data) => {
         files.set(file, data);
       },
+      chmodSync: () => {},
       renameSync: (oldPath, newPath) => {
         const data = files.get(oldPath);
         if (data === undefined) {

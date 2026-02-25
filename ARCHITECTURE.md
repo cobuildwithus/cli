@@ -37,7 +37,7 @@ buildbot/
 - Config path: `~/.buildbot/config.json`.
 - Stored values: `url` (interface base), `token`, optional `agent`.
 - Writes are full-file JSON rewrites with stable formatting.
-- Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`).
+- Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`) with post-write chmod tightening.
 - Source modules: `src/config.ts`, `src/commands/config.ts`.
 
 ### Remote API runtime
@@ -47,6 +47,8 @@ buildbot/
 - Base URL policy enforces `https` by default; `http` is allowed only for loopback hosts (`localhost`, `127.0.0.1`, `::1`).
 - Base URLs with embedded credentials (`user:pass@host`) are rejected.
 - Auth uses bearer PAT in request header.
+- Request dispatch enforces a default network timeout with abort semantics.
+- Custom transport headers cannot override reserved auth/content headers.
 - Response handling normalizes JSON and non-JSON failure payloads with bounded, sanitized error text.
 - Source modules: `src/transport.ts`, `src/commands/{wallet,docs,tools,send,tx}.ts`.
 
@@ -87,6 +89,7 @@ buildbot/
 - `send` and `tx` enforce UUID v4 idempotency keys.
 - `send` and `tx` forward both `X-Idempotency-Key` and `Idempotency-Key`.
 - CLI success payloads include the effective idempotency key for retry correlation.
+- CLI error messages for failed `send`/`tx` requests include the effective idempotency key for safe retries.
 
 5. Error normalization invariant
 
@@ -104,7 +107,7 @@ buildbot/
 5. Normalize/validate interface URL (auto-add scheme; reject non-loopback `http`).
 6. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
 7. If token is missing and TTY is available, start one-time localhost callback session.
-8. Open interface `/home` with setup query params (`buildBotSetup`, callback URL, state) and wait for browser approval.
+8. Open interface `/home` with setup query params for non-secret fields and fragment params for callback/state, then wait for browser approval.
 9. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
 10. If approval fails/times out, fall back to hidden manual token prompt.
 
@@ -118,15 +121,16 @@ buildbot/
 ### Token send flow
 
 1. Parse positional args (`token amount to`) plus optional flags.
-2. Validate minimum argument contract and optional `--decimals` parsing.
+2. Validate minimum argument contract plus strict amount/address input checks and optional `--decimals` parsing.
 3. Build transfer payload (`kind: transfer`) and POST `/api/buildbot/exec`.
-4. Print normalized JSON result with `idempotencyKey` attached.
+4. Print normalized JSON result with `idempotencyKey` attached; on request failure, throw an error that includes the key.
 
 ### Generic tx flow
 
 1. Parse required flags (`--to`, `--data`) and optional value/network/agent.
-2. Build tx payload (`kind: tx`) and POST `/api/buildbot/exec`.
-3. Print normalized JSON result with `idempotencyKey` attached.
+2. Validate `--to`, `--data`, and `--value` formats before request dispatch.
+3. Build tx payload (`kind: tx`) and POST `/api/buildbot/exec`.
+4. Print normalized JSON result with `idempotencyKey` attached; on request failure, throw an error that includes the key.
 
 ### Docs search flow
 

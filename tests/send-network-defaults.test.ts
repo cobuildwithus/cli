@@ -3,6 +3,7 @@ import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
 
 const GENERATED_UUID = "8e03978e-40d5-43e8-bc93-6894a57f9324";
+const VALID_TO = "0x000000000000000000000000000000000000dEaD";
 
 function createJsonResponder(body: unknown) {
   return async () => ({
@@ -27,7 +28,7 @@ describe("send network defaults", () => {
       }),
     });
 
-    await runCli(["send", "usdc", "1.0", "0xabc"], harness.deps);
+    await runCli(["send", "usdc", "1.0", VALID_TO], harness.deps);
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
@@ -36,7 +37,7 @@ describe("send network defaults", () => {
       agentKey: "stored-agent",
       token: "usdc",
       amount: "1.0",
-      to: "0xabc",
+      to: VALID_TO,
     });
     expect(harness.errors).toEqual([]);
     expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toMatchObject({
@@ -57,7 +58,7 @@ describe("send network defaults", () => {
     process.env.BUILD_BOT_NETWORK = "base";
 
     try {
-      await runCli(["send", "usdc", "1.0", "0xabc"], harness.deps);
+      await runCli(["send", "usdc", "1.0", VALID_TO], harness.deps);
     } finally {
       if (previous === undefined) {
         delete process.env.BUILD_BOT_NETWORK;

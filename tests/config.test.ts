@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { configPath, maskToken, readConfig, requireConfig, writeConfig } from "../src/config.js";
 import { createHarness } from "./helpers.js";
 
@@ -61,6 +61,20 @@ describe("config", () => {
 
     const fileKeys = [...harness.files.keys()];
     expect(fileKeys).toEqual([harness.configFile]);
+  });
+
+  it("tightens directory and file permissions after writes", () => {
+    const harness = createHarness();
+    const chmod = vi.fn();
+    harness.deps.fs.chmodSync = chmod;
+
+    writeConfig(harness.deps, {
+      url: "https://api.example",
+      token: "bbt_123",
+    });
+
+    expect(chmod).toHaveBeenNthCalledWith(1, "/tmp/buildbot-tests/.buildbot", 0o700);
+    expect(chmod).toHaveBeenNthCalledWith(2, harness.configFile, 0o600);
   });
 
   it("throws when config JSON is invalid", () => {
