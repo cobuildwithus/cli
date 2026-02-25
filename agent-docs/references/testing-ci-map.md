@@ -10,7 +10,7 @@
 
 ## Script Enforcement
 
-- Drift checks: `scripts/check-agent-docs-drift.sh`
+- Drift checks: `scripts/check-agent-docs-drift.sh` (allows release-artifacts-only commit shape: `package.json` + `CHANGELOG.md` + `release-notes/v<semver>.md` where `<semver>` may include prerelease suffixes)
 - Docs inventory/report generation: `scripts/doc-gardening.sh`
 - Plan lifecycle: `scripts/open-exec-plan.sh`, `scripts/close-exec-plan.sh`
 - Selective commits: `scripts/committer`

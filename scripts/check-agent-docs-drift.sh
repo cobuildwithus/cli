@@ -76,10 +76,32 @@ has_change() {
   echo "$changed_files" | grep -Eq "$pattern"
 }
 
+package_json_version_only_in_range() {
+  local compare_range="$1"
+  local diff_lines relevant line
+
+  diff_lines="$(git diff --unified=0 --no-color "$compare_range" -- package.json 2>/dev/null || true)"
+  relevant="$(printf '%s\n' "$diff_lines" | grep -E '^[+-]' | grep -Ev '^\+\+\+|^---' || true)"
+  if [[ -z "$relevant" ]]; then
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    line="${line:1}"
+    line="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//')"
+    if [[ ! "$line" =~ ^\"version\"[[:space:]]*:[[:space:]]*\"[^\"]+\"[[:space:]]*,?[[:space:]]*$ ]]; then
+      return 1
+    fi
+  done <<< "$relevant"
+
+  return 0
+}
+
 code_changed=0
 index_changed=0
 active_plan_changed=0
 plan_changed=0
+release_artifacts_only=0
 
 if has_change '^(src/|scripts/|package\.json$|pnpm-lock\.yaml$|README\.md$|ARCHITECTURE\.md$|AGENTS\.md$)'; then
   code_changed=1
@@ -95,8 +117,25 @@ if has_change '^agent-docs/exec-plans/(active|completed)/'; then
 fi
 
 docs_changed_non_generated="$(echo "$changed_files" | grep '^agent-docs/' | grep -Ev '^agent-docs/generated/' || true)"
+release_notes_file_pattern='^release-notes/v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?\.md$'
+release_artifacts_pattern="^(package\\.json|CHANGELOG\\.md|release-notes/v[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.-]+)?\\.md)$"
+package_version_only_changed=0
 
-if (( code_changed == 1 )) && [[ -z "$docs_changed_non_generated" ]] && (( active_plan_changed == 0 )); then
+if has_change '^package\.json$' && [[ "$range" != "working-tree" ]] && package_json_version_only_in_range "$range"; then
+  package_version_only_changed=1
+fi
+
+if has_change '^package\.json$' \
+  && has_change '^CHANGELOG\.md$' \
+  && has_change "$release_notes_file_pattern" \
+  && (( package_version_only_changed == 1 )); then
+  non_release_changes="$(echo "$changed_files" | grep -Ev "$release_artifacts_pattern" || true)"
+  if [[ -z "$non_release_changes" ]]; then
+    release_artifacts_only=1
+  fi
+fi
+
+if (( code_changed == 1 )) && [[ -z "$docs_changed_non_generated" ]] && (( active_plan_changed == 0 )) && (( release_artifacts_only == 0 )); then
   echo "::error::Architecture-sensitive code/process changed without matching non-generated docs updates or an active execution plan."
   echo "Update relevant docs in agent-docs/ and/or add an active plan in agent-docs/exec-plans/active/."
   exit 1
