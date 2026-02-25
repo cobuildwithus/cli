@@ -43,6 +43,19 @@ For local developer installs, add `--link` to setup to run `pnpm link --global` 
 cli setup --url <interface-url> --network <network> --agent <agent> --link
 ```
 
+## Resolution Rules
+
+`setup` value precedence:
+
+- URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
+- Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+- Token: exactly one of `--token|--token-file|--token-stdin` -> saved config token -> interactive browser/manual flow.
+
+Runtime precedence:
+
+- Agent key: `--agent` -> saved config `agent` -> `default`.
+- `send`/`tx` network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+
 ## Core Commands
 
 ```bash
@@ -65,8 +78,14 @@ cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <ag
 ## Output Contract
 
 - `setup --json` returns an object with `config`, `defaultNetwork`, `wallet`, and `next`.
-- `wallet`, `docs`, `tools`, `send`, and `tx` print JSON by default.
-- Setup wallet address is usually at `wallet.wallet.address`.
+- `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- Command failures exit non-zero with human-readable diagnostics.
+
+## Auth and Funds Expectations
+
+- No pre-existing token required: `setup`, `config set`, and `config show`.
+- Requires saved config token + URL: `wallet`, `docs`, `tools`, `send`, `tx`.
+- Usually requires wallet funds: `send` and most state-changing `tx` calls.
 
 ## Security Guardrails
 

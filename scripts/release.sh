@@ -108,6 +108,12 @@ run_release_checks() {
   echo "==> Running verify"
   pnpm verify
 
+  echo "==> Running docs drift checks"
+  pnpm docs:drift
+
+  echo "==> Running doc gardening checks"
+  pnpm docs:gardening
+
   echo "==> Building"
   pnpm build
 

@@ -96,6 +96,31 @@ cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--t
 - Global command install:
   - Use `--link` during setup to run `pnpm link --global` automatically when possible.
 
+## Config Resolution Order
+
+For `setup`, values resolve in this order:
+
+1. Interface URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
+2. Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved config token -> interactive browser approval/manual prompt.
+
+For runtime commands:
+
+- Agent key: `--agent` -> saved config `agent` -> `default`.
+- Exec network (`send`/`tx`): `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+
+## Output Contract
+
+- `wallet`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
+- `setup` emits JSON in non-interactive mode or when `--json` is set.
+- Failures exit non-zero and print human-readable diagnostics.
+
+## Command Auth Requirements
+
+- No pre-existing token needed: `setup`, `config set`, `config show`, and `--help`.
+- Requires saved config token + interface URL: `wallet`, `docs`, `tools`, `send`, `tx`.
+- Usually requires funded wallet: `send`, and most state-changing `tx` calls.
+
 ## Command Reference
 
 ```bash
@@ -135,7 +160,7 @@ pnpm build
 pnpm typecheck
 pnpm test
 pnpm test:coverage
-pnpm verify
+pnpm verify  # typecheck + coverage-inclusive test run
 pnpm docs:drift
 pnpm docs:gardening
 pnpm review:gpt
@@ -172,7 +197,7 @@ What the release script does:
 - requires a clean git worktree
 - requires the current branch to be `main` (override only with `--allow-non-main`)
 - requires `origin` remote and package name `@cobuild/cli`
-- runs `pnpm verify`, `pnpm build`, and `npm pack --dry-run`
+- runs `pnpm verify` (typecheck + coverage-inclusive test run), `pnpm build`, and `npm pack --dry-run`
 - bumps version with `npm version --no-git-tag-version`
 - updates `CHANGELOG.md`
 - generates Codex-style release notes at `release-notes/v<version>.md`
