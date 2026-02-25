@@ -1,0 +1,42 @@
+{
+  "name": "@cobuildwithus/build-bot",
+  "version": "0.1.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "bin": {
+    "buildbot": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
+    "prepare": "pnpm build",
+    "prepack": "pnpm build",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --no-coverage",
+    "test:coverage": "vitest run --coverage",
+    "docs:drift": "bash scripts/check-agent-docs-drift.sh",
+    "docs:gardening": "bash scripts/doc-gardening.sh --fail-on-issues",
+    "review:gpt": "scripts/chatgpt-oracle-review.sh",
+    "verify": "pnpm typecheck && pnpm test && pnpm test:coverage",
+    "release:patch": "bash scripts/release.sh patch",
+    "release:minor": "bash scripts/release.sh minor",
+    "release:major": "bash scripts/release.sh major"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@vitest/coverage-v8": "^4.0.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
+}

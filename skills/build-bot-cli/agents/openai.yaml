@@ -1,0 +1,7 @@
+interface:
+  display_name: "Build Bot CLI"
+  short_description: "Set up and run Build Bot CLI commands safely"
+  default_prompt: "Use $build-bot-cli to configure Build Bot and run CLI commands with machine-readable output."
+
+policy:
+  allow_implicit_invocation: true
