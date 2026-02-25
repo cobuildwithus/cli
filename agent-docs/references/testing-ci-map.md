@@ -19,7 +19,7 @@
 
 - GitHub workflow: `.github/workflows/test-and-coverage.yml`.
 - CI gates: `pnpm typecheck`, `pnpm test`, and `pnpm test:coverage` (coverage thresholds enforced by Vitest config).
-- Release workflow: `.github/workflows/release.yml` (tag-triggered npm publish with `NPM_TOKEN`).
+- Release workflow: `.github/workflows/release.yml` (tag-triggered release with tag/package validation, npm tarball artifact staging, GitHub Release creation, and OIDC trusted npm publish with prerelease dist-tag + idempotent handling).
 
 ## Architecture Enforcement Posture
 

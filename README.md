@@ -141,6 +141,41 @@ pnpm docs:gardening
 pnpm review:gpt
 ```
 
+## Release Flow (npm)
+
+Run release checks first:
+
+```bash
+bash scripts/release.sh check
+```
+
+Create and push a release tag (which triggers `.github/workflows/release.yml` to publish):
+
+```bash
+pnpm release:patch   # or: pnpm release:minor / pnpm release:major
+```
+
+For pre-releases:
+
+```bash
+bash scripts/release.sh preminor --preid alpha
+# or: bash scripts/release.sh preminor --preid beta
+```
+
+What the release script does:
+- requires a clean git worktree
+- requires the current branch to be `main` (override only with `--allow-non-main`)
+- runs `pnpm verify`, `pnpm build`, and `npm pack --dry-run`
+- bumps version with `npm version` (creates release commit + `v*` tag)
+- validates tag/version match
+- pushes commit + tags so GitHub Actions can publish to npm
+
+CI release workflow (`.github/workflows/release.yml`) does:
+- tag/version validation against `package.json`
+- tarball build as an artifact before publish
+- GitHub Release creation from the tag commit message
+- npm Trusted Publishing via OIDC with prerelease dist-tag routing and idempotent publish handling
+
 ## Architecture + Process Docs
 
 - `AGENTS.md`: routing rules and mandatory workflow
