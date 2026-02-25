@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-02-25
+
+### Changed
+- Update doc-inventory.md
+
 ## [0.1.2] - 2026-02-25
 
 ### Fixed
