@@ -86,6 +86,13 @@ function createRepoFixture(opts?: { packageName?: string }): RepoFixture {
     path.join(binDir, "pnpm"),
     `#!/usr/bin/env bash
 set -euo pipefail
+if [ -n "\${PNPM_STUB_LOG:-}" ]; then
+  echo "$*" >> "$PNPM_STUB_LOG"
+fi
+if [ -n "\${PNPM_STUB_FAIL_ON:-}" ] && [ "\${1:-}" = "$PNPM_STUB_FAIL_ON" ]; then
+  echo "pnpm stub forced failure for \${1:-}" >&2
+  exit 3
+fi
 exit 0
 `
   );
@@ -100,6 +107,13 @@ if [ -z "$command" ]; then
   exit 2
 fi
 shift || true
+if [ -n "\${NPM_STUB_LOG:-}" ]; then
+  if [ "$#" -gt 0 ]; then
+    echo "$command $*" >> "$NPM_STUB_LOG"
+  else
+    echo "$command" >> "$NPM_STUB_LOG"
+  fi
+fi
 
 case "$command" in
   pack)
@@ -169,6 +183,70 @@ describe("release.sh coverage audit", () => {
     expect(result.stderr).toContain(
       "Error: unexpected package name '@cobuildwithus/cli' (expected @cobuild/cli)."
     );
+  });
+
+  it("runs release check baseline in order: verify, docs gates, build, then package validation", () => {
+    const fixture = createRepoFixture();
+    const pnpmLogPath = path.join(fixture.repoDir, "pnpm-calls.log");
+    const npmLogPath = path.join(fixture.repoDir, "npm-calls.log");
+    writeFileSync(pnpmLogPath, "");
+    writeFileSync(npmLogPath, "");
+
+    const result = runReleaseScript(fixture, ["check"], {
+      PNPM_STUB_LOG: pnpmLogPath,
+      NPM_STUB_LOG: npmLogPath,
+    });
+
+    const pnpmCalls = readFileSync(pnpmLogPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const npmCalls = readFileSync(npmLogPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(result.status).toBe(0);
+    expect(pnpmCalls).toEqual([
+      "install --frozen-lockfile",
+      "verify",
+      "docs:drift",
+      "docs:gardening",
+      "build",
+    ]);
+    expect(npmCalls).toEqual(["pack --dry-run"]);
+    expect(result.stdout).toContain("Release checks passed.");
+  });
+
+  it("fails check mode when docs drift fails and does not continue to docs gardening/build/pack", () => {
+    const fixture = createRepoFixture();
+    const pnpmLogPath = path.join(fixture.repoDir, "pnpm-calls.log");
+    const npmLogPath = path.join(fixture.repoDir, "npm-calls.log");
+    writeFileSync(pnpmLogPath, "");
+    writeFileSync(npmLogPath, "");
+
+    const result = runReleaseScript(fixture, ["check"], {
+      PNPM_STUB_LOG: pnpmLogPath,
+      PNPM_STUB_FAIL_ON: "docs:drift",
+      NPM_STUB_LOG: npmLogPath,
+    });
+
+    const pnpmCalls = readFileSync(pnpmLogPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const npmCalls = readFileSync(npmLogPath, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain("pnpm stub forced failure for docs:drift");
+    expect(pnpmCalls).toEqual(["install --frozen-lockfile", "verify", "docs:drift"]);
+    expect(pnpmCalls).not.toContain("docs:gardening");
+    expect(pnpmCalls).not.toContain("build");
+    expect(npmCalls).toEqual([]);
+    expect(result.stdout).not.toContain("==> Building");
   });
 
   it("rejects prerelease channels outside alpha/beta/rc", () => {

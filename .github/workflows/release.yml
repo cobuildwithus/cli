@@ -101,6 +101,12 @@ jobs:
       - name: Verify
         run: pnpm verify
 
+      - name: Check docs drift
+        run: pnpm docs:drift
+
+      - name: Check doc gardening
+        run: pnpm docs:gardening
+
       - name: Build
         run: pnpm build
 

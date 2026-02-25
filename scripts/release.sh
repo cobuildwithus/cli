@@ -101,24 +101,22 @@ assert_package_name() {
   fi
 }
 
+run_step() {
+  local label="$1"
+  shift
+  echo "==> $label"
+  "$@"
+}
+
 run_release_checks() {
   echo "Running release checks..."
   pnpm install --frozen-lockfile
 
-  echo "==> Running verify"
-  pnpm verify
-
-  echo "==> Running docs drift checks"
-  pnpm docs:drift
-
-  echo "==> Running doc gardening checks"
-  pnpm docs:gardening
-
-  echo "==> Building"
-  pnpm build
-
-  echo "==> Validating release scripts"
-  bash -n scripts/release.sh scripts/update-changelog.sh scripts/generate-release-notes.sh
+  run_step "Running verify" pnpm verify
+  run_step "Running docs drift checks" pnpm docs:drift
+  run_step "Running doc gardening checks" pnpm docs:gardening
+  run_step "Building" pnpm build
+  run_step "Validating release scripts" bash -n scripts/release.sh scripts/update-changelog.sh scripts/generate-release-notes.sh
 
   echo "==> Validating npm package contents"
   npm pack --dry-run >/dev/null

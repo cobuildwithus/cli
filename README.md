@@ -197,7 +197,7 @@ What the release script does:
 - requires a clean git worktree
 - requires the current branch to be `main` (override only with `--allow-non-main`)
 - requires `origin` remote and package name `@cobuild/cli`
-- runs `pnpm verify` (typecheck + coverage-inclusive test run), `pnpm build`, and `npm pack --dry-run`
+- runs `pnpm verify` (typecheck + coverage-inclusive test run), `pnpm docs:drift`, `pnpm docs:gardening`, `pnpm build`, and `npm pack --dry-run`
 - bumps version with `npm version --no-git-tag-version`
 - updates `CHANGELOG.md`
 - generates Codex-style release notes at `release-notes/v<version>.md`
@@ -207,6 +207,7 @@ What the release script does:
 
 CI release workflow (`.github/workflows/release.yml`) does:
 - tag/version validation against `package.json`
+- docs drift + doc gardening gates before packaging
 - tarball build as an artifact before publish
 - GitHub Release creation from `release-notes/v<version>.md` (fallback: generated on CI)
 - npm Trusted Publishing via OIDC with prerelease dist-tag routing and idempotent publish handling

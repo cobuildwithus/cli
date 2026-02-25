@@ -14,4 +14,24 @@ describe("release workflow guards", () => {
     expect(workflow).toContain("expected @cobuild/cli.");
     expect(workflow).not.toContain("@cobuild/bot");
   });
+
+  it("uses pnpm/action-setup without explicit version pin to honor packageManager lock", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+    const setupPnpmBlock = workflow.match(
+      /- name: Setup pnpm[\s\S]*?- name: Setup Node/
+    )?.[0];
+
+    expect(setupPnpmBlock).toBeDefined();
+    expect(workflow).toContain("uses: pnpm/action-setup@v4");
+    expect(setupPnpmBlock).not.toContain("version:");
+  });
+
+  it("runs docs gates in release workflow before build/publish", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("- name: Check docs drift");
+    expect(workflow).toContain("run: pnpm docs:drift");
+    expect(workflow).toContain("- name: Check doc gardening");
+    expect(workflow).toContain("run: pnpm docs:gardening");
+  });
 });
