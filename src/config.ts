@@ -2,7 +2,7 @@ import path from "node:path";
 import type { BuildBotConfig, CliDeps } from "./types.js";
 
 export function configPath(deps: Pick<CliDeps, "homedir">): string {
-  return path.join(deps.homedir(), ".build-bot", "config.json");
+  return path.join(deps.homedir(), ".buildbot", "config.json");
 }
 
 export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): BuildBotConfig {

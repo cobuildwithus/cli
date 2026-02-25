@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 const LOOPBACK_HOST = "127.0.0.1";
-const CALLBACK_PATH_PREFIX = "/api/build-bot/cli/callback/";
+const CALLBACK_PATH_PREFIX = "/api/buildbot/cli/callback/";
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 const MAX_BODY_BYTES = 64 * 1024;
 const SETUP_STATE_PATTERN = /^[A-Za-z0-9_-]{32,200}$/;

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define durable command/runtime boundaries for `build-bot` CLI behavior.
+Define durable command/runtime boundaries for `buildbot` CLI behavior.
 
 ## Module Map
 
@@ -32,19 +32,19 @@ Define durable command/runtime boundaries for `build-bot` CLI behavior.
 ### `wallet`
 
 - `wallet [--network <network>] [--agent <key>]`
-- Calls `/api/build-bot/wallet` with agent + network context.
+- Calls `/api/buildbot/wallet` with agent + network context.
 
 ### `send`
 
 - `send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]`
-- Calls `/api/build-bot/exec` with `kind: transfer` envelope.
+- Calls `/api/buildbot/exec` with `kind: transfer` envelope.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, and includes the key in success output.
 - Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 
 ### `tx`
 
 - `tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
-- Calls `/api/build-bot/exec` with `kind: tx` envelope.
+- Calls `/api/buildbot/exec` with `kind: tx` envelope.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, and includes the key in success output.
 - Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 
@@ -57,7 +57,7 @@ Define durable command/runtime boundaries for `build-bot` CLI behavior.
 
 2. Local config boundary
 
-- Only config helpers should touch `~/.build-bot/config.json`.
+- Only config helpers should touch `~/.buildbot/config.json`.
 - Config structure changes require migration strategy + docs updates.
 
 3. Network boundary
@@ -77,6 +77,6 @@ Define durable command/runtime boundaries for `build-bot` CLI behavior.
 Update this doc when changing:
 
 - command names/options/required args,
-- payload envelopes for `/api/build-bot/wallet` or `/api/build-bot/exec`,
+- payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
 - config file path/schema,
 - transport/auth/error normalization behavior.

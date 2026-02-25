@@ -4,7 +4,7 @@ set -euo pipefail
 
 format="both"
 out_dir=""
-prefix="cobuild-build-bot-audit"
+prefix="cobuild-buildbot-audit"
 include_tests=1
 include_docs=1
 include_ci=1
@@ -13,14 +13,14 @@ usage() {
   cat <<'EOF'
 Usage: scripts/package-audit-context.sh [options]
 
-Packages audit-relevant build-bot files into upload-friendly artifacts.
+Packages audit-relevant buildbot files into upload-friendly artifacts.
 
 Options:
   --zip              Create only a .zip archive
   --txt              Create only a merged .txt file
   --both             Create both .zip and .txt (default)
   --out-dir <dir>    Output directory (default: <repo>/audit-packages)
-  --name <prefix>    Output filename prefix (default: cobuild-build-bot-audit)
+  --name <prefix>    Output filename prefix (default: cobuild-buildbot-audit)
   --with-tests       Include tests/** and test/** (included by default)
   --no-tests         Exclude tests/** and test/**
   --no-docs          Exclude agent-docs/**/*.md

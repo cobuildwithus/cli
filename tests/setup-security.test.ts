@@ -29,7 +29,7 @@ describe("setup/config trust-boundary hardening", () => {
     mkdirSync(spoofRepo);
     writeFileSync(
       path.join(spoofRepo, "package.json"),
-      JSON.stringify({ name: "@cobuildwithus/build-bot" }, null, 2)
+      JSON.stringify({ name: "@cobuildwithus/buildbot" }, null, 2)
     );
 
     const fakePnpmExecPath = path.join(tmpRoot, "pnpm.cjs");
@@ -128,7 +128,7 @@ describe("setup/config trust-boundary hardening", () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
-    const tokenFile = "/tmp/build-bot-setup-token.txt";
+    const tokenFile = "/tmp/buildbot-setup-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
     await runCli(["setup", "--url", "https://api.example", "--token-file", tokenFile], harness.deps);
@@ -182,7 +182,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set accepts token via --token-file", async () => {
     const harness = createHarness();
-    const tokenFile = "/tmp/build-bot-token.txt";
+    const tokenFile = "/tmp/buildbot-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
     await runCli(["config", "set", "--token-file", tokenFile], harness.deps);
@@ -213,7 +213,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set rejects empty token file content", async () => {
     const harness = createHarness();
-    const tokenFile = "/tmp/build-bot-empty-token.txt";
+    const tokenFile = "/tmp/buildbot-empty-token.txt";
     harness.files.set(tokenFile, "   \n");
 
     await expect(runCli(["config", "set", "--token-file", tokenFile], harness.deps)).rejects.toThrow(
@@ -223,7 +223,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set rejects unreadable token files", async () => {
     const harness = createHarness();
-    const missingTokenFile = "/tmp/build-bot-missing-token.txt";
+    const missingTokenFile = "/tmp/buildbot-missing-token.txt";
 
     await expect(
       runCli(["config", "set", "--token-file", missingTokenFile], harness.deps)

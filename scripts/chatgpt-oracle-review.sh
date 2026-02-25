@@ -218,7 +218,7 @@ find_chrome_browser_binary() {
 
 model="gpt-5.2-pro"
 thinking="extended"
-name_prefix="cobuild-build-bot-chatgpt-audit"
+name_prefix="cobuild-buildbot-chatgpt-audit"
 out_dir=""
 include_tests=0
 include_docs=1

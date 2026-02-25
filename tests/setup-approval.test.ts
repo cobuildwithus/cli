@@ -11,7 +11,7 @@ describe("setup approval flow", () => {
   it("builds approval URL for /home with setup params", () => {
     const url = buildSetupApprovalUrl({
       baseUrl: TEST_ORIGIN,
-      callbackUrl: "http://127.0.0.1:4123/api/build-bot/cli/callback/state123_state123_state123_state123",
+      callbackUrl: "http://127.0.0.1:4123/api/buildbot/cli/callback/state123_state123_state123_state123",
       state: "state123_state123_state123_state123",
       network: "base-sepolia",
       agent: "default",
@@ -21,6 +21,8 @@ describe("setup approval flow", () => {
     expect(parsed.pathname).toBe("/home");
     expect(parsed.searchParams.get("buildBotSetup")).toBe("1");
     expect(parsed.searchParams.get("buildBotCallback")).toContain("127.0.0.1");
+    const callbackUrl = new URL(parsed.searchParams.get("buildBotCallback") ?? "");
+    expect(callbackUrl.pathname.startsWith("/api/buildbot/cli/callback/")).toBe(true);
     expect(parsed.searchParams.get("buildBotNetwork")).toBe("base-sepolia");
     expect(parsed.searchParams.get("buildBotAgent")).toBe("default");
   });
@@ -34,7 +36,7 @@ describe("setup approval flow", () => {
     expect(() =>
       buildSetupApprovalUrl({
         baseUrl: TEST_ORIGIN,
-        callbackUrl: "http://127.0.0.1:1234/api/build-bot/cli/callback/abc",
+        callbackUrl: "http://127.0.0.1:1234/api/buildbot/cli/callback/abc",
         state: "bad",
         network: "base-sepolia",
         agent: "default",
@@ -281,7 +283,7 @@ describe("setup approval flow", () => {
       timeoutMs: 2_000,
     });
     const wrongUrl = new URL(session.callbackUrl);
-    wrongUrl.pathname = "/api/build-bot/cli/callback/other_state";
+    wrongUrl.pathname = "/api/buildbot/cli/callback/other_state";
 
     const response = await fetch(wrongUrl, {
       method: "POST",

@@ -17,7 +17,7 @@ export async function handleWalletCommand(args: string[], deps: CliDeps): Promis
   });
 
   const current = readConfig(deps);
-  const response = await apiPost(deps, "/api/build-bot/wallet", {
+  const response = await apiPost(deps, "/api/buildbot/wallet", {
     defaultNetwork: parsed.values.network,
     agentKey: resolveAgentKey(parsed.values.agent, current.agent),
   });

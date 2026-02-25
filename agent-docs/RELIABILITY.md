@@ -20,7 +20,7 @@
 
 1. Missing config values
 
-- CLI exits with clear remediation (`build-bot setup` recommended).
+- CLI exits with clear remediation (`buildbot setup` recommended).
 
 2. Invalid command usage
 

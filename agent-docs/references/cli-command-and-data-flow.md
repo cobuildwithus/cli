@@ -30,12 +30,12 @@
 6. Accept at most one token source (`--token`, `--token-file`, `--token-stdin`) and fail on conflicts.
 7. If browser approval fails/times out, fall back to hidden token prompt.
 8. Persist config locally.
-9. Bootstrap wallet via `/api/build-bot/wallet`.
+9. Bootstrap wallet via `/api/buildbot/wallet`.
 10. Print wallet/bootstrap output and next-step guidance.
 
 ## Config and Agent Resolution Flow
 
-1. `readConfig()` loads `~/.build-bot/config.json` if present.
+1. `readConfig()` loads `~/.buildbot/config.json` if present.
 2. `requireConfig()` enforces presence of `url` and `token` for remote commands.
 3. `resolveAgentKey()` prioritizes command `--agent`, then config `agent`, then `default`.
 

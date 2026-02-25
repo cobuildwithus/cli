@@ -139,7 +139,8 @@ describe("cli", () => {
       harness.deps
     );
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
       defaultNetwork: "base-sepolia",
@@ -310,7 +311,8 @@ describe("cli", () => {
 
     await runCli(["wallet", "--network", "base-sepolia"], harness.deps);
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       defaultNetwork: "base-sepolia",
       agentKey: "stored-agent",
@@ -393,7 +395,8 @@ describe("cli", () => {
       harness.deps
     );
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/exec");
     expect(init?.headers).toMatchObject({
       "X-Idempotency-Key": GENERATED_UUID,
       "Idempotency-Key": GENERATED_UUID,
@@ -449,7 +452,8 @@ describe("cli", () => {
       harness.deps
     );
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/exec");
     expect(init?.headers).toMatchObject({
       "X-Idempotency-Key": EXPLICIT_UUID,
       "Idempotency-Key": EXPLICIT_UUID,

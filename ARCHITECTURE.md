@@ -7,7 +7,7 @@ See `README.md` for setup/use context. Canonical docs map: `agent-docs/index.md`
 ## Repository Layout
 
 ```text
-build-bot/
+buildbot/
 ├── src/            # TypeScript CLI modules and command handlers
 ├── tests/          # Vitest command/transport/config tests
 ├── scripts/        # Agent-doc governance + plan lifecycle + committer helper
@@ -32,7 +32,7 @@ build-bot/
 
 ### Local state runtime
 
-- Config path: `~/.build-bot/config.json`.
+- Config path: `~/.buildbot/config.json`.
 - Stored values: `url`, `token`, optional `agent`.
 - Writes are full-file JSON rewrites with stable formatting.
 - Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`).
@@ -71,9 +71,9 @@ build-bot/
 3. Command envelope invariant
 
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
-- `setup` then persists config and performs a wallet bootstrap call to `/api/build-bot/wallet`.
-- `wallet` always targets `/api/build-bot/wallet`.
-- `send` and `tx` always target `/api/build-bot/exec` with explicit `kind`.
+- `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
+- `wallet` always targets `/api/buildbot/wallet`.
+- `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
 
@@ -105,20 +105,20 @@ build-bot/
 
 1. Parse CLI options (`--network`, `--agent`).
 2. Resolve agent key from flag or config default.
-3. Build payload and POST `/api/build-bot/wallet`.
+3. Build payload and POST `/api/buildbot/wallet`.
 4. Print normalized JSON result.
 
 ### Token send flow
 
 1. Parse positional args (`token amount to`) plus optional flags.
 2. Validate minimum argument contract and optional `--decimals` parsing.
-3. Build transfer payload (`kind: transfer`) and POST `/api/build-bot/exec`.
+3. Build transfer payload (`kind: transfer`) and POST `/api/buildbot/exec`.
 4. Print normalized JSON result with `idempotencyKey` attached.
 
 ### Generic tx flow
 
 1. Parse required flags (`--to`, `--data`) and optional value/network/agent.
-2. Build tx payload (`kind: tx`) and POST `/api/build-bot/exec`.
+2. Build tx payload (`kind: tx`) and POST `/api/buildbot/exec`.
 3. Print normalized JSON result with `idempotencyKey` attached.
 
 ## Documentation Map

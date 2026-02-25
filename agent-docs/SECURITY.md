@@ -15,12 +15,12 @@
 
 2. Local storage boundary
 
-- `~/.build-bot/config.json` contains sensitive token material.
+- `~/.buildbot/config.json` contains sensitive token material.
 - Config writes should use private dir/file modes (`0700`/`0600`) when supported.
 
 3. Network boundary
 
-- HTTP calls to interface `/api/build-bot/*` endpoints are privileged operations.
+- HTTP calls to interface `/api/buildbot/*` endpoints are privileged operations.
 
 4. Remote service boundary
 

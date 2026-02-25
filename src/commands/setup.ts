@@ -21,7 +21,7 @@ const SETUP_BACKEND_FAILURE_MESSAGE = [
   "Check interface logs, run the Build Bot SQL migrations, and verify CDP env vars are set",
   "(CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).",
 ].join(" ");
-const BUILD_BOT_PACKAGE_NAME = "@cobuildwithus/build-bot";
+const BUILD_BOT_PACKAGE_NAME = "@cobuildwithus/buildbot";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
 
@@ -625,7 +625,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   }
   let walletResponse: unknown;
   try {
-    walletResponse = await apiPost(deps, "/api/build-bot/wallet", {
+    walletResponse = await apiPost(deps, "/api/buildbot/wallet", {
       agentKey: agent,
       defaultNetwork,
     });

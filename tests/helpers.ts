@@ -22,8 +22,8 @@ export function createHarness(options: CreateHarnessOptions = {}): TestHarness {
   const errors: string[] = [];
   const exitCodes: number[] = [];
   const files = new Map<string, string>();
-  const home = "/tmp/build-bot-tests";
-  const configFile = `${home}/.build-bot/config.json`;
+  const home = "/tmp/buildbot-tests";
+  const configFile = `${home}/.buildbot/config.json`;
 
   if (options.rawConfig !== undefined) {
     files.set(configFile, options.rawConfig);

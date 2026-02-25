@@ -1,128 +1,139 @@
-# build-bot
+# buildbot
 
-Standalone CLI for wallet actions via the interface app's `build-bot` API.
+TypeScript CLI + Codex skill for running wallet actions through the interface app's `buildbot` API.
+
+> Warning
+> This project drives real wallet operations. Use test networks and small amounts while validating your setup.
+
+## What You Get
+
+- `buildbot` CLI for `setup`, `wallet`, `send`, and `tx`
+- Installable Codex skill package at `skills/buildbot-cli`
+- JSON-first command output for automation
 
 ## Requirements
 
 - Node.js 20+
 - pnpm
+- Running interface app URL (for example `http://localhost:3000`)
 
-## Install
+## Install CLI
+
+From this repo:
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-Published usage (after npm release):
+Run locally from the repo:
 
 ```bash
-npx @cobuildwithus/build-bot setup
+pnpm start -- --help
 ```
 
-## Codex Skill Package
+Run from npm (published package):
 
-This repo ships an installable skill package at `skills/build-bot-cli`.
+```bash
+npx @cobuildwithus/buildbot --help
+```
 
-Install from a local checkout:
+## Quick Start (CLI)
+
+```bash
+# 1) Configure and bootstrap wallet access
+pnpm start -- setup --url http://localhost:3000 --network base-sepolia --agent default
+
+# 2) Verify config (token is masked)
+pnpm start -- config show
+
+# 3) Check wallet
+pnpm start -- wallet --network base-sepolia --agent default
+```
+
+If `buildbot` is on your PATH, you can drop `pnpm start --` and run `buildbot <command>` directly.
+
+## Agent Skill Setup (Codex)
+
+This is the fastest path for people who want to use the agent skill.
+
+### Option A: Install from local checkout
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/build-bot-cli "${CODEX_HOME:-$HOME/.codex}/skills/build-bot-cli"
+cp -R skills/buildbot-cli "${CODEX_HOME:-$HOME/.codex}/skills/buildbot-cli"
 ```
 
-Install from GitHub with your skill installer (replace owner/repo):
+### Option B: Install from GitHub
 
 ```bash
-install-skill-from-github.py --repo <owner>/<repo> --path skills/build-bot-cli
+install-skill-from-github.py --repo <owner>/<repo> --path skills/buildbot-cli
 ```
 
-Restart Codex after installing a skill.
+### Verify + use
 
-## Configure
+1. Restart Codex after installing the skill.
+2. Confirm the skill folder exists at `${CODEX_HOME:-$HOME/.codex}/skills/buildbot-cli`.
+3. Invoke with prompts like: `Use $buildbot-cli to run wallet on base-sepolia`.
+
+## Setup Details
+
+`setup` supports secure browser approval and non-interactive token sources.
 
 ```bash
-pnpm start -- setup --url http://localhost:3000 --network base-sepolia
+buildbot setup [--url <interface-url>] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
 ```
 
-`setup` runs an interactive wizard, opens `/home` in your interface app, and waits for secure browser approval that sends a one-time PAT to the CLI over a localhost callback channel.
-If browser approval fails or times out, setup falls back to hidden manual token entry.
-Use `--json` (or `BUILD_BOT_OUTPUT=json`) for machine-readable setup output.
-Use `--link` to automatically run `pnpm link --global` after successful setup (when run from the local repo root).
+- Browser approval flow:
+  - Opens `/home` in your interface app and waits for one-time localhost callback approval.
+  - Falls back to hidden manual token prompt only if approval fails or times out.
+- Machine output:
+  - Use `--json` or `BUILD_BOT_OUTPUT=json`.
+- Global command install:
+  - Use `--link` during setup to run `pnpm link --global` automatically when possible.
 
-Inspect saved config (token is masked):
+## Command Reference
 
 ```bash
-pnpm start -- config show
+buildbot wallet [--network <network>] [--agent <key>]
+buildbot send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
+buildbot tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
 ```
 
-## Commands
+Examples:
 
 ```bash
-pnpm start -- wallet --network base-sepolia --agent default
-pnpm start -- send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
-pnpm start -- tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
+buildbot wallet --network base-sepolia --agent default
+buildbot send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
+buildbot tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
 ```
 
-If `buildbot` is not on your shell `PATH`, run commands as `pnpm start -- <command>`.
+`send` and `tx` always include both `X-Idempotency-Key` and `Idempotency-Key` headers.
 
-`send` and `tx` automatically include both `X-Idempotency-Key` and `Idempotency-Key`. Use `--idempotency-key <uuid-v4>` to provide your own key for retry-safe reruns.
+## Troubleshooting
 
-## Architecture and Agent Docs
+- `buildbot: command not found`
+  - Run via `pnpm start -- <command>` from this repo, or run setup with `--link`.
+- Setup succeeds but wallet bootstrap fails
+  - Check interface logs, apply Build Bot SQL migrations, and verify `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET`.
+- Wrong URL/network
+  - Re-run setup with explicit `--url` and `--network`.
 
-- `AGENTS.md`: agent routing rules and required workflow.
-- `ARCHITECTURE.md`: system-level CLI architecture map.
-- `agent-docs/index.md`: canonical map for durable docs.
-
-## Common Scripts
+## Developer Commands
 
 ```bash
-pnpm build            # Compile TypeScript CLI into dist/
-pnpm typecheck        # Static type checking
-pnpm test             # Vitest suite (no coverage)
-pnpm test:coverage    # Vitest suite with per-file coverage gates
-pnpm verify           # typecheck + test + coverage gates
-pnpm release:patch    # bump patch, verify/build, publish, push tags
-pnpm release:minor    # bump minor, verify/build, publish, push tags
-pnpm release:major    # bump major, verify/build, publish, push tags
-pnpm docs:drift       # enforce docs/process coupling rules
-pnpm docs:gardening   # enforce docs index/inventory consistency
-pnpm review:gpt       # package repo snapshot and open ChatGPT via Oracle browser mode
+pnpm build
+pnpm typecheck
+pnpm test
+pnpm test:coverage
+pnpm verify
+pnpm docs:drift
+pnpm docs:gardening
+pnpm review:gpt
 ```
 
-## ChatGPT Review Launcher
+## Architecture + Process Docs
 
-Run:
-
-```bash
-pnpm -s review:gpt
-```
-
-Useful variants:
-
-```bash
-# run a focused preset
-pnpm -s review:gpt --preset security
-
-# shorthand positional preset
-pnpm -s review:gpt reliability
-
-# combine multiple presets
-pnpm -s review:gpt --preset security,cli-contracts,test-gaps
-
-# preview command without launching
-pnpm -s review:gpt --dry-run
-
-# pass Oracle flags through after --
-pnpm -s review:gpt test-gaps -- --debug
-```
-
-Presets live in `scripts/chatgpt-review-presets/`.
-
-## Plan and Commit Helpers
-
-```bash
-bash scripts/open-exec-plan.sh <slug> "<title>"
-bash scripts/close-exec-plan.sh agent-docs/exec-plans/active/<file>.md
-scripts/committer "docs(cli): summary" path/to/file1 path/to/file2
-```
+- `AGENTS.md`: routing rules and mandatory workflow
+- `ARCHITECTURE.md`: system-level design
+- `agent-docs/index.md`: canonical docs map

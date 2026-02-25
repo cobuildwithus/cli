@@ -40,7 +40,7 @@ export async function handleTxCommand(args: string[], deps: CliDeps): Promise<vo
 
   const response = await apiPost(
     deps,
-    "/api/build-bot/exec",
+    "/api/buildbot/exec",
     {
       kind: "tx",
       network,

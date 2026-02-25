@@ -44,7 +44,7 @@ export async function handleSendCommand(args: string[], deps: CliDeps): Promise<
 
   const response = await apiPost(
     deps,
-    "/api/build-bot/exec",
+    "/api/buildbot/exec",
     {
       kind: "transfer",
       network,

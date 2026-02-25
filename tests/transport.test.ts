@@ -4,34 +4,34 @@ import { createHarness } from "./helpers.js";
 
 describe("transport", () => {
   it("normalizes endpoint slashes", () => {
-    expect(toEndpoint("https://api.example", "/api/build-bot/wallet").toString()).toBe(
-      "https://api.example/api/build-bot/wallet"
+    expect(toEndpoint("https://api.example", "/api/buildbot/wallet").toString()).toBe(
+      "https://api.example/api/buildbot/wallet"
     );
-    expect(toEndpoint("https://api.example/", "api/build-bot/wallet").toString()).toBe(
-      "https://api.example/api/build-bot/wallet"
+    expect(toEndpoint("https://api.example/", "api/buildbot/wallet").toString()).toBe(
+      "https://api.example/api/buildbot/wallet"
     );
   });
 
   it("normalizes padded base URLs before building endpoints", () => {
-    expect(toEndpoint(" https://api.example ", "/api/build-bot/wallet").toString()).toBe(
-      "https://api.example/api/build-bot/wallet"
+    expect(toEndpoint(" https://api.example ", "/api/buildbot/wallet").toString()).toBe(
+      "https://api.example/api/buildbot/wallet"
     );
   });
 
   it("allows loopback http URLs and rejects non-loopback http URLs", () => {
-    expect(toEndpoint("http://localhost:3000", "/api/build-bot/wallet").toString()).toBe(
-      "http://localhost:3000/api/build-bot/wallet"
+    expect(toEndpoint("http://localhost:3000", "/api/buildbot/wallet").toString()).toBe(
+      "http://localhost:3000/api/buildbot/wallet"
     );
-    expect(toEndpoint("http://127.0.0.1:8080", "/api/build-bot/wallet").toString()).toBe(
-      "http://127.0.0.1:8080/api/build-bot/wallet"
+    expect(toEndpoint("http://127.0.0.1:8080", "/api/buildbot/wallet").toString()).toBe(
+      "http://127.0.0.1:8080/api/buildbot/wallet"
     );
-    expect(toEndpoint("http://[::1]:8080", "/api/build-bot/wallet").toString()).toBe(
-      "http://[::1]:8080/api/build-bot/wallet"
+    expect(toEndpoint("http://[::1]:8080", "/api/buildbot/wallet").toString()).toBe(
+      "http://[::1]:8080/api/buildbot/wallet"
     );
-    expect(() => toEndpoint("http://api.example", "/api/build-bot/wallet")).toThrow(
+    expect(() => toEndpoint("http://api.example", "/api/buildbot/wallet")).toThrow(
       "API base URL must use https"
     );
-    expect(() => toEndpoint("http://127.0.0.2:8080", "/api/build-bot/wallet")).toThrow(
+    expect(() => toEndpoint("http://127.0.0.2:8080", "/api/buildbot/wallet")).toThrow(
       "API base URL must use https"
     );
   });
@@ -49,12 +49,12 @@ describe("transport", () => {
       }),
     });
 
-    const payload = await apiPost(harness.deps, "/api/build-bot/wallet", { hello: "world" });
+    const payload = await apiPost(harness.deps, "/api/buildbot/wallet", { hello: "world" });
     expect(payload).toEqual({ ok: true, wallet: "0xabc" });
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(1);
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/build-bot/wallet");
+    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
     expect(init).toMatchObject({
       method: "POST",
       headers: {
@@ -73,7 +73,7 @@ describe("transport", () => {
       },
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "API base URL must use https"
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe("transport", () => {
       },
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "must not include username or password"
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe("transport", () => {
       },
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "API base URL is invalid. Use an absolute https URL."
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe("transport", () => {
       }),
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "Request failed (status 500): backend down"
     );
   });
@@ -138,7 +138,7 @@ describe("transport", () => {
       }),
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "Request failed (status 200): denied"
     );
   });
@@ -156,7 +156,7 @@ describe("transport", () => {
       }),
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).rejects.toThrow(
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "Request failed (status 418)"
     );
   });
@@ -177,7 +177,7 @@ describe("transport", () => {
 
     let message = "";
     try {
-      await apiPost(harness.deps, "/api/build-bot/wallet", {});
+      await apiPost(harness.deps, "/api/buildbot/wallet", {});
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
@@ -201,6 +201,6 @@ describe("transport", () => {
       }),
     });
 
-    await expect(apiPost(harness.deps, "/api/build-bot/wallet", {})).resolves.toEqual(["ok"]);
+    await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).resolves.toEqual(["ok"]);
   });
 });

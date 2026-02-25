@@ -3,6 +3,14 @@ import { configPath, maskToken, readConfig, requireConfig, writeConfig } from ".
 import { createHarness } from "./helpers.js";
 
 describe("config", () => {
+  it("builds config path with the buildbot directory", () => {
+    expect(
+      configPath({
+        homedir: () => "/tmp/buildbot-home",
+      })
+    ).toBe("/tmp/buildbot-home/.buildbot/config.json");
+  });
+
   it("returns the standard config path", () => {
     const { deps, configFile } = createHarness();
     expect(configPath(deps)).toBe(configFile);

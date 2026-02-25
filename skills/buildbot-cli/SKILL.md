@@ -1,5 +1,5 @@
 ---
-name: build-bot-cli
+name: buildbot-cli
 description: Configure and operate the Build Bot CLI for setup, wallet bootstrap, send, and tx commands. Use when users ask to run buildbot commands, complete setup with browser approval, inspect wallet details, or automate CLI output in JSON mode.
 ---
 
