@@ -33,6 +33,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
+    "@cobuild/review-gpt": "file:../review-gpt-cli",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "typescript": "^5.9.3",

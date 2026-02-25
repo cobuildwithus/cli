@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@cobuild/review-gpt':
+        specifier: file:../review-gpt-cli
+        version: file:../review-gpt-cli
       '@types/node':
         specifier: ^25.2.3
         version: 25.3.0
@@ -43,6 +46,10 @@ packages:
   '@bcoe/v8-coverage@1.0.2':
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
+
+  '@cobuild/review-gpt@file:../review-gpt-cli':
+    resolution: {directory: ../review-gpt-cli, type: directory}
+    hasBin: true
 
   '@esbuild/aix-ppc64@0.27.3':
     resolution: {integrity: sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg==}
@@ -627,6 +634,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.28.5
 
   '@bcoe/v8-coverage@1.0.2': {}
+
+  '@cobuild/review-gpt@file:../review-gpt-cli': {}
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true
