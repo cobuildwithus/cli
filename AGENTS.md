@@ -18,12 +18,15 @@ If instructions still conflict after applying this order, ask the user before ac
 
 1. `agent-docs/index.md`
 2. `ARCHITECTURE.md`
-3. `agent-docs/cli-architecture.md`
-4. `agent-docs/RELIABILITY.md`
-5. `agent-docs/SECURITY.md`
-6. `agent-docs/references/module-boundary-map.md`
-7. `agent-docs/references/cli-command-and-data-flow.md`
-8. `agent-docs/references/testing-ci-map.md`
+3. `agent-docs/design-docs/index.md`
+4. `agent-docs/product-specs/index.md`
+5. `agent-docs/PRODUCT_SENSE.md`
+6. `agent-docs/cli-architecture.md`
+7. `agent-docs/RELIABILITY.md`
+8. `agent-docs/SECURITY.md`
+9. `agent-docs/references/module-boundary-map.md`
+10. `agent-docs/references/cli-command-and-data-flow.md`
+11. `agent-docs/references/testing-ci-map.md`
 
 ## Hard Rules (Non-Negotiable)
 
