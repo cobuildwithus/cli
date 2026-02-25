@@ -105,6 +105,30 @@ describe("setup/config trust-boundary hardening", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
+  it("setup rejects non-loopback http interface URLs", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await expect(
+      runCli(["setup", "--url", "http://api.example", "--token", "bbt_secret"], harness.deps)
+    ).rejects.toThrow(
+      "Interface URL must use https (http is allowed only for localhost, 127.0.0.1, or [::1])."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("setup rejects interface URLs with embedded credentials", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await expect(
+      runCli(["setup", "--url", "https://user:pass@api.example", "--token", "bbt_secret"], harness.deps)
+    ).rejects.toThrow("Interface URL must not include username or password.");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("setup accepts token via --token-stdin for non-interactive use", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),

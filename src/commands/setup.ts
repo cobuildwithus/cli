@@ -10,7 +10,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const SETUP_USAGE =
-  "Usage: buildbot setup [--url <interface-url>] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
+  "Usage: buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -24,6 +24,9 @@ const SETUP_BACKEND_FAILURE_MESSAGE = [
 const BUILD_BOT_PACKAGE_NAME = "@cobuildwithus/buildbot";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
+const DEFAULT_INTERFACE_URL = "https://co.build";
+const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
+const LOOPBACK_INTERFACE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 /* c8 ignore start */
 function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
@@ -43,6 +46,56 @@ function getNonEmptyEnvValue(
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isLoopbackInterfaceHost(hostname: string): boolean {
+  return LOOPBACK_INTERFACE_HOSTS.has(hostname.toLowerCase());
+}
+
+function normalizeInterfaceUrl(rawValue: string): string {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    throw new Error("Interface URL cannot be empty.");
+  }
+
+  let candidate = trimmed;
+  if (!/^https?:\/\//i.test(candidate)) {
+    let host = "";
+    try {
+      host = new URL(`http://${candidate}`).hostname;
+    } catch {
+      host = "";
+    }
+    const prefix = isLoopbackInterfaceHost(host) ? "http://" : "https://";
+    candidate = `${prefix}${candidate}`;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error(
+      "Interface URL is invalid. Use a full URL like https://co.build or http://localhost:3000."
+    );
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error("Interface URL must not include username or password.");
+  }
+  if (parsed.protocol === "http:" && !isLoopbackInterfaceHost(parsed.hostname)) {
+    throw new Error(
+      "Interface URL must use https (http is allowed only for localhost, 127.0.0.1, or [::1])."
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Interface URL must use http or https.");
+  }
+
+  if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
+    return parsed.origin;
+  }
+
+  return parsed.toString();
 }
 
 function isAuthFailure(error: unknown): boolean {
@@ -455,6 +508,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const parsed = parseArgs({
     options: {
       url: { type: "string" },
+      dev: { type: "boolean" },
       token: { type: "string" },
       "token-file": { type: "string" },
       "token-stdin": { type: "boolean" },
@@ -485,6 +539,8 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const storedToken = typeof current.token === "string" ? current.token.trim() : "";
   const envUrl = getNonEmptyEnvValue(deps, "BUILD_BOT_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "BUILD_BOT_NETWORK");
+  const defaultInterfaceUrl =
+    parsed.values.dev === true ? DEFAULT_DEV_INTERFACE_URL : DEFAULT_INTERFACE_URL;
 
   let urlSource: SetupValueSource = "default";
   let url: string | undefined;
@@ -539,12 +595,14 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   if (!url) {
     if (!interactive) {
-      throw new Error(`${SETUP_USAGE}\nMissing --url and no config found.`);
+      url = defaultInterfaceUrl;
+      urlSource = "default";
+    } else {
+      /* c8 ignore start */
+      url = await promptLine("Interface URL", defaultInterfaceUrl);
+      urlSource = "interactive";
+      /* c8 ignore stop */
     }
-    /* c8 ignore start */
-    url = await promptLine("Interface URL", "http://localhost:3000");
-    urlSource = "interactive";
-    /* c8 ignore stop */
   } else {
     /* c8 ignore start */
     if (interactive) {
@@ -562,6 +620,8 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
       `${SETUP_USAGE}\nBUILD_BOT_URL came from environment for first-time setup. Pass --url explicitly to trust it.`
     );
   }
+
+  url = normalizeInterfaceUrl(url);
 
   /* c8 ignore start */
   if (interactive) {
