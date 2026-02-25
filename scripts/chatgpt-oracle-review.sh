@@ -241,7 +241,8 @@ prepare_chatgpt_draft() {
   local model_target="$3"
   local thinking_level="$4"
   local timeout_ms="$5"
-  shift 5
+  local prompt_text="$6"
+  shift 6
   local file_paths=("$@")
 
   local files_blob=""
@@ -259,6 +260,7 @@ prepare_chatgpt_draft() {
   ORACLE_DRAFT_MODEL="$model_target" \
   ORACLE_DRAFT_THINKING="$thinking_level" \
   ORACLE_DRAFT_TIMEOUT_MS="$timeout_ms" \
+  ORACLE_DRAFT_PROMPT="$prompt_text" \
   ORACLE_DRAFT_FILES="$files_blob" \
   node <<'EOF'
 const fs = require('fs');
@@ -269,6 +271,7 @@ const chatgptUrl = process.env.ORACLE_DRAFT_URL;
 const modelTargetRaw = process.env.ORACLE_DRAFT_MODEL || 'gpt-5.2-pro';
 const thinkingTarget = (process.env.ORACLE_DRAFT_THINKING || 'extended').toLowerCase();
 const timeoutMs = Number(process.env.ORACLE_DRAFT_TIMEOUT_MS || 90000);
+const draftPrompt = process.env.ORACLE_DRAFT_PROMPT || '';
 const filesToAttach = (process.env.ORACLE_DRAFT_FILES || '')
   .split('\n')
   .map((value) => value.trim())
@@ -1061,6 +1064,83 @@ async function main() {
     }
   };
 
+  const setDraftComposerPrompt = async (prompt) => {
+    const promptLiteral = JSON.stringify(String(prompt));
+    return evaluate(`(() => {
+      try {
+        const textareaSelectors = [
+          '#prompt-textarea',
+          'textarea[name="prompt-textarea"]',
+          'textarea[data-id="prompt-textarea"]',
+          'textarea[placeholder*="Send a message"]',
+          'textarea[aria-label="Message ChatGPT"]',
+          'textarea:not([disabled])'
+        ];
+        const editableSelectors = [
+          '[data-testid*="composer"] [contenteditable="true"]',
+          'form [contenteditable="true"]',
+          '[contenteditable="true"][role="textbox"]'
+        ];
+        const visible = (node) => {
+          if (!node || typeof node.getBoundingClientRect !== 'function') return false;
+          const rect = node.getBoundingClientRect();
+          const style = window.getComputedStyle(node);
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+        };
+        const pickFirst = (nodes) => nodes.find((node) => visible(node)) || nodes[0] || null;
+        const pickBySelectors = (selectors) => pickFirst(selectors.map((s) => document.querySelector(s)).filter(Boolean));
+
+        const value = ${promptLiteral};
+        const textarea = pickBySelectors(textareaSelectors);
+        if (textarea && String(textarea.tagName || '').toUpperCase() === 'TEXTAREA') {
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          if (nativeSetter) {
+            nativeSetter.call(textarea, value);
+          } else {
+            textarea.value = value;
+          }
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+          textarea.dispatchEvent(new Event('change', { bubbles: true }));
+          textarea.focus();
+          return { ok: true, mode: 'textarea', length: value.length };
+        }
+
+        const editorCandidates = [];
+        if (textarea && String(textarea.tagName || '').toUpperCase() !== 'TEXTAREA') {
+          editorCandidates.push(textarea);
+        }
+        const editor = pickFirst([
+          ...editorCandidates,
+          ...editableSelectors.map((s) => document.querySelector(s)).filter(Boolean)
+        ]);
+        if (!editor) {
+          return { ok: false, reason: 'composer-input-not-found' };
+        }
+        editor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        const replaced = document.execCommand('insertText', false, value);
+        if (!replaced) {
+          editor.textContent = value;
+        }
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        editor.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true, mode: 'contenteditable', length: value.length };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'exception',
+          message: String((error && error.message) || error || 'unknown')
+        };
+      }
+    })()`);
+  };
+
   await cdp('Page.enable');
   await cdp('Runtime.enable');
   await cdp('DOM.enable');
@@ -1140,6 +1220,15 @@ async function main() {
     console.log(`Draft thinking selected: ${thinkingSelection.label}`);
   } else {
     console.warn(`Draft thinking selection warning (${thinkingTarget}): ${JSON.stringify(thinkingSelection?.details || thinkingSelection)}`);
+  }
+
+  if (draftPrompt.length > 0) {
+    const promptSetResult = await setDraftComposerPrompt(draftPrompt);
+    if (promptSetResult?.ok) {
+      console.log(`Draft prompt prefilled in composer (${promptSetResult.length} chars, mode=${promptSetResult.mode}).`);
+    } else {
+      console.warn(`Draft prompt prefill warning: ${JSON.stringify(promptSetResult || { ok: false })}`);
+    }
   }
 
   const fileInputHandle = await evaluateHandle(`(() => {
@@ -1470,9 +1559,10 @@ if [ -z "$zip_path" ] || [ ! -f "$zip_path" ]; then
   exit 1
 fi
 
-prompt_path="${zip_path%.zip}.prompt.md"
+draft_prompt_text=""
 if [ -n "${selected_presets[*]-}" ] || [ -n "${extra_prompt_files[*]-}" ] || [ -n "${extra_prompt_chunks[*]-}" ]; then
-  {
+  prompt_text="$(
+    {
     for token in "${selected_presets[@]-}"; do
       if [ -z "$token" ]; then
         continue
@@ -1499,10 +1589,10 @@ if [ -n "${selected_presets[*]-}" ] || [ -n "${extra_prompt_files[*]-}" ] || [ -
       printf '%s\n' "$token"
       echo
     done
-  } >"$prompt_path"
-  prompt_text="$(<"$prompt_path")"
+    }
+  )"
+  draft_prompt_text="$prompt_text"
 else
-  : >"$prompt_path"
   # Oracle browser mode rejects empty/whitespace prompts; use a minimal placeholder.
   prompt_text="."
 fi
@@ -1572,7 +1662,11 @@ if [ -n "${selected_presets[*]-}" ]; then
 else
   echo "Prompt presets: (none; upload-only prompt)"
 fi
-echo "Prompt file: $prompt_path"
+if [ -n "$draft_prompt_text" ]; then
+  echo "Prompt staging: inline composer prefill (${#draft_prompt_text} chars)"
+else
+  echo "Prompt staging: none"
+fi
 echo "ZIP file: $zip_path"
 echo "Browser target: $browser"
 echo "Browser cookie wait: $browser_cookie_wait"
@@ -1619,14 +1713,11 @@ fi
 if [ "$send_mode" -ne 1 ]; then
   declare -a draft_files
   draft_files=("$zip_path")
-  if [ -s "$prompt_path" ]; then
-    draft_files+=("$prompt_path")
-  fi
 
   if [ "$remote_managed" -eq 1 ]; then
     remote_log="${TMPDIR:-/tmp}/chatgpt-review-remote-chrome.log"
     ensure_remote_chrome "$resolved_browser_chrome_path" "$remote_user_data_dir" "$remote_profile" "$remote_port" "$remote_log" "$resolved_chatgpt_url"
-    prepare_chatgpt_draft "$remote_port" "$resolved_chatgpt_url" "$model" "$thinking" "90000" "${draft_files[@]}"
+    prepare_chatgpt_draft "$remote_port" "$resolved_chatgpt_url" "$model" "$thinking" "90000" "$draft_prompt_text" "${draft_files[@]}"
   else
     open_chrome_window "$resolved_browser_chrome_path" "$resolved_chatgpt_url" "$resolved_browser_profile"
     echo "Warning: no-send draft staging requires remote managed mode; opened ChatGPT only." >&2
@@ -1634,7 +1725,6 @@ if [ "$send_mode" -ne 1 ]; then
   echo "Opened ChatGPT in no-send mode with draft staged."
   echo "Oracle auto-submit skipped. Use --send to submit automatically."
   echo "ZIP file: $zip_path"
-  echo "Prompt file: $prompt_path"
   exit 0
 fi
 
