@@ -88,6 +88,23 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
+  it("setup fails closed when non-interactive first-time URL comes only from BUILD_BOT_URL", async () => {
+    const harness = createHarness({
+      config: {
+        token: "bbt_secret",
+      },
+    });
+    harness.deps.env = {
+      BUILD_BOT_URL: "https://env.example",
+    };
+    harness.deps.isInteractive = () => false;
+
+    await expect(runCli(["setup"], harness.deps)).rejects.toThrow(
+      "BUILD_BOT_URL came from environment for first-time setup. Pass --url explicitly to trust it."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("setup accepts token via --token-stdin for non-interactive use", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
@@ -107,6 +124,62 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
+  it("setup accepts token via --token-file for non-interactive use", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+    const tokenFile = "/tmp/build-bot-setup-token.txt";
+    harness.files.set(tokenFile, "bbt_from_file\n");
+
+    await runCli(["setup", "--url", "https://api.example", "--token-file", tokenFile], harness.deps);
+
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "https://api.example",
+      token: "bbt_from_file",
+      agent: "default",
+    });
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(init?.headers).toMatchObject({
+      authorization: "Bearer bbt_from_file",
+    });
+  });
+
+  it("setup rejects multiple token input sources", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(
+        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--token-file", "/tmp/token.txt"],
+        harness.deps
+      )
+    ).rejects.toThrow("Provide only one of --token, --token-file, or --token-stdin.");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("setup --link skips auto-link when npm_execpath is not a trusted pnpm entrypoint", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+    const linkCalls: Array<{ cwd: string; command: string; args: string[] }> = [];
+    harness.deps.env = {
+      npm_execpath: "/tmp/not-pnpm.js",
+    };
+    harness.deps.runSetupLinkGlobal = async (params) => {
+      linkCalls.push(params);
+      return { ok: true, output: "" };
+    };
+
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--link"],
+      harness.deps
+    );
+
+    expect(linkCalls).toEqual([]);
+    expect(harness.outputs).toContain(
+      "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global"
+    );
+  });
+
   it("config set accepts token via --token-file", async () => {
     const harness = createHarness();
     const tokenFile = "/tmp/build-bot-token.txt";
@@ -121,6 +194,57 @@ describe("setup/config trust-boundary hardening", () => {
       agent: null,
       path: harness.configFile,
     });
+  });
+
+  it("config set accepts token via --token-stdin", async () => {
+    const harness = createHarness();
+    harness.deps.readStdin = async () => "bbt_from_stdin\n";
+
+    await runCli(["config", "set", "--token-stdin"], harness.deps);
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      url: null,
+      token: "bbt_from...",
+      agent: null,
+      path: harness.configFile,
+    });
+  });
+
+  it("config set rejects empty token file content", async () => {
+    const harness = createHarness();
+    const tokenFile = "/tmp/build-bot-empty-token.txt";
+    harness.files.set(tokenFile, "   \n");
+
+    await expect(runCli(["config", "set", "--token-file", tokenFile], harness.deps)).rejects.toThrow(
+      `Token file is empty: ${tokenFile}`
+    );
+  });
+
+  it("config set rejects unreadable token files", async () => {
+    const harness = createHarness();
+    const missingTokenFile = "/tmp/build-bot-missing-token.txt";
+
+    await expect(
+      runCli(["config", "set", "--token-file", missingTokenFile], harness.deps)
+    ).rejects.toThrow(`Could not read token file: ${missingTokenFile}`);
+  });
+
+  it("config set rejects empty token from --token-stdin", async () => {
+    const harness = createHarness();
+    harness.deps.readStdin = async () => " \n";
+
+    await expect(runCli(["config", "set", "--token-stdin"], harness.deps)).rejects.toThrow(
+      "Token stdin input is empty."
+    );
+  });
+
+  it("config set rejects empty --token values", async () => {
+    const harness = createHarness();
+
+    await expect(runCli(["config", "set", "--token", ""], harness.deps)).rejects.toThrow(
+      "Token cannot be empty"
+    );
   });
 
   it("config set rejects multiple token input sources", async () => {
