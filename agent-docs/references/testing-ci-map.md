@@ -14,6 +14,7 @@
 - Docs inventory/report generation: `scripts/doc-gardening.sh`
 - Plan lifecycle: `scripts/open-exec-plan.sh`, `scripts/close-exec-plan.sh`
 - Selective commits: `scripts/committer`
+- Release guardrails: `scripts/release.sh` (`check`, exact-version + prerelease support, branch/remote/package validation)
 
 ## CI Posture
 

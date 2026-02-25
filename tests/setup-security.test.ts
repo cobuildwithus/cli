@@ -29,7 +29,7 @@ describe("setup/config trust-boundary hardening", () => {
     mkdirSync(spoofRepo);
     writeFileSync(
       path.join(spoofRepo, "package.json"),
-      JSON.stringify({ name: "@cobuildwithus/buildbot" }, null, 2)
+      JSON.stringify({ name: "@cobuild/bot" }, null, 2)
     );
 
     const fakePnpmExecPath = path.join(tmpRoot, "pnpm.cjs");
