@@ -12,6 +12,12 @@ describe("transport", () => {
     );
   });
 
+  it("normalizes padded base URLs before building endpoints", () => {
+    expect(toEndpoint(" https://api.example ", "/api/build-bot/wallet").toString()).toBe(
+      "https://api.example/api/build-bot/wallet"
+    );
+  });
+
   it("allows loopback http URLs and rejects non-loopback http URLs", () => {
     expect(toEndpoint("http://localhost:3000", "/api/build-bot/wallet").toString()).toBe(
       "http://localhost:3000/api/build-bot/wallet"

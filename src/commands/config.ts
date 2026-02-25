@@ -3,73 +3,10 @@ import { configPath, maskToken, readConfig, writeConfig } from "../config.js";
 import { printJson } from "../output.js";
 import { printUsage } from "../usage.js";
 import type { CliDeps } from "../types.js";
+import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
-const CONFIG_SET_USAGE = "Usage: buildbot config set --url <interface-url> --token <pat> [--agent <key>]";
-
-function normalizeTokenInput(token: string): string {
-  return token.trim();
-}
-
-function countTokenSources(values: {
-  token?: string;
-  tokenFile?: string;
-  tokenStdin?: boolean;
-}): number {
-  let count = 0;
-  if (typeof values.token === "string") count += 1;
-  if (typeof values.tokenFile === "string") count += 1;
-  if (values.tokenStdin === true) count += 1;
-  return count;
-}
-
-function readTokenFromFile(tokenFile: string, deps: Pick<CliDeps, "fs">): string {
-  let rawToken: string;
-  try {
-    rawToken = deps.fs.readFileSync(tokenFile, "utf8");
-  } catch (error) {
-    throw new Error(
-      `Could not read token file: ${tokenFile} (${error instanceof Error ? error.message : String(error)})`
-    );
-  }
-
-  const token = normalizeTokenInput(rawToken);
-  if (!token) {
-    throw new Error(`Token file is empty: ${tokenFile}`);
-  }
-
-  return token;
-}
-
-async function readTokenFromStdin(deps: Pick<CliDeps, "readStdin">): Promise<string> {
-  if (deps.readStdin) {
-    const token = normalizeTokenInput(await deps.readStdin());
-    if (!token) {
-      throw new Error("Token stdin input is empty.");
-    }
-    return token;
-  }
-
-  if (process.stdin.isTTY) {
-    throw new Error("Refusing --token-stdin from an interactive TTY. Pipe token bytes into stdin.");
-  }
-
-  const stdin = process.stdin;
-  stdin.setEncoding("utf8");
-  const raw = await new Promise<string>((resolve, reject) => {
-    let buffer = "";
-    stdin.on("data", (chunk: string) => {
-      buffer += chunk;
-    });
-    stdin.once("end", () => resolve(buffer));
-    stdin.once("error", reject);
-  });
-
-  const token = normalizeTokenInput(raw);
-  if (!token) {
-    throw new Error("Token stdin input is empty.");
-  }
-  return token;
-}
+const CONFIG_SET_USAGE =
+  "Usage: buildbot config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
 
 export async function handleConfigCommand(args: string[], deps: CliDeps): Promise<void> {
   const subcommand = args[0];

@@ -6,7 +6,6 @@ Use this file only for currently active coding work. Keep it minimal and current
 
 | Agent/Session | Task | Files in Scope | Symbols (add/rename/delete) | Dependency Notes | Updated (YYYY-MM-DD) |
 | --- | --- | --- | --- | --- | --- |
-| codex-main | Evaluate reported security/reliability issues, coordinate subagents, integrate and verify | agent-docs/exec-plans/active/COORDINATION_LEDGER.md; agent-docs/exec-plans/active/2026-02-25-security-hardening.md | Add: execution plan doc | Subagents must claim disjoint code/test ownership rows before edits | 2026-02-25 |
 
 ## Rules
 
