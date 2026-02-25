@@ -51,7 +51,7 @@ function writeExecutable(filePath: string, content: string): void {
   chmodSync(filePath, 0o755);
 }
 
-function createRepoFixture(opts?: { packageName?: string }): RepoFixture {
+function createRepoFixture(opts?: { packageName?: string; repositoryUrl?: string }): RepoFixture {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), "cli-release-audit-"));
   cleanupPaths.push(tempDir);
 
@@ -74,6 +74,10 @@ function createRepoFixture(opts?: { packageName?: string }): RepoFixture {
     `${JSON.stringify(
       {
         name: opts?.packageName ?? "@cobuild/cli",
+        repository: {
+          type: "git",
+          url: opts?.repositoryUrl ?? "https://github.com/cobuildwithus/cli",
+        },
         version: "0.1.0",
       },
       null,
@@ -182,6 +186,17 @@ describe("release.sh coverage audit", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       "Error: unexpected package name '@cobuildwithus/cli' (expected @cobuild/cli)."
+    );
+  });
+
+  it("check mode enforces canonical repository metadata for provenance", () => {
+    const fixture = createRepoFixture({ repositoryUrl: "https://github.com/cobuildwithus/not-cli" });
+
+    const result = runReleaseScript(fixture, ["check"]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Error: unexpected package repository 'https://github.com/cobuildwithus/not-cli' (expected https://github.com/cobuildwithus/cli)."
     );
   });
 

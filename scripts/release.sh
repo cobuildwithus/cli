@@ -67,6 +67,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
+EXPECTED_PACKAGE_NAME="@cobuild/cli"
+EXPECTED_REPOSITORY_URL="https://github.com/cobuildwithus/cli"
+
 assert_clean_worktree() {
   if [ -n "$(git status --porcelain)" ]; then
     echo "Error: git working tree must be clean before release." >&2
@@ -95,8 +98,28 @@ assert_origin_remote() {
 
 assert_package_name() {
   package_name="$(node -p "require('./package.json').name")"
-  if [ "$package_name" != "@cobuild/cli" ]; then
-    echo "Error: unexpected package name '$package_name' (expected @cobuild/cli)." >&2
+  if [ "$package_name" != "$EXPECTED_PACKAGE_NAME" ]; then
+    echo "Error: unexpected package name '$package_name' (expected $EXPECTED_PACKAGE_NAME)." >&2
+    exit 1
+  fi
+}
+
+assert_repository_url() {
+  package_repository_url="$(
+    node -e '
+const pkg = JSON.parse(require("node:fs").readFileSync("package.json", "utf8"));
+const repository = pkg.repository;
+if (typeof repository === "string") {
+  console.log(repository);
+} else if (repository && typeof repository.url === "string") {
+  console.log(repository.url);
+} else {
+  console.log("");
+}
+'
+  )"
+  if [ "$package_repository_url" != "$EXPECTED_REPOSITORY_URL" ]; then
+    echo "Error: unexpected package repository '$package_repository_url' (expected $EXPECTED_REPOSITORY_URL)." >&2
     exit 1
   fi
 }
@@ -145,6 +168,7 @@ resolve_npm_tag() {
 
 if [ "$ACTION" = "check" ]; then
   assert_package_name
+  assert_repository_url
   run_release_checks
   echo "Release checks passed."
   exit 0
@@ -191,6 +215,7 @@ assert_clean_worktree
 assert_main_branch
 assert_origin_remote
 assert_package_name
+assert_repository_url
 
 run_release_checks
 

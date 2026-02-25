@@ -39,10 +39,16 @@ jobs:
 
           tag_version="${GITHUB_REF_NAME#v}"
           package_name="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).name)")"
+          package_repository_url="$(node -e "const p=JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')); const r=p.repository; console.log(typeof r==='string' ? r : (r && typeof r.url === 'string' ? r.url : ''))")"
           package_version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version)")"
 
           [[ "${package_name}" == "@cobuild/cli" ]] || {
             echo "Unexpected package name ${package_name}; expected @cobuild/cli."
+            exit 1
+          }
+
+          [[ "${package_repository_url}" == "https://github.com/cobuildwithus/cli" ]] || {
+            echo "Unexpected package repository ${package_repository_url}; expected https://github.com/cobuildwithus/cli."
             exit 1
           }
 

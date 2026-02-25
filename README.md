@@ -196,7 +196,7 @@ bash scripts/release.sh 1.2.3-rc.1 --dry-run
 What the release script does:
 - requires a clean git worktree
 - requires the current branch to be `main` (override only with `--allow-non-main`)
-- requires `origin` remote and package name `@cobuild/cli`
+- requires `origin` remote, package name `@cobuild/cli`, and `package.json.repository.url` = `https://github.com/cobuildwithus/cli`
 - runs `pnpm verify` (typecheck + coverage-inclusive test run), `pnpm docs:drift`, `pnpm docs:gardening`, `pnpm build`, and `npm pack --dry-run`
 - bumps version with `npm version --no-git-tag-version`
 - updates `CHANGELOG.md`
@@ -206,7 +206,7 @@ What the release script does:
 - pushes commit + tags so GitHub Actions can publish to npm
 
 CI release workflow (`.github/workflows/release.yml`) does:
-- tag/version validation against `package.json`
+- tag/version validation against `package.json` including package identity + canonical repository metadata
 - docs drift + doc gardening gates before packaging
 - tarball build as an artifact before publish
 - GitHub Release creation from `release-notes/v<version>.md` (fallback: generated on CI)

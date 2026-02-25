@@ -5,6 +5,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cobuildwithus/cli"
+  },
   "type": "module",
   "files": [
     "dist",

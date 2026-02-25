@@ -14,13 +14,13 @@
 - Docs inventory/report generation: `scripts/doc-gardening.sh`
 - Plan lifecycle: `scripts/open-exec-plan.sh`, `scripts/close-exec-plan.sh`
 - Selective commits: `scripts/committer`
-- Release guardrails: `scripts/release.sh` (`check`, exact-version + prerelease support, branch/remote/package validation, then `pnpm verify`, `pnpm docs:drift`, `pnpm docs:gardening`, `pnpm build`, and `npm pack --dry-run`)
+- Release guardrails: `scripts/release.sh` (`check`, exact-version + prerelease support, branch/remote/package/repository validation, then `pnpm verify`, `pnpm docs:drift`, `pnpm docs:gardening`, `pnpm build`, and `npm pack --dry-run`)
 
 ## CI Posture
 
 - GitHub workflow: `.github/workflows/test-and-coverage.yml`.
 - CI gates: `pnpm typecheck`, `pnpm test`, and `pnpm test:coverage` (coverage thresholds enforced by Vitest config).
-- Release workflow: `.github/workflows/release.yml` (tag-triggered release with tag/package validation, docs drift/gardening gates, npm tarball artifact staging, GitHub Release creation, and OIDC trusted npm publish with prerelease dist-tag + idempotent handling).
+- Release workflow: `.github/workflows/release.yml` (tag-triggered release with tag/package/repository validation, docs drift/gardening gates, npm tarball artifact staging, GitHub Release creation, and OIDC trusted npm publish with prerelease dist-tag + idempotent handling).
 - Release workflow setup: `pnpm/action-setup@v4` reads pnpm from `packageManager` (do not also pin a conflicting `with.version`).
 
 ## Architecture Enforcement Posture

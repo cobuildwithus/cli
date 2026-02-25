@@ -12,6 +12,8 @@ describe("release workflow guards", () => {
 
     expect(workflow).toContain('[[ "${package_name}" == "@cobuild/cli" ]]');
     expect(workflow).toContain("expected @cobuild/cli.");
+    expect(workflow).toContain('[[ "${package_repository_url}" == "https://github.com/cobuildwithus/cli" ]]');
+    expect(workflow).toContain("expected https://github.com/cobuildwithus/cli.");
     expect(workflow).not.toContain("@cobuild/bot");
   });
 
