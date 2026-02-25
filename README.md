@@ -1,6 +1,6 @@
 # cli
 
-TypeScript CLI + Codex skill for running wallet actions through the interface app's API (`/api/buildbot/*` routes).
+TypeScript CLI + agent skill for running wallet actions through the interface app's API (`/api/buildbot/*` routes).
 
 > Warning
 > This project drives real wallet operations. Use test networks and small amounts while validating your setup.
@@ -9,7 +9,7 @@ TypeScript CLI + Codex skill for running wallet actions through the interface ap
 
 - `cli` CLI for `setup`, `wallet`, `send`, and `tx`
 - `cli docs` command for Cobuild documentation search via API
-- Installable Codex skill package at `skills/cli`
+- Installable agent skill package at `skills/cli`
 - JSON-first command output for automation
 
 ## Requirements
@@ -55,7 +55,7 @@ pnpm start -- wallet --network base-sepolia --agent default
 
 If `cli` is on your PATH, you can drop `pnpm start --` and run `cli <command>` directly.
 
-## Agent Skill Setup (Codex)
+## Agent Skill Setup
 
 This is the fastest path for people who want to use the agent skill.
 

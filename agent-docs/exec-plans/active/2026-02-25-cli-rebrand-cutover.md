@@ -39,3 +39,4 @@ Hard-cutover product naming from Build Bot/buildbot to CLI before npm publish an
 ## Outcome
 
 - Completed on 2026-02-25 with CLI branding cutover, release guard updates, and required verification checks green.
+- Follow-up docs wording (same day): clarified README phrasing from "Codex agent skill" to "agent skill" to avoid branding ambiguity.
