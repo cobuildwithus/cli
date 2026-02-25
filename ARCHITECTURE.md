@@ -27,6 +27,7 @@ buildbot/
   - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap.
   - `config`: local config read/write/inspect.
   - `wallet`: wallet lookup via interface API.
+  - `docs`: docs search query via docs search API.
   - `send`: token transfer execution envelope.
   - `tx`: arbitrary transaction execution envelope.
 
@@ -73,6 +74,7 @@ buildbot/
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
+- `docs` always targets `/api/docs/search`.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -120,6 +122,13 @@ buildbot/
 1. Parse required flags (`--to`, `--data`) and optional value/network/agent.
 2. Build tx payload (`kind: tx`) and POST `/api/buildbot/exec`.
 3. Print normalized JSON result with `idempotencyKey` attached.
+
+### Docs search flow
+
+1. Parse positional query text and optional `--limit`.
+2. Validate non-empty query and `--limit` integer range.
+3. Build payload and POST `/api/docs/search`.
+4. Print normalized JSON result.
 
 ## Documentation Map
 

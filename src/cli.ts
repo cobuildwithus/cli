@@ -1,4 +1,5 @@
 import { handleConfigCommand } from "./commands/config.js";
+import { handleDocsCommand } from "./commands/docs.js";
 import { handleSendCommand } from "./commands/send.js";
 import { handleSetupCommand } from "./commands/setup.js";
 import { handleTxCommand } from "./commands/tx.js";
@@ -38,6 +39,11 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
 
   if (command === "wallet") {
     await handleWalletCommand(args.slice(1), deps);
+    return;
+  }
+
+  if (command === "docs") {
+    await handleDocsCommand(args.slice(1), deps);
     return;
   }
 

@@ -413,6 +413,27 @@ describe("cli", () => {
     });
   });
 
+  it("docs accepts dashed query terms when preceded by -- sentinel", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        query: "--token-stdin",
+        count: 0,
+        results: [],
+      }),
+    });
+
+    await runCli(["docs", "--", "--token-stdin"], harness.deps);
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      query: "--token-stdin",
+    });
+  });
+
   it("send validates required positionals", async () => {
     const harness = createHarness();
     await expect(runCli(["send", "usdc", "1.0"], harness.deps)).rejects.toThrow(

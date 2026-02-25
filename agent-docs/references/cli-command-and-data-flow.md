@@ -7,6 +7,7 @@
   - `setup` -> `handleSetupCommand`
   - `config` -> `handleConfigCommand`
   - `wallet` -> `handleWalletCommand`
+  - `docs` -> `handleDocsCommand`
   - `send` -> `handleSendCommand`
   - `tx` -> `handleTxCommand`
 
@@ -48,6 +49,13 @@
 5. Parse response text to JSON when possible.
 6. Throw bounded, sanitized, status-prefixed errors for non-2xx or `{ ok: false }`.
 7. Emit success payload with `printJson`.
+
+## Docs Query Flow
+
+1. Parse query from positionals and optional `--limit`.
+2. Validate query is non-empty and `--limit` is an integer in range.
+3. POST `/api/docs/search` with `{ query, limit? }`.
+4. Print JSON response from the docs endpoint.
 
 ## Idempotency Flow (`send` / `tx`)
 

@@ -34,6 +34,12 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - `wallet [--network <network>] [--agent <key>]`
 - Calls `/api/buildbot/wallet` with agent + network context.
 
+### `docs`
+
+- `docs <query> [--limit <n>]`
+- Calls `/api/docs/search` with query payload.
+- Used for searchable Cobuild documentation retrieval from configured backend.
+
 ### `send`
 
 - `send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]`
@@ -78,5 +84,6 @@ Update this doc when changing:
 
 - command names/options/required args,
 - payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
+- docs query payload/endpoint (`/api/docs/search`),
 - config file path/schema,
 - transport/auth/error normalization behavior.

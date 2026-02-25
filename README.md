@@ -8,6 +8,7 @@ TypeScript CLI + Codex skill for running wallet actions through the interface ap
 ## What You Get
 
 - `buildbot` CLI for `setup`, `wallet`, `send`, and `tx`
+- `buildbot docs` command for Cobuild documentation search via API
 - Installable Codex skill package at `skills/buildbot-cli`
 - JSON-first command output for automation
 
@@ -96,6 +97,7 @@ buildbot setup [--url <interface-url>] [--token <pat>|--token-file <path>|--toke
 
 ```bash
 buildbot wallet [--network <network>] [--agent <key>]
+buildbot docs <query> [--limit <n>]
 buildbot send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
 buildbot tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
 ```
@@ -104,9 +106,13 @@ Examples:
 
 ```bash
 buildbot wallet --network base-sepolia --agent default
+buildbot docs setup approval flow --limit 5
+buildbot docs -- --token-stdin
 buildbot send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
 buildbot tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
 ```
+
+If your query starts with a dash (for example, `--token-stdin`), insert `--` before the query so the CLI treats it as text, not flags.
 
 `send` and `tx` always include both `X-Idempotency-Key` and `Idempotency-Key` headers.
 
