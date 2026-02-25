@@ -36,5 +36,6 @@ This index is the table of contents for durable, repository-local context that a
 
 - Keep AGENTS files short and route-oriented.
 - Update this index whenever docs are added, removed, or moved.
+- When CLI docs/tool command surfaces change, keep `skills/buildbot-cli/SKILL.md` synchronized in the same change.
 - For multi-file/high-risk work, add a plan in `agent-docs/exec-plans/active/`.
 - Keep active plan entries current for in-flight runtime changes.

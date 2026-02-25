@@ -1,6 +1,6 @@
 ---
 name: buildbot-cli
-description: Configure and operate the Build Bot CLI for setup, wallet bootstrap, send, and tx commands. Use when users ask to run buildbot commands, complete setup with browser approval, inspect wallet details, or automate CLI output in JSON mode.
+description: Configure and operate the Build Bot CLI for setup, wallet bootstrap, docs/tool lookups, send, and tx commands. Use when users ask to run buildbot commands, complete setup with browser approval, inspect wallet details, query docs/tool routes, or automate CLI output in JSON mode.
 ---
 
 # Build Bot CLI
@@ -47,14 +47,25 @@ buildbot setup --url <interface-url> --network <network> --agent <agent> --link
 
 ```bash
 buildbot wallet --network <network> --agent <agent>
+buildbot docs <query> [--limit <n>]
+buildbot tools get-user <fname>
+buildbot tools get-cast <identifier> [--type <hash|url>]
+buildbot tools cast-preview --text <text> [--embed <url>] [--parent <value>]
+buildbot tools cobuild-ai-context
 buildbot send usdc <amount> <to> --network <network> --agent <agent>
 buildbot tx --to <address> --data <hex> --value <eth> --network <network> --agent <agent>
 ```
 
+## Command Routing
+
+- `docs` calls chat API `POST /api/docs/search`.
+- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call chat API `POST /api/buildbot/tools/*`.
+- `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
+
 ## Output Contract
 
 - `setup --json` returns an object with `config`, `defaultNetwork`, `wallet`, and `next`.
-- `wallet`, `send`, and `tx` print JSON by default.
+- `wallet`, `docs`, `tools`, `send`, and `tx` print JSON by default.
 - Setup wallet address is usually at `wallet.wallet.address`.
 
 ## Security Guardrails
