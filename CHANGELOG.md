@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-02-25
+
+### Fixed
+- enforce docs gates and pinless pnpm setup
+
+### Changed
+- streamline verify and tighten docs guardrails
+
 ## [0.1.1] - 2026-02-25
 
 ### Added
