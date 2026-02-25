@@ -340,6 +340,79 @@ describe("cli", () => {
     });
   });
 
+  it("docs requires a query", async () => {
+    const harness = createHarness();
+    await expect(runCli(["docs"], harness.deps)).rejects.toThrow(
+      "Usage: buildbot docs <query> [--limit <n>]"
+    );
+  });
+
+  it("docs validates --limit bounds", async () => {
+    const harness = createHarness();
+    await expect(runCli(["docs", "setup", "--limit", "0"], harness.deps)).rejects.toThrow(
+      "--limit must be between 1 and 20"
+    );
+    await expect(runCli(["docs", "setup", "--limit", "21"], harness.deps)).rejects.toThrow(
+      "--limit must be between 1 and 20"
+    );
+  });
+
+  it("docs validates --limit integer format", async () => {
+    const harness = createHarness();
+    await expect(runCli(["docs", "setup", "--limit", "1.5"], harness.deps)).rejects.toThrow(
+      "--limit must be an integer"
+    );
+  });
+
+  it("docs posts query payload and returns JSON result", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        query: "setup approval",
+        count: 1,
+        results: [{ filename: "self-hosted/chat-api.mdx" }],
+      }),
+    });
+
+    await runCli(["docs", "setup", "approval", "--limit", "5"], harness.deps);
+
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/docs/search");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      query: "setup approval",
+      limit: 5,
+    });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup approval",
+      count: 1,
+      results: [{ filename: "self-hosted/chat-api.mdx" }],
+    });
+  });
+
+  it("docs omits limit from payload when --limit is not provided", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        query: "setup approval",
+        count: 1,
+        results: [{ filename: "self-hosted/chat-api.mdx" }],
+      }),
+    });
+
+    await runCli(["docs", "setup", "approval"], harness.deps);
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      query: "setup approval",
+    });
+  });
+
   it("send validates required positionals", async () => {
     const harness = createHarness();
     await expect(runCli(["send", "usdc", "1.0"], harness.deps)).rejects.toThrow(
