@@ -95,8 +95,8 @@ assert_origin_remote() {
 
 assert_package_name() {
   package_name="$(node -p "require('./package.json').name")"
-  if [ "$package_name" != "@cobuild/bot" ]; then
-    echo "Error: unexpected package name '$package_name' (expected @cobuild/bot)." >&2
+  if [ "$package_name" != "@cobuild/cli" ]; then
+    echo "Error: unexpected package name '$package_name' (expected @cobuild/cli)." >&2
     exit 1
   fi
 }
@@ -211,7 +211,7 @@ fi
 if [ "$DRY_RUN" = true ]; then
   git restore --worktree --staged package.json >/dev/null 2>&1 || true
   echo "Dry run only."
-  echo "Would prepare release: @cobuild/bot@$new_version"
+  echo "Would prepare release: @cobuild/cli@$new_version"
   echo "Would create tag: v$new_version"
   exit 0
 fi

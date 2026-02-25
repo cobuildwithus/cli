@@ -52,7 +52,7 @@ function writeExecutable(filePath: string, content: string): void {
 }
 
 function createRepoFixture(opts?: { packageName?: string }): RepoFixture {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), "buildbot-release-audit-"));
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), "cli-release-audit-"));
   cleanupPaths.push(tempDir);
 
   const repoDir = path.join(tempDir, "repo");
@@ -73,7 +73,7 @@ function createRepoFixture(opts?: { packageName?: string }): RepoFixture {
     path.join(repoDir, "package.json"),
     `${JSON.stringify(
       {
-        name: opts?.packageName ?? "@cobuild/bot",
+        name: opts?.packageName ?? "@cobuild/cli",
         version: "0.1.0",
       },
       null,
@@ -161,13 +161,13 @@ function runReleaseScript(
 
 describe("release.sh coverage audit", () => {
   it("check mode enforces the exact package identity guard", () => {
-    const fixture = createRepoFixture({ packageName: "@cobuildwithus/buildbot" });
+    const fixture = createRepoFixture({ packageName: "@cobuildwithus/cli" });
 
     const result = runReleaseScript(fixture, ["check"]);
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "Error: unexpected package name '@cobuildwithus/buildbot' (expected @cobuild/bot)."
+      "Error: unexpected package name '@cobuildwithus/cli' (expected @cobuild/cli)."
     );
   });
 
@@ -238,7 +238,7 @@ describe("release.sh coverage audit", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Release channel: beta");
-    expect(result.stdout).toContain("Would prepare release: @cobuild/bot@0.2.0-beta.3");
+    expect(result.stdout).toContain("Would prepare release: @cobuild/cli@0.2.0-beta.3");
     expect(after).toBe(before);
     expect(dirtyStatus.stdout.trim()).toBe("");
     expect(tags.stdout.trim()).toBe("");
@@ -260,7 +260,7 @@ describe("release.sh coverage audit", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Dry run only.");
-    expect(result.stdout).toContain("Would prepare release: @cobuild/bot@1.2.3-rc.1");
+    expect(result.stdout).toContain("Would prepare release: @cobuild/cli@1.2.3-rc.1");
     expect(after).toBe(before);
     expect(dirtyStatus.stdout.trim()).toBe("");
     expect(tags.stdout.trim()).toBe("");

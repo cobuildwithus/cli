@@ -1,17 +1,17 @@
 import path from "node:path";
-import type { BuildBotConfig, CliDeps } from "./types.js";
+import type { CliConfig, CliDeps } from "./types.js";
 
-function stripDeprecatedChatApiUrl(config: BuildBotConfig): BuildBotConfig {
+function stripDeprecatedChatApiUrl(config: CliConfig): CliConfig {
   if (!Object.prototype.hasOwnProperty.call(config, "chatApiUrl")) {
     return config;
   }
-  const record = config as BuildBotConfig & { chatApiUrl?: unknown };
+  const record = config as CliConfig & { chatApiUrl?: unknown };
   const { chatApiUrl: _chatApiUrl, ...rest } = record;
-  return rest as BuildBotConfig;
+  return rest as CliConfig;
 }
 
 export function configPath(deps: Pick<CliDeps, "homedir">): string {
-  return path.join(deps.homedir(), ".buildbot", "config.json");
+  return path.join(deps.homedir(), ".cobuild-cli", "config.json");
 }
 
 function tightenConfigPermissions(
@@ -31,7 +31,7 @@ function tightenConfigPermissions(
   }
 }
 
-export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): BuildBotConfig {
+export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): CliConfig {
   const file = configPath(deps);
   if (!deps.fs.existsSync(file)) {
     return {};
@@ -39,7 +39,7 @@ export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): BuildBotConfi
 
   const raw = deps.fs.readFileSync(file, "utf8");
   try {
-    const parsed = JSON.parse(raw) as BuildBotConfig;
+    const parsed = JSON.parse(raw) as CliConfig;
     if (parsed && typeof parsed === "object") {
       return stripDeprecatedChatApiUrl(parsed);
     }
@@ -49,7 +49,7 @@ export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): BuildBotConfi
   }
 }
 
-export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: BuildBotConfig): void {
+export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: CliConfig): void {
   const file = configPath(deps);
   const dir = path.dirname(file);
   deps.fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -87,12 +87,12 @@ export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir">): RequiredCo
   const cfg = readConfig(deps);
   if (!cfg.url) {
     throw new Error(
-      "Missing interface API base URL. Run: buildbot setup (recommended) or buildbot config set --url <url> --token <token>"
+      "Missing interface API base URL. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
     );
   }
   if (!cfg.token) {
     throw new Error(
-      "Missing PAT token. Run: buildbot setup (recommended) or buildbot config set --url <url> --token <token>"
+      "Missing PAT token. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
     );
   }
   return {

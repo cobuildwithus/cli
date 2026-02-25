@@ -1,11 +1,11 @@
 # 2026-02-25 Buildbot Cutover Plan
 
 ## Goal
-Complete a hard cutover from legacy hyphenated naming to `buildbot` across runtime code, tests, scripts, skill packaging, and docs, while improving README onboarding clarity for agent-skill setup.
+Complete a hard cutover from legacy hyphenated naming to `cli` across runtime code, tests, scripts, skill packaging, and docs, while improving README onboarding clarity for agent-skill setup.
 
 ## Scope
-- Replace legacy hyphenated literals with `buildbot` naming in tracked source/docs/scripts.
-- Rename skill package path and metadata to `buildbot-cli`.
+- Replace legacy hyphenated literals with `cli` naming in tracked source/docs/scripts.
+- Rename skill package path and metadata to `cli`.
 - Update tests to cover renamed API/config/callback path invariants.
 - Rewrite README to provide explicit install/setup/skill-onboarding steps.
 

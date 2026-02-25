@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define durable command/runtime boundaries for `buildbot` CLI behavior.
+Define durable command/runtime boundaries for `cli` CLI behavior.
 
 ## Module Map
 
@@ -29,7 +29,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - Setup approval URL keeps callback/state in the URL fragment and redacts fragment values in terminal display output.
 - Default interface URL is `https://co.build` when no URL is configured; `--dev` defaults to `http://localhost:3000`.
 - Bare host inputs are normalized (`co.build` -> `https://co.build/`, `localhost:3000` -> `http://localhost:3000/`).
-- If non-interactive first-time setup URL comes only from `BUILD_BOT_URL`, setup fails closed and still requires explicit `--url`.
+- If non-interactive first-time setup URL comes only from `COBUILD_CLI_URL`, setup fails closed and still requires explicit `--url`.
 - Falls back to hidden token prompt only if browser approval fails/times out.
 
 ### `wallet`
@@ -58,7 +58,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - Calls `/api/buildbot/exec` with `kind: transfer` envelope.
 - Validates amount and destination address format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
-- Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
+- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 
 ### `tx`
 
@@ -66,7 +66,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 - Calls `/api/buildbot/exec` with `kind: tx` envelope.
 - Validates address/calldata/value format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
-- Always forwards explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
+- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 
 ## Boundary Rules
 
@@ -77,7 +77,7 @@ Define durable command/runtime boundaries for `buildbot` CLI behavior.
 
 2. Local config boundary
 
-- Only config helpers should touch `~/.buildbot/config.json`.
+- Only config helpers should touch `~/.cobuild-cli/config.json`.
 - Config stores interface URL and auth metadata (`url`, `token`, `agent`).
 - Config structure changes require migration strategy + docs updates.
 
@@ -103,4 +103,4 @@ Update this doc when changing:
 - payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
 - config file path/schema,
 - transport/auth/error normalization behavior,
-- skill command guidance in `skills/buildbot-cli/SKILL.md` for the same command/tool changes.
+- skill command guidance in `skills/cli/SKILL.md` for the same command/tool changes.

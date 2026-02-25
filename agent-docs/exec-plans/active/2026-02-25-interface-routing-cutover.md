@@ -20,14 +20,14 @@ Hard-cutover BuildBot CLI so docs/tools (and all command transport routing) use 
 1. Audit runtime references to chat endpoint target and chat-api config surfaces.
 2. Apply code changes in transport/config/commands/usage for interface-only routing.
 3. Update tests for transport selection, setup/config behavior, and help output.
-4. Update `skills/buildbot-cli/SKILL.md` routing guidance and relevant docs.
+4. Update `skills/cli/SKILL.md` routing guidance and relevant docs.
 5. Run simplify -> test-coverage-audit -> task-finish-review.
 6. Run required checks, commit scoped files, and remove ledger entry.
 
 ## Success Criteria
 - No runtime code path can route API calls to a chat endpoint target.
 - CLI no longer accepts/persists/displays `chatApiUrl` or `--chat-api-url`.
-- Env handling no longer reads `BUILD_BOT_CHAT_API_URL`.
+- Env handling no longer reads `COBUILD_CLI_CHAT_API_URL`.
 - Docs/tools commands still hit the same API paths via interface base URL.
 - Tests and required checks pass, and docs/skill routing guidance matches implementation.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-name_prefix="cobuild-buildbot-chatgpt-audit"
+name_prefix="cobuild-cli-chatgpt-audit"
 include_tests=0
 include_docs=1
 preset_dir="scripts/chatgpt-review-presets"

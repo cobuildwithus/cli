@@ -28,7 +28,7 @@ describe("funds safety coverage audit", () => {
     await runCliFromProcess(
       [
         "node",
-        "buildbot",
+        "cli",
         "send",
         "usdc",
         "1.0",
@@ -56,7 +56,7 @@ describe("funds safety coverage audit", () => {
     await runCliFromProcess(
       [
         "node",
-        "buildbot",
+        "cli",
         "tx",
         "--to",
         VALID_TO,

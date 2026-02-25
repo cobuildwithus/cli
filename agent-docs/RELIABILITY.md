@@ -21,7 +21,7 @@
 
 1. Missing config values
 
-- CLI exits with clear remediation (`buildbot setup` recommended).
+- CLI exits with clear remediation (`cli setup` recommended).
 
 2. Invalid command usage
 

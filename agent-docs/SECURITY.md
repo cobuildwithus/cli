@@ -15,7 +15,7 @@
 
 2. Local storage boundary
 
-- `~/.buildbot/config.json` contains sensitive token material.
+- `~/.cobuild-cli/config.json` contains sensitive token material.
 - Config writes should use private dir/file modes (`0700`/`0600`) when supported.
 - Config writes should attempt post-write permission tightening (`chmod`) for dir/file best-effort hardening.
 

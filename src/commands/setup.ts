@@ -10,7 +10,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const SETUP_USAGE =
-  "Usage: buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
+  "Usage: cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -18,10 +18,10 @@ const SETUP_AUTH_FAILURE_MESSAGE = [
 ].join(" ");
 const SETUP_BACKEND_FAILURE_MESSAGE = [
   "Wallet bootstrap failed on the interface server.",
-  "Check interface logs, run the Build Bot SQL migrations, and verify CDP env vars are set",
+  "Check interface logs, run the CLI SQL migrations, and verify CDP env vars are set",
   "(CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).",
 ].join(" ");
-const BUILD_BOT_PACKAGE_NAME = "@cobuild/bot";
+const CLI_PACKAGE_NAME = "@cobuild/cli";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
 const DEFAULT_INTERFACE_URL = "https://co.build";
@@ -40,7 +40,7 @@ function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
 
 function getNonEmptyEnvValue(
   deps: Pick<CliDeps, "env">,
-  key: "BUILD_BOT_OUTPUT" | "BUILD_BOT_URL" | "BUILD_BOT_NETWORK"
+  key: "COBUILD_CLI_OUTPUT" | "COBUILD_CLI_URL" | "COBUILD_CLI_NETWORK"
 ): string | undefined {
   const value = getEnv(deps)[key];
   if (typeof value !== "string") return undefined;
@@ -110,7 +110,7 @@ function getErrorMessage(error: unknown): string {
 
 function isJsonModeEnabled(value: unknown, deps: Pick<CliDeps, "env">): boolean {
   if (value === true) return true;
-  return getNonEmptyEnvValue(deps, "BUILD_BOT_OUTPUT")?.toLowerCase() === "json";
+  return getNonEmptyEnvValue(deps, "COBUILD_CLI_OUTPUT")?.toLowerCase() === "json";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -144,7 +144,7 @@ function resolveSetupPackageRoot(): string | null {
       try {
         const rawPackage = fs.readFileSync(packageJsonPath, "utf8");
         const parsedPackage = JSON.parse(rawPackage) as { name?: unknown };
-        if (parsedPackage.name === BUILD_BOT_PACKAGE_NAME) {
+        if (parsedPackage.name === CLI_PACKAGE_NAME) {
           return current;
         }
       } catch {
@@ -236,7 +236,7 @@ async function runPnpmLinkGlobal(params: {
   }
 }
 
-async function maybeLinkBuildBotGlobalCommand(
+async function maybeLinkCliGlobalCommand(
   deps: Pick<CliDeps, "env" | "runSetupLinkGlobal" | "stdout">,
   shouldLink: boolean
 ): Promise<GlobalLinkStatus> {
@@ -244,7 +244,7 @@ async function maybeLinkBuildBotGlobalCommand(
 
   const setupPackageRoot = resolveSetupPackageRoot();
   if (!setupPackageRoot) {
-    deps.stdout("Auto-link skipped: could not determine the buildbot package root.");
+    deps.stdout("Auto-link skipped: could not determine the cli package root.");
     deps.stdout("Run manually: pnpm link --global");
     return "skipped";
   }
@@ -255,14 +255,14 @@ async function maybeLinkBuildBotGlobalCommand(
     return "skipped";
   }
 
-  deps.stdout("Installing global `buildbot` command via pnpm link...");
+  deps.stdout("Installing global `cli` command via pnpm link...");
   const linkResult = await runPnpmLinkGlobal({
     deps,
     cwd: setupPackageRoot,
     pnpmExecPath,
   });
   if (linkResult.ok) {
-    deps.stdout("Global command installed. You can now run `buildbot ...` directly.");
+    deps.stdout("Global command installed. You can now run `cli ...` directly.");
     return "linked";
   }
 
@@ -302,7 +302,7 @@ async function activateTerminalApp(appName: string): Promise<boolean> {
 
 async function maybeRefocusTerminalWindow(): Promise<void> {
   if (process.platform !== "darwin") return;
-  if (process.env.BUILD_BOT_DISABLE_TERMINAL_FOCUS === "1") return;
+  if (process.env.COBUILD_CLI_DISABLE_TERMINAL_FOCUS === "1") return;
 
   const appCandidates =
     process.env.TERM_PROGRAM === "iTerm.app"
@@ -332,7 +332,7 @@ function clearSavedToken(deps: Pick<CliDeps, "fs" | "homedir">): void {
 function printSetupWizardIntro(deps: Pick<CliDeps, "stdout">): void {
   deps.stdout("");
   deps.stdout("================================");
-  deps.stdout("Build Bot Setup Wizard");
+  deps.stdout("CLI Setup Wizard");
   deps.stdout("================================");
   deps.stdout("This wizard will save your CLI config and verify wallet access.");
 }
@@ -358,11 +358,11 @@ function printSetupSuccessSummary(params: {
   params.deps.stdout(`Default network: ${params.defaultNetwork}`);
   params.deps.stdout("");
   params.deps.stdout("Next:");
-  params.deps.stdout("  buildbot wallet");
-  params.deps.stdout("  buildbot send usdc 0.10 <to> (or buildbot send eth 0.00001 <to>)");
+  params.deps.stdout("  cli wallet");
+  params.deps.stdout("  cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)");
   if (params.linkStatus === "not-requested") {
     params.deps.stdout(
-      "If buildbot is not on your PATH, run `pnpm link --global` once (or use: pnpm start -- <command>)."
+      "If cli is not on your PATH, run `pnpm link --global` once (or use: pnpm start -- <command>)."
     );
   }
 }
@@ -554,8 +554,8 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
   const storedToken = typeof current.token === "string" ? current.token.trim() : "";
-  const envUrl = getNonEmptyEnvValue(deps, "BUILD_BOT_URL");
-  const envNetwork = getNonEmptyEnvValue(deps, "BUILD_BOT_NETWORK");
+  const envUrl = getNonEmptyEnvValue(deps, "COBUILD_CLI_URL");
+  const envNetwork = getNonEmptyEnvValue(deps, "COBUILD_CLI_NETWORK");
   const defaultInterfaceUrl =
     parsed.values.dev === true ? DEFAULT_DEV_INTERFACE_URL : DEFAULT_INTERFACE_URL;
 
@@ -624,7 +624,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     /* c8 ignore start */
     if (interactive) {
       if (urlSource === "env") {
-        deps.stdout(`Using interface URL from BUILD_BOT_URL: ${url}`);
+        deps.stdout(`Using interface URL from COBUILD_CLI_URL: ${url}`);
       } else {
         deps.stdout(`Using: ${url}`);
       }
@@ -634,7 +634,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   if (!interactive && urlSource === "env") {
     throw new Error(
-      `${SETUP_USAGE}\nBUILD_BOT_URL came from environment for first-time setup. Pass --url explicitly to trust it.`
+      `${SETUP_USAGE}\nCOBUILD_CLI_URL came from environment for first-time setup. Pass --url explicitly to trust it.`
     );
   }
 
@@ -648,7 +648,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   /* c8 ignore start */
   if (interactive && networkSource === "env") {
-    deps.stdout(`Using default network from BUILD_BOT_NETWORK: ${defaultNetwork}`);
+    deps.stdout(`Using default network from COBUILD_CLI_NETWORK: ${defaultNetwork}`);
   }
   /* c8 ignore stop */
 
@@ -669,7 +669,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     if (!token) {
       deps.stdout("Falling back to manual token entry.");
       deps.stdout("Tip: paste from clipboard instead of using --token in shell history.");
-      token = await promptSecret("Build Bot PAT token (input hidden)");
+      token = await promptSecret("CLI PAT token (input hidden)");
     }
     /* c8 ignore stop */
   } else {
@@ -723,14 +723,14 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     defaultNetwork,
     wallet: walletResponse,
     next: [
-      "Run: buildbot wallet",
-      "Run: buildbot send usdc 0.10 <to> (or buildbot send eth 0.00001 <to>)",
+      "Run: cli wallet",
+      "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
     ],
   };
 
   const linkStatus = jsonMode
     ? "not-requested"
-    : await maybeLinkBuildBotGlobalCommand(deps, parsed.values.link === true);
+    : await maybeLinkCliGlobalCommand(deps, parsed.values.link === true);
 
   if (jsonMode || !interactive) {
     printJson(deps, successPayload);

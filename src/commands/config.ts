@@ -6,7 +6,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const CONFIG_SET_USAGE =
-  "Usage: buildbot config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
+  "Usage: cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
 
 export async function handleConfigCommand(args: string[], deps: CliDeps): Promise<void> {
   const subcommand = args[0];

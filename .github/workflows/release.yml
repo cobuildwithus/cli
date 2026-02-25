@@ -41,8 +41,8 @@ jobs:
           package_name="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).name)")"
           package_version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version)")"
 
-          [[ "${package_name}" == "@cobuild/bot" ]] || {
-            echo "Unexpected package name ${package_name}; expected @cobuild/bot."
+          [[ "${package_name}" == "@cobuild/cli" ]] || {
+            echo "Unexpected package name ${package_name}; expected @cobuild/cli."
             exit 1
           }
 

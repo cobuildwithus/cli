@@ -1,8 +1,8 @@
 import { vi } from "vitest";
-import type { BuildBotConfig, CliDeps, FetchLike, FetchResponseLike } from "../src/types.js";
+import type { CliConfig, CliDeps, FetchLike, FetchResponseLike } from "../src/types.js";
 
 interface CreateHarnessOptions {
-  config?: BuildBotConfig;
+  config?: CliConfig;
   rawConfig?: string;
   fetchResponder?: (input: URL | string, init?: Parameters<FetchLike>[1]) => Promise<FetchResponseLike>;
 }
@@ -22,8 +22,8 @@ export function createHarness(options: CreateHarnessOptions = {}): TestHarness {
   const errors: string[] = [];
   const exitCodes: number[] = [];
   const files = new Map<string, string>();
-  const home = "/tmp/buildbot-tests";
-  const configFile = `${home}/.buildbot/config.json`;
+  const home = "/tmp/cli-tests";
+  const configFile = `${home}/.cobuild-cli/config.json`;
 
   if (options.rawConfig !== undefined) {
     files.set(configFile, options.rawConfig);

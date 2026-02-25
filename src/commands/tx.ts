@@ -16,7 +16,7 @@ import {
 } from "./shared.js";
 
 const TX_USAGE =
-  "Usage: buildbot tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]";
+  "Usage: cli tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]";
 
 export async function handleTxCommand(args: string[], deps: CliDeps): Promise<void> {
   const parsed = parseArgs({

@@ -14,7 +14,7 @@ function createJsonResponder(body: unknown) {
 }
 
 describe("tx network defaults", () => {
-  it("uses base-sepolia when --network and BUILD_BOT_NETWORK are missing", async () => {
+  it("uses base-sepolia when --network and COBUILD_CLI_NETWORK are missing", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -43,7 +43,7 @@ describe("tx network defaults", () => {
     });
   });
 
-  it("uses explicit --network over BUILD_BOT_NETWORK", async () => {
+  it("uses explicit --network over COBUILD_CLI_NETWORK", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -51,16 +51,16 @@ describe("tx network defaults", () => {
       },
       fetchResponder: createJsonResponder({ ok: true }),
     });
-    const previous = process.env.BUILD_BOT_NETWORK;
-    process.env.BUILD_BOT_NETWORK = "base";
+    const previous = process.env.COBUILD_CLI_NETWORK;
+    process.env.COBUILD_CLI_NETWORK = "base";
 
     try {
       await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--network", "base-sepolia"], harness.deps);
     } finally {
       if (previous === undefined) {
-        delete process.env.BUILD_BOT_NETWORK;
+        delete process.env.COBUILD_CLI_NETWORK;
       } else {
-        process.env.BUILD_BOT_NETWORK = previous;
+        process.env.COBUILD_CLI_NETWORK = previous;
       }
     }
 
@@ -70,7 +70,7 @@ describe("tx network defaults", () => {
     });
   });
 
-  it("uses BUILD_BOT_NETWORK when --network is not provided", async () => {
+  it("uses COBUILD_CLI_NETWORK when --network is not provided", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -78,16 +78,16 @@ describe("tx network defaults", () => {
       },
       fetchResponder: createJsonResponder({ ok: true }),
     });
-    const previous = process.env.BUILD_BOT_NETWORK;
-    process.env.BUILD_BOT_NETWORK = "base";
+    const previous = process.env.COBUILD_CLI_NETWORK;
+    process.env.COBUILD_CLI_NETWORK = "base";
 
     try {
       await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef"], harness.deps);
     } finally {
       if (previous === undefined) {
-        delete process.env.BUILD_BOT_NETWORK;
+        delete process.env.COBUILD_CLI_NETWORK;
       } else {
-        process.env.BUILD_BOT_NETWORK = previous;
+        process.env.COBUILD_CLI_NETWORK = previous;
       }
     }
 

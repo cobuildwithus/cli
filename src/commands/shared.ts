@@ -90,7 +90,7 @@ export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pi
 }
 
 export function resolveNetwork(inputNetwork: string | undefined): string {
-  return inputNetwork || process.env.BUILD_BOT_NETWORK || "base-sepolia";
+  return inputNetwork || process.env.COBUILD_CLI_NETWORK || "base-sepolia";
 }
 
 export function parseIntegerOption(value: string | undefined, optionName: string): number | undefined {

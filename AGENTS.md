@@ -34,7 +34,7 @@ If instructions still conflict after applying this order, ask the user before ac
 - Never print or commit full PAT tokens or raw `Authorization` headers.
 - Keep CLI config in `~/.cobuild-cli/config.json` and preserve file format compatibility.
 - Use a hard cutover approach and never implement backward compatibility unless explicitly asked.
-- When adding, removing, or changing any CLI command that calls docs/tool endpoints, update `skills/buildbot-cli/SKILL.md` in the same change.
+- When adding, removing, or changing any CLI command that calls docs/tool endpoints, update `skills/cli/SKILL.md` in the same change.
 - Historical plan docs under `agent-docs/exec-plans/completed/` are immutable snapshots.
 - Always keep `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` current for every coding task (single-agent and multi-agent): claim scope before first edit, list planned symbol add/rename/delete work, and remove your entry when done.
 - Any spawned subagent that may review or edit code must read `COORDINATION_LEDGER.md` first and must not touch files or symbols owned by another active entry.

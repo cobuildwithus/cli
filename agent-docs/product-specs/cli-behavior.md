@@ -1,8 +1,8 @@
-# Build Bot CLI Behavior
+# CLI Behavior
 
 ## Contract Surface
 
-- `buildbot` command output should remain deterministic for equivalent inputs.
+- `cli` command output should remain deterministic for equivalent inputs.
 - Command failures should return actionable error messages with usage context.
 - JSON output modes should preserve stable keys and avoid ambiguous value types.
 

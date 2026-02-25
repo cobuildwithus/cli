@@ -22,8 +22,8 @@
 ## Setup Flow
 
 1. Parse `setup` options (`--url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
-2. Resolve defaults from config + environment (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
-3. In non-interactive first-time setup, fail closed when URL comes only from `BUILD_BOT_URL` (require explicit `--url`).
+2. Resolve defaults from config + environment (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
+3. In non-interactive first-time setup, fail closed when URL comes only from `COBUILD_CLI_URL` (require explicit `--url`).
 4. Prompt for missing URL when interactive, using resolved default value.
 5. Normalize/validate interface URL (auto-add scheme; non-loopback `http` rejected).
 6. If token is missing and interactive:
@@ -38,7 +38,7 @@
 
 ## Config and Agent Resolution Flow
 
-1. `readConfig()` loads `~/.buildbot/config.json` if present.
+1. `readConfig()` loads `~/.cobuild-cli/config.json` if present.
 2. `requireConfig()` enforces presence of interface `url` and `token` for remote commands.
 3. `resolveAgentKey()` prioritizes command `--agent`, then config `agent`, then `default`.
 

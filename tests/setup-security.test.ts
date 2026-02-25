@@ -24,12 +24,12 @@ describe("setup/config trust-boundary hardening", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "buildbot-setup-security-"));
+    const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "cli-setup-security-"));
     const spoofRepo = path.join(tmpRoot, "spoofed-repo");
     mkdirSync(spoofRepo);
     writeFileSync(
       path.join(spoofRepo, "package.json"),
-      JSON.stringify({ name: "@cobuild/bot" }, null, 2)
+      JSON.stringify({ name: "@cobuild/cli" }, null, 2)
     );
 
     const fakePnpmExecPath = path.join(tmpRoot, "pnpm.cjs");
@@ -64,7 +64,7 @@ describe("setup/config trust-boundary hardening", () => {
     ]);
   });
 
-  it("setup surfaces BUILD_BOT_URL and BUILD_BOT_NETWORK when they drive interactive defaults", async () => {
+  it("setup surfaces COBUILD_CLI_URL and COBUILD_CLI_NETWORK when they drive interactive defaults", async () => {
     const harness = createHarness({
       config: {
         token: "bbt_secret",
@@ -72,15 +72,15 @@ describe("setup/config trust-boundary hardening", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
     harness.deps.env = {
-      BUILD_BOT_URL: "https://env.example",
-      BUILD_BOT_NETWORK: "base",
+      COBUILD_CLI_URL: "https://env.example",
+      COBUILD_CLI_NETWORK: "base",
     };
     harness.deps.isInteractive = () => true;
 
     await runCli(["setup"], harness.deps);
 
-    expect(harness.outputs).toContain("Using interface URL from BUILD_BOT_URL: https://env.example");
-    expect(harness.outputs).toContain("Using default network from BUILD_BOT_NETWORK: base");
+    expect(harness.outputs).toContain("Using interface URL from COBUILD_CLI_URL: https://env.example");
+    expect(harness.outputs).toContain("Using default network from COBUILD_CLI_NETWORK: base");
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
@@ -88,7 +88,7 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
-  it("setup ignores deprecated BUILD_BOT_CHAT_API_URL environment input", async () => {
+  it("setup ignores deprecated COBUILD_CLI_CHAT_API_URL environment input", async () => {
     const harness = createHarness({
       config: {
         token: "bbt_secret",
@@ -96,7 +96,7 @@ describe("setup/config trust-boundary hardening", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
     harness.deps.env = {
-      BUILD_BOT_CHAT_API_URL: "https://env-chat.example",
+      COBUILD_CLI_CHAT_API_URL: "https://env-chat.example",
     };
     harness.deps.isInteractive = () => false;
 
@@ -110,19 +110,19 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
-  it("setup fails closed when non-interactive first-time URL comes only from BUILD_BOT_URL", async () => {
+  it("setup fails closed when non-interactive first-time URL comes only from COBUILD_CLI_URL", async () => {
     const harness = createHarness({
       config: {
         token: "bbt_secret",
       },
     });
     harness.deps.env = {
-      BUILD_BOT_URL: "https://env.example",
+      COBUILD_CLI_URL: "https://env.example",
     };
     harness.deps.isInteractive = () => false;
 
     await expect(runCli(["setup"], harness.deps)).rejects.toThrow(
-      "BUILD_BOT_URL came from environment for first-time setup. Pass --url explicitly to trust it."
+      "COBUILD_CLI_URL came from environment for first-time setup. Pass --url explicitly to trust it."
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
@@ -174,7 +174,7 @@ describe("setup/config trust-boundary hardening", () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
-    const tokenFile = "/tmp/buildbot-setup-token.txt";
+    const tokenFile = "/tmp/cli-setup-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
     await runCli(["setup", "--url", "https://api.example", "--token-file", tokenFile], harness.deps);
@@ -228,7 +228,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set accepts token via --token-file", async () => {
     const harness = createHarness();
-    const tokenFile = "/tmp/buildbot-token.txt";
+    const tokenFile = "/tmp/cli-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
     await runCli(["config", "set", "--token-file", tokenFile], harness.deps);
@@ -259,7 +259,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set rejects empty token file content", async () => {
     const harness = createHarness();
-    const tokenFile = "/tmp/buildbot-empty-token.txt";
+    const tokenFile = "/tmp/cli-empty-token.txt";
     harness.files.set(tokenFile, "   \n");
 
     await expect(runCli(["config", "set", "--token-file", tokenFile], harness.deps)).rejects.toThrow(
@@ -269,7 +269,7 @@ describe("setup/config trust-boundary hardening", () => {
 
   it("config set rejects unreadable token files", async () => {
     const harness = createHarness();
-    const missingTokenFile = "/tmp/buildbot-missing-token.txt";
+    const missingTokenFile = "/tmp/cli-missing-token.txt";
 
     await expect(
       runCli(["config", "set", "--token-file", missingTokenFile], harness.deps)

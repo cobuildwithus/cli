@@ -1,15 +1,15 @@
-# buildbot
+# cli
 
-TypeScript CLI + Codex skill for running wallet actions through the interface app's `buildbot` API.
+TypeScript CLI + Codex skill for running wallet actions through the interface app's API (`/api/buildbot/*` routes).
 
 > Warning
 > This project drives real wallet operations. Use test networks and small amounts while validating your setup.
 
 ## What You Get
 
-- `buildbot` CLI for `setup`, `wallet`, `send`, and `tx`
-- `buildbot docs` command for Cobuild documentation search via API
-- Installable Codex skill package at `skills/buildbot-cli`
+- `cli` CLI for `setup`, `wallet`, `send`, and `tx`
+- `cli docs` command for Cobuild documentation search via API
+- Installable Codex skill package at `skills/cli`
 - JSON-first command output for automation
 
 ## Requirements
@@ -36,7 +36,7 @@ pnpm start -- --help
 Run from npm (published package):
 
 ```bash
-npx @cobuild/bot --help
+npx @cobuild/cli --help
 ```
 
 ## Quick Start (CLI)
@@ -53,7 +53,7 @@ pnpm start -- config show
 pnpm start -- wallet --network base-sepolia --agent default
 ```
 
-If `buildbot` is on your PATH, you can drop `pnpm start --` and run `buildbot <command>` directly.
+If `cli` is on your PATH, you can drop `pnpm start --` and run `cli <command>` directly.
 
 ## Agent Skill Setup (Codex)
 
@@ -63,20 +63,20 @@ This is the fastest path for people who want to use the agent skill.
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/buildbot-cli "${CODEX_HOME:-$HOME/.codex}/skills/buildbot-cli"
+cp -R skills/cli "${CODEX_HOME:-$HOME/.codex}/skills/cli"
 ```
 
 ### Option B: Install from GitHub
 
 ```bash
-install-skill-from-github.py --repo <owner>/<repo> --path skills/buildbot-cli
+install-skill-from-github.py --repo <owner>/<repo> --path skills/cli
 ```
 
 ### Verify + use
 
 1. Restart Codex after installing the skill.
-2. Confirm the skill folder exists at `${CODEX_HOME:-$HOME/.codex}/skills/buildbot-cli`.
-3. Invoke with prompts like: `Use $buildbot-cli to run wallet on base-sepolia`.
+2. Confirm the skill folder exists at `${CODEX_HOME:-$HOME/.codex}/skills/cli`.
+3. Invoke with prompts like: `Use $cli to run wallet on base-sepolia`.
 
 ## Setup Details
 
@@ -85,34 +85,34 @@ It defaults to:
 - interface URL: `https://co.build` (or `http://localhost:3000` with `--dev`)
 
 ```bash
-buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
 ```
 
 - Browser approval flow:
   - Opens `/home` in your interface app and waits for one-time localhost callback approval.
   - Falls back to hidden manual token prompt only if approval fails or times out.
 - Machine output:
-  - Use `--json` or `BUILD_BOT_OUTPUT=json`.
+  - Use `--json` or `COBUILD_CLI_OUTPUT=json`.
 - Global command install:
   - Use `--link` during setup to run `pnpm link --global` automatically when possible.
 
 ## Command Reference
 
 ```bash
-buildbot wallet [--network <network>] [--agent <key>]
-buildbot docs <query> [--limit <n>]
-buildbot send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
-buildbot tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
+cli wallet [--network <network>] [--agent <key>]
+cli docs <query> [--limit <n>]
+cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
+cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
 ```
 
 Examples:
 
 ```bash
-buildbot wallet --network base-sepolia --agent default
-buildbot docs setup approval flow --limit 5
-buildbot docs -- --token-stdin
-buildbot send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
-buildbot tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
+cli wallet --network base-sepolia --agent default
+cli docs setup approval flow --limit 5
+cli docs -- --token-stdin
+cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
+cli tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
 ```
 
 If your query starts with a dash (for example, `--token-stdin`), insert `--` before the query so the CLI treats it as text, not flags.
@@ -121,10 +121,10 @@ If your query starts with a dash (for example, `--token-stdin`), insert `--` bef
 
 ## Troubleshooting
 
-- `buildbot: command not found`
+- `cli: command not found`
   - Run via `pnpm start -- <command>` from this repo, or run setup with `--link`.
 - Setup succeeds but wallet bootstrap fails
-  - Check interface logs, apply Build Bot SQL migrations, and verify `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET`.
+  - Check interface logs, apply CLI SQL migrations, and verify `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET`.
 - Wrong URL/network
   - Re-run setup with explicit `--url` and `--network`.
 
@@ -171,7 +171,7 @@ bash scripts/release.sh 1.2.3-rc.1 --dry-run
 What the release script does:
 - requires a clean git worktree
 - requires the current branch to be `main` (override only with `--allow-non-main`)
-- requires `origin` remote and package name `@cobuild/bot`
+- requires `origin` remote and package name `@cobuild/cli`
 - runs `pnpm verify`, `pnpm build`, and `npm pack --dry-run`
 - bumps version with `npm version --no-git-tag-version`
 - updates `CHANGELOG.md`

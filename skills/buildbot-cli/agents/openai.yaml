@@ -1,7 +1,0 @@
-interface:
-  display_name: "Build Bot CLI"
-  short_description: "Run Build Bot setup, docs/tools, and wallet commands"
-  default_prompt: "Use $buildbot-cli to configure Build Bot and run docs, tools, wallet, send, and tx commands with machine-readable output."
-
-policy:
-  allow_implicit_invocation: true

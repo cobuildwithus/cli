@@ -16,7 +16,7 @@ import {
 } from "./shared.js";
 
 const SEND_USAGE =
-  "Usage: buildbot send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]";
+  "Usage: cli send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]";
 
 export async function handleSendCommand(args: string[], deps: CliDeps): Promise<void> {
   const parsed = parseArgs({

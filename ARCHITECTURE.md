@@ -1,4 +1,4 @@
-# Build Bot Architecture
+# CLI Architecture
 
 Last updated: 2026-02-25
 
@@ -7,7 +7,7 @@ See `README.md` for setup/use context. Canonical docs map: `agent-docs/index.md`
 ## Repository Layout
 
 ```text
-buildbot/
+cli/
 ├── src/            # TypeScript CLI modules and command handlers
 ├── tests/          # Vitest command/transport/config tests
 ├── scripts/        # Agent-doc governance + plan lifecycle + committer helper
@@ -34,7 +34,7 @@ buildbot/
 
 ### Local state runtime
 
-- Config path: `~/.buildbot/config.json`.
+- Config path: `~/.cobuild-cli/config.json`.
 - Stored values: `url` (interface base), `token`, optional `agent`.
 - Writes are full-file JSON rewrites with stable formatting.
 - Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`) with post-write chmod tightening.
@@ -81,7 +81,7 @@ buildbot/
 - `docs` always targets `/api/docs/search` via interface base.
 - `tools` targets `/api/buildbot/tools/*` via interface base.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
-- `send` and `tx` always forward an explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
+- `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
 
 4. Idempotency invariant
@@ -101,9 +101,9 @@ buildbot/
 ### Setup flow
 
 1. Parse `setup` options (`--url`, `--token`, `--agent`, `--network`).
-2. Resolve defaults from config and environment fallbacks (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`).
+2. Resolve defaults from config and environment fallbacks (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`).
 3. Apply interface URL fallback when still missing: `https://co.build` (or `http://localhost:3000` with `--dev`).
-4. If first-time setup is non-interactive and URL comes only from `BUILD_BOT_URL`, fail closed and require explicit `--url`.
+4. If first-time setup is non-interactive and URL comes only from `COBUILD_CLI_URL`, fail closed and require explicit `--url`.
 5. Normalize/validate interface URL (auto-add scheme; reject non-loopback `http`).
 6. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
 7. If token is missing and TTY is available, start one-time localhost callback session.

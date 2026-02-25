@@ -1,4 +1,4 @@
-export interface BuildBotConfig {
+export interface CliConfig {
   url?: string;
   token?: string;
   agent?: string;

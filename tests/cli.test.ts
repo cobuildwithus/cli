@@ -28,7 +28,7 @@ describe("cli", () => {
   it("prints usage when argv starts with -- sentinel and no command", async () => {
     const harness = createHarness();
     await runCli(["--"], harness.deps);
-    expect(harness.outputs[0]).toContain("buildbot");
+    expect(harness.outputs[0]).toContain("cli");
   });
 
   it("throws for unknown command", async () => {
@@ -88,7 +88,7 @@ describe("cli", () => {
   it("config set requires at least one value", async () => {
     const harness = createHarness();
     await expect(runCli(["config", "set"], harness.deps)).rejects.toThrow(
-      "Usage: buildbot config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]"
+      "Usage: cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]"
     );
   });
 
@@ -165,8 +165,8 @@ describe("cli", () => {
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: buildbot wallet",
-        "Run: buildbot send usdc 0.10 <to> (or buildbot send eth 0.00001 <to>)",
+        "Run: cli wallet",
+        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
       ],
     });
   });
@@ -201,8 +201,8 @@ describe("cli", () => {
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: buildbot wallet",
-        "Run: buildbot send usdc 0.10 <to> (or buildbot send eth 0.00001 <to>)",
+        "Run: cli wallet",
+        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
       ],
     });
   });
@@ -265,7 +265,7 @@ describe("cli", () => {
         harness.deps
       )
     ).rejects.toThrow(
-      "Wallet bootstrap failed on the interface server. Check interface logs, run the Build Bot SQL migrations, and verify CDP env vars are set (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET)."
+      "Wallet bootstrap failed on the interface server. Check interface logs, run the CLI SQL migrations, and verify CDP env vars are set (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET)."
     );
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
@@ -365,7 +365,7 @@ describe("cli", () => {
     );
   });
 
-  it("setup uses configured values and BUILD_BOT_NETWORK fallback", async () => {
+  it("setup uses configured values and COBUILD_CLI_NETWORK fallback", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -375,16 +375,16 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xdef" }),
     });
 
-    const previous = process.env.BUILD_BOT_NETWORK;
-    process.env.BUILD_BOT_NETWORK = "base";
+    const previous = process.env.COBUILD_CLI_NETWORK;
+    process.env.COBUILD_CLI_NETWORK = "base";
 
     try {
       await runCli(["setup"], harness.deps);
     } finally {
       if (previous === undefined) {
-        delete process.env.BUILD_BOT_NETWORK;
+        delete process.env.COBUILD_CLI_NETWORK;
       } else {
-        process.env.BUILD_BOT_NETWORK = previous;
+        process.env.COBUILD_CLI_NETWORK = previous;
       }
     }
 
@@ -439,7 +439,7 @@ describe("cli", () => {
   it("docs requires a query", async () => {
     const harness = createHarness();
     await expect(runCli(["docs"], harness.deps)).rejects.toThrow(
-      "Usage: buildbot docs <query> [--limit <n>]"
+      "Usage: cli docs <query> [--limit <n>]"
     );
   });
 
@@ -674,7 +674,7 @@ describe("cli", () => {
   it("send validates required positionals", async () => {
     const harness = createHarness();
     await expect(runCli(["send", "usdc", "1.0"], harness.deps)).rejects.toThrow(
-      "Usage: buildbot send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]"
+      "Usage: cli send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]"
     );
   });
 
@@ -765,7 +765,7 @@ describe("cli", () => {
   it("tx requires --to and --data", async () => {
     const harness = createHarness();
     await expect(runCli(["tx", "--to", VALID_TO], harness.deps)).rejects.toThrow(
-      "Usage: buildbot tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]"
+      "Usage: cli tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]"
     );
   });
 
@@ -849,7 +849,7 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: false, error: "backend unavailable" }, 503),
     });
 
-    await runCliFromProcess(["node", "buildbot", "send", "usdc", "1.0", VALID_TO], harness.deps);
+    await runCliFromProcess(["node", "cli", "send", "usdc", "1.0", VALID_TO], harness.deps);
 
     expect(harness.errors[0]).toContain("Request failed (status 503): backend unavailable");
     expect(harness.errors[0]).toContain(`idempotency key: ${GENERATED_UUID}`);
@@ -866,7 +866,7 @@ describe("cli", () => {
     });
 
     await runCliFromProcess(
-      ["node", "buildbot", "tx", "--to", VALID_TO, "--data", "0xdeadbeef"],
+      ["node", "cli", "tx", "--to", VALID_TO, "--data", "0xdeadbeef"],
       harness.deps
     );
 
@@ -906,7 +906,7 @@ describe("cli", () => {
       },
     };
 
-    await runCliFromProcess(["node", "buildbot", "wallet"], deps);
+    await runCliFromProcess(["node", "cli", "wallet"], deps);
 
     expect(harness.errors[0]).toBe("Error: non-error");
     expect(harness.exitCodes).toEqual([1]);
@@ -914,7 +914,7 @@ describe("cli", () => {
 
   it("runCliFromProcess prints unknown command errors", async () => {
     const harness = createHarness();
-    await runCliFromProcess(["node", "buildbot", "nope"], harness.deps);
+    await runCliFromProcess(["node", "cli", "nope"], harness.deps);
 
     expect(harness.errors[0]).toBe("Error: Unknown command: nope");
     expect(harness.exitCodes).toEqual([1]);

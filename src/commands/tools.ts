@@ -4,10 +4,10 @@ import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 
 const TOOLS_USAGE = `Usage:
-  buildbot tools get-user <fname>
-  buildbot tools get-cast <identifier> [--type <hash|url>]
-  buildbot tools cast-preview --text <text> [--embed <url>] [--parent <value>]
-  buildbot tools cobuild-ai-context`;
+  cli tools get-user <fname>
+  cli tools get-cast <identifier> [--type <hash|url>]
+  cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
+  cli tools cobuild-ai-context`;
 
 function inferCastIdentifierType(identifier: string): "hash" | "url" {
   return /^https?:\/\//i.test(identifier) ? "url" : "hash";

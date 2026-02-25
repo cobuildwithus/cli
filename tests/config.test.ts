@@ -3,12 +3,12 @@ import { configPath, maskToken, readConfig, requireConfig, writeConfig } from ".
 import { createHarness } from "./helpers.js";
 
 describe("config", () => {
-  it("builds config path with the buildbot directory", () => {
+  it("builds config path with the cli directory", () => {
     expect(
       configPath({
-        homedir: () => "/tmp/buildbot-home",
+        homedir: () => "/tmp/cli-home",
       })
-    ).toBe("/tmp/buildbot-home/.buildbot/config.json");
+    ).toBe("/tmp/cli-home/.cobuild-cli/config.json");
   });
 
   it("returns the standard config path", () => {
@@ -73,7 +73,7 @@ describe("config", () => {
       token: "bbt_123",
     });
 
-    expect(chmod).toHaveBeenNthCalledWith(1, "/tmp/buildbot-tests/.buildbot", 0o700);
+    expect(chmod).toHaveBeenNthCalledWith(1, "/tmp/cli-tests/.cobuild-cli", 0o700);
     expect(chmod).toHaveBeenNthCalledWith(2, harness.configFile, 0o600);
   });
 

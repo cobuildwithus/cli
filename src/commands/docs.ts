@@ -4,7 +4,7 @@ import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import { parseIntegerOption } from "./shared.js";
 
-const DOCS_USAGE = "Usage: buildbot docs <query> [--limit <n>]";
+const DOCS_USAGE = "Usage: cli docs <query> [--limit <n>]";
 const DOCS_LIMIT_MIN = 1;
 const DOCS_LIMIT_MAX = 20;
 

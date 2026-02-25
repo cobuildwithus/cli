@@ -1,0 +1,7 @@
+interface:
+  display_name: "CLI"
+  short_description: "Run CLI setup, docs/tools, and wallet commands"
+  default_prompt: "Use $cli to configure CLI and run docs, tools, wallet, send, and tx commands with machine-readable output."
+
+policy:
+  allow_implicit_invocation: true

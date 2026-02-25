@@ -4,7 +4,7 @@ set -euo pipefail
 
 format="both"
 out_dir=""
-prefix="cobuild-buildbot-audit"
+prefix="cobuild-cli-audit"
 include_tests=1
 include_docs=1
 include_ci=1
@@ -13,14 +13,14 @@ usage() {
   cat <<'EOF'
 Usage: scripts/package-audit-context.sh [options]
 
-Packages audit-relevant buildbot files into upload-friendly artifacts.
+Packages audit-relevant cli files into upload-friendly artifacts.
 
 Options:
   --zip              Create only a .zip archive
   --txt              Create only a merged .txt file
   --both             Create both .zip and .txt (default)
   --out-dir <dir>    Output directory (default: <repo>/audit-packages)
-  --name <prefix>    Output filename prefix (default: cobuild-buildbot-audit)
+  --name <prefix>    Output filename prefix (default: cobuild-cli-audit)
   --with-tests       Include tests/** and test/** (included by default)
   --no-tests         Exclude tests/** and test/**
   --no-docs          Exclude agent-docs/**/*.md
@@ -183,7 +183,7 @@ fi
 if [ "$format" = "txt" ] || [ "$format" = "both" ]; then
   txt_path="$out_dir/$base_name.txt"
   {
-    echo "# Cobuild Build Bot Audit Bundle"
+    echo "# Cobuild CLI Audit Bundle"
     echo "# Generated (UTC): $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "# Repository: $ROOT"
     echo "# Files: $file_count"
