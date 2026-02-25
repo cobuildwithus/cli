@@ -54,7 +54,7 @@ describe("config", () => {
 
   it("requires url and token", () => {
     const missingUrl = createHarness({ config: { token: "bbt_1" } });
-    expect(() => requireConfig(missingUrl.deps)).toThrow(/Missing API base URL/);
+    expect(() => requireConfig(missingUrl.deps)).toThrow(/Missing interface API base URL/);
 
     const missingToken = createHarness({ config: { url: "https://api.example" } });
     expect(() => requireConfig(missingToken.deps)).toThrow(/Missing PAT token/);
@@ -71,9 +71,43 @@ describe("config", () => {
 
     expect(requireConfig(deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_abc",
       agent: "ops",
     });
+  });
+
+  it("derives chat-api.co.build from www.co.build interface URL", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "https://www.co.build",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(requireConfig(deps).chatApiUrl).toBe("https://chat-api.co.build");
+  });
+
+  it("fails when chat API derivation cannot parse an existing interface URL", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "api.example",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(() => requireConfig(deps)).toThrow("Interface API base URL is invalid. Use an absolute https URL.");
+  });
+
+  it("fails when interface URL includes credentials during chat API derivation", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "https://co.build@evil.example",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(() => requireConfig(deps)).toThrow("Interface API base URL must not include username or password.");
   });
 
   it("masks token values", () => {

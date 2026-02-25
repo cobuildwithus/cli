@@ -65,6 +65,55 @@ describe("transport", () => {
     });
   });
 
+  it("routes chat endpoint requests to chatApiUrl when configured", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+
+    await apiPost(
+      harness.deps,
+      "/api/docs/search",
+      { query: "setup" },
+      { endpoint: "chat" }
+    );
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://chat.example/api/docs/search");
+  });
+
+  it("derives chat-api.co.build for co.build interface configs", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://co.build",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+
+    await apiPost(
+      harness.deps,
+      "/api/docs/search",
+      { query: "setup" },
+      { endpoint: "chat" }
+    );
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://chat-api.co.build/api/docs/search");
+  });
+
   it("rejects insecure transport before sending bearer token", async () => {
     const harness = createHarness({
       config: {
@@ -104,6 +153,34 @@ describe("transport", () => {
     await expect(apiPost(harness.deps, "/api/buildbot/wallet", {})).rejects.toThrow(
       "API base URL is invalid. Use an absolute https URL."
     );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects chat endpoint calls when interface URL is malformed and chatApiUrl is unset", async () => {
+    const harness = createHarness({
+      config: {
+        url: "api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      apiPost(harness.deps, "/api/docs/search", { query: "setup" }, { endpoint: "chat" })
+    ).rejects.toThrow("Interface API base URL is invalid. Use an absolute https URL.");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects chat endpoint calls when interface URL contains credentials and chatApiUrl is unset", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://co.build@evil.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      apiPost(harness.deps, "/api/docs/search", { query: "setup" }, { endpoint: "chat" })
+    ).rejects.toThrow("Interface API base URL must not include username or password.");
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 

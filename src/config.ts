@@ -1,6 +1,63 @@
 import path from "node:path";
 import type { BuildBotConfig, CliDeps } from "./types.js";
 
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const DEFAULT_CHAT_API_URL = "https://chat-api.co.build";
+
+function normalizeHostname(hostname: string): string {
+  return hostname.trim().toLowerCase();
+}
+
+function formatLoopbackHost(hostname: string): string {
+  const normalized = normalizeHostname(hostname);
+  if (normalized === "::1" || normalized === "[::1]") return "[::1]";
+  return normalized;
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(normalizeHostname(hostname));
+}
+
+export function deriveChatApiUrlFromInterface(interfaceUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(interfaceUrl);
+  } catch {
+    throw new Error("Interface API base URL is invalid. Use an absolute https URL.");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("Interface API base URL must not include username or password.");
+  }
+
+  if (isLoopbackHost(parsed.hostname)) {
+    return `http://${formatLoopbackHost(parsed.hostname)}:4000`;
+  }
+
+  const host = normalizeHostname(parsed.hostname);
+  if (host === "co.build" || host === "www.co.build") {
+    return DEFAULT_CHAT_API_URL;
+  }
+
+  return parsed.origin;
+}
+
+function getConfiguredChatApiUrl(config: BuildBotConfig): string | null {
+  if (typeof config.chatApiUrl !== "string") return null;
+  const trimmed = config.chatApiUrl.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function resolveChatApiUrl(config: BuildBotConfig): string {
+  const configured = getConfiguredChatApiUrl(config);
+  if (configured) return configured;
+
+  if (typeof config.url === "string" && config.url.trim().length > 0) {
+    return deriveChatApiUrlFromInterface(config.url.trim());
+  }
+
+  return DEFAULT_CHAT_API_URL;
+}
+
 export function configPath(deps: Pick<CliDeps, "homedir">): string {
   return path.join(deps.homedir(), ".buildbot", "config.json");
 }
@@ -51,6 +108,7 @@ export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: BuildBo
 
 export interface RequiredConfig {
   url: string;
+  chatApiUrl: string;
   token: string;
   agent?: string;
 }
@@ -59,7 +117,7 @@ export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir">): RequiredCo
   const cfg = readConfig(deps);
   if (!cfg.url) {
     throw new Error(
-      "Missing API base URL. Run: buildbot setup (recommended) or buildbot config set --url <url> --token <token>"
+      "Missing interface API base URL. Run: buildbot setup (recommended) or buildbot config set --url <url> --token <token>"
     );
   }
   if (!cfg.token) {
@@ -69,6 +127,7 @@ export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir">): RequiredCo
   }
   return {
     url: cfg.url,
+    chatApiUrl: resolveChatApiUrl(cfg),
     token: cfg.token,
     agent: cfg.agent,
   };

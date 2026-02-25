@@ -28,7 +28,12 @@ async function handleToolsGetUserCommand(args: string[], deps: CliDeps): Promise
   const fname = args.join(" ").trim();
   if (!fname) throw new Error(TOOLS_USAGE);
 
-  const response = await apiPost(deps, "/api/buildbot/tools/get-user", { fname });
+  const response = await apiPost(
+    deps,
+    "/api/buildbot/tools/get-user",
+    { fname },
+    { endpoint: "chat" }
+  );
   printJson(deps, response);
 }
 
@@ -46,10 +51,15 @@ async function handleToolsGetCastCommand(args: string[], deps: CliDeps): Promise
   if (!identifier) throw new Error(TOOLS_USAGE);
 
   const type = parseCastType(parsed.values.type, identifier);
-  const response = await apiPost(deps, "/api/buildbot/tools/get-cast", {
-    identifier,
-    type,
-  });
+  const response = await apiPost(
+    deps,
+    "/api/buildbot/tools/get-cast",
+    {
+      identifier,
+      type,
+    },
+    { endpoint: "chat" }
+  );
   printJson(deps, response);
 }
 
@@ -73,18 +83,28 @@ async function handleToolsCastPreviewCommand(args: string[], deps: CliDeps): Pro
     throw new Error("A maximum of two --embed values are allowed.");
   }
 
-  const response = await apiPost(deps, "/api/buildbot/tools/cast-preview", {
-    text,
-    ...(embedUrls.length ? { embeds: embedUrls.map((url) => ({ url })) } : {}),
-    ...(parsed.values.parent ? { parent: parsed.values.parent } : {}),
-  });
+  const response = await apiPost(
+    deps,
+    "/api/buildbot/tools/cast-preview",
+    {
+      text,
+      ...(embedUrls.length ? { embeds: embedUrls.map((url) => ({ url })) } : {}),
+      ...(parsed.values.parent ? { parent: parsed.values.parent } : {}),
+    },
+    { endpoint: "chat" }
+  );
   printJson(deps, response);
 }
 
 async function handleToolsCobuildAiContextCommand(args: string[], deps: CliDeps): Promise<void> {
   if (args.length > 0) throw new Error(TOOLS_USAGE);
 
-  const response = await apiPost(deps, "/api/buildbot/tools/cobuild-ai-context", {});
+  const response = await apiPost(
+    deps,
+    "/api/buildbot/tools/cobuild-ai-context",
+    {},
+    { endpoint: "chat" }
+  );
   printJson(deps, response);
 }
 

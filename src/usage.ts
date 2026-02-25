@@ -3,8 +3,8 @@ import type { CliDeps } from "./types.js";
 export const USAGE_TEXT = `buildbot
 
 Usage:
-  buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
-  buildbot config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
+  buildbot setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+  buildbot config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
   buildbot config show
   buildbot wallet [--network <network>] [--agent <key>]
   buildbot docs <query> [--limit <n>]
@@ -17,11 +17,12 @@ Usage:
 
 Examples:
   buildbot setup --url http://localhost:3000 --agent default --network base-sepolia
+  buildbot setup --url https://co.build --chat-api-url https://chat-api.co.build --agent default
   buildbot setup --dev --agent default --network base-sepolia
   echo "bbt_xxx" | buildbot setup --url http://localhost:3000 --token-stdin --network base-sepolia
   buildbot setup --url http://localhost:3000 --network base-sepolia --json
   buildbot setup --url http://localhost:3000 --network base-sepolia --link
-  buildbot config set --url http://localhost:3000 --token bbt_xxx --agent default
+  buildbot config set --url http://localhost:3000 --chat-api-url http://localhost:4000 --token bbt_xxx --agent default
   buildbot config set --token-file ./buildbot.token
   buildbot wallet --network base-sepolia
   buildbot docs setup approval flow --limit 5

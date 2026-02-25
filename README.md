@@ -43,7 +43,7 @@ npx @cobuildwithus/buildbot --help
 
 ```bash
 # 1) Configure and bootstrap wallet access
-pnpm start -- setup --url http://localhost:3000 --network base-sepolia --agent default
+pnpm start -- setup --url http://localhost:3000 --chat-api-url http://localhost:4000 --network base-sepolia --agent default
 # or: pnpm start -- setup --dev --network base-sepolia --agent default
 
 # 2) Verify config (token is masked)
@@ -81,10 +81,12 @@ install-skill-from-github.py --repo <owner>/<repo> --path skills/buildbot-cli
 ## Setup Details
 
 `setup` supports secure browser approval and non-interactive token sources.
-It defaults to `https://co.build` when no URL is configured; use `--dev` to default to `http://localhost:3000`.
+It defaults to:
+- interface URL: `https://co.build` (or `http://localhost:3000` with `--dev`)
+- chat API URL: `https://chat-api.co.build` (or `http://localhost:4000` with `--dev`)
 
 ```bash
-buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+buildbot setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
 ```
 
 - Browser approval flow:
@@ -125,7 +127,7 @@ If your query starts with a dash (for example, `--token-stdin`), insert `--` bef
 - Setup succeeds but wallet bootstrap fails
   - Check interface logs, apply Build Bot SQL migrations, and verify `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET`.
 - Wrong URL/network
-  - Re-run setup with explicit `--url` and `--network`.
+  - Re-run setup with explicit `--url`, `--chat-api-url`, and `--network`.
 
 ## Developer Commands
 

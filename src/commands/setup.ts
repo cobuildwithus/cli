@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { configPath, readConfig, writeConfig } from "../config.js";
+import { configPath, deriveChatApiUrlFromInterface, readConfig, writeConfig } from "../config.js";
 import { printJson } from "../output.js";
 import { buildSetupApprovalUrl, createSetupApprovalSession } from "../setup-approval.js";
 import { apiPost } from "../transport.js";
@@ -10,7 +10,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const SETUP_USAGE =
-  "Usage: buildbot setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
+  "Usage: buildbot setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -40,7 +40,7 @@ function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
 
 function getNonEmptyEnvValue(
   deps: Pick<CliDeps, "env">,
-  key: "BUILD_BOT_OUTPUT" | "BUILD_BOT_URL" | "BUILD_BOT_NETWORK"
+  key: "BUILD_BOT_OUTPUT" | "BUILD_BOT_URL" | "BUILD_BOT_CHAT_API_URL" | "BUILD_BOT_NETWORK"
 ): string | undefined {
   const value = getEnv(deps)[key];
   if (typeof value !== "string") return undefined;
@@ -52,10 +52,10 @@ function isLoopbackInterfaceHost(hostname: string): boolean {
   return LOOPBACK_INTERFACE_HOSTS.has(hostname.toLowerCase());
 }
 
-function normalizeInterfaceUrl(rawValue: string): string {
+function normalizeApiUrl(rawValue: string, label: "Interface URL" | "Chat API URL"): string {
   const trimmed = rawValue.trim();
   if (!trimmed) {
-    throw new Error("Interface URL cannot be empty.");
+    throw new Error(`${label} cannot be empty.`);
   }
 
   let candidate = trimmed;
@@ -75,20 +75,18 @@ function normalizeInterfaceUrl(rawValue: string): string {
     parsed = new URL(candidate);
   } catch {
     throw new Error(
-      "Interface URL is invalid. Use a full URL like https://co.build or http://localhost:3000."
+      `${label} is invalid. Use a full URL like https://co.build or http://localhost:3000.`
     );
   }
 
   if (parsed.username || parsed.password) {
-    throw new Error("Interface URL must not include username or password.");
+    throw new Error(`${label} must not include username or password.`);
   }
   if (parsed.protocol === "http:" && !isLoopbackInterfaceHost(parsed.hostname)) {
-    throw new Error(
-      "Interface URL must use https (http is allowed only for localhost, 127.0.0.1, or [::1])."
-    );
+    throw new Error(`${label} must use https (http is allowed only for localhost, 127.0.0.1, or [::1]).`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Interface URL must use http or https.");
+    throw new Error(`${label} must use http or https.`);
   }
 
   if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
@@ -96,6 +94,14 @@ function normalizeInterfaceUrl(rawValue: string): string {
   }
 
   return parsed.toString();
+}
+
+function normalizeInterfaceUrl(rawValue: string): string {
+  return normalizeApiUrl(rawValue, "Interface URL");
+}
+
+function normalizeChatApiUrl(rawValue: string): string {
+  return normalizeApiUrl(rawValue, "Chat API URL");
 }
 
 function isAuthFailure(error: unknown): boolean {
@@ -508,6 +514,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const parsed = parseArgs({
     options: {
       url: { type: "string" },
+      "chat-api-url": { type: "string" },
       dev: { type: "boolean" },
       token: { type: "string" },
       "token-file": { type: "string" },
@@ -536,8 +543,10 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const interactive = isInteractive(deps) && !jsonMode;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
+  const storedChatApiUrl = typeof current.chatApiUrl === "string" ? current.chatApiUrl.trim() : "";
   const storedToken = typeof current.token === "string" ? current.token.trim() : "";
   const envUrl = getNonEmptyEnvValue(deps, "BUILD_BOT_URL");
+  const envChatApiUrl = getNonEmptyEnvValue(deps, "BUILD_BOT_CHAT_API_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "BUILD_BOT_NETWORK");
   const defaultInterfaceUrl =
     parsed.values.dev === true ? DEFAULT_DEV_INTERFACE_URL : DEFAULT_INTERFACE_URL;
@@ -553,6 +562,19 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   } else if (envUrl) {
     url = envUrl;
     urlSource = "env";
+  }
+
+  let chatApiUrlSource: SetupValueSource = "default";
+  let chatApiUrl: string | undefined;
+  if (typeof parsed.values["chat-api-url"] === "string") {
+    chatApiUrl = parsed.values["chat-api-url"];
+    chatApiUrlSource = "flag";
+  } else if (storedChatApiUrl) {
+    chatApiUrl = storedChatApiUrl;
+    chatApiUrlSource = "config";
+  } else if (envChatApiUrl) {
+    chatApiUrl = envChatApiUrl;
+    chatApiUrlSource = "env";
   }
 
   let tokenFromOption: string | undefined;
@@ -620,8 +642,30 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
       `${SETUP_USAGE}\nBUILD_BOT_URL came from environment for first-time setup. Pass --url explicitly to trust it.`
     );
   }
+  if (!interactive && chatApiUrlSource === "env") {
+    throw new Error(
+      `${SETUP_USAGE}\nBUILD_BOT_CHAT_API_URL came from environment for first-time setup. Pass --chat-api-url explicitly to trust it.`
+    );
+  }
 
   url = normalizeInterfaceUrl(url);
+  const defaultChatApiUrl = deriveChatApiUrlFromInterface(url);
+  if (!chatApiUrl) {
+    chatApiUrl = defaultChatApiUrl;
+    chatApiUrlSource = "default";
+  }
+  chatApiUrl = normalizeChatApiUrl(chatApiUrl);
+  /* c8 ignore start */
+  if (interactive) {
+    if (chatApiUrlSource === "env") {
+      deps.stdout(`Using chat API URL from BUILD_BOT_CHAT_API_URL: ${chatApiUrl}`);
+    } else if (chatApiUrlSource === "default") {
+      deps.stdout(`Chat API URL defaulted to: ${chatApiUrl}`);
+    } else {
+      deps.stdout(`Using chat API URL: ${chatApiUrl}`);
+    }
+  }
+  /* c8 ignore stop */
 
   /* c8 ignore start */
   if (interactive) {
@@ -679,7 +723,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   /* c8 ignore stop */
 
   const path = configPath(deps);
-  writeConfig(deps, { url, token, agent });
+  writeConfig(deps, { url, chatApiUrl, token, agent });
   if (!jsonMode) {
     deps.stdout(`Saved config: ${path}`);
   }
@@ -702,7 +746,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   const successPayload = {
     ok: true,
-    config: { url, agent, path },
+    config: { interfaceUrl: url, chatApiUrl, agent, path },
     defaultNetwork,
     wallet: walletResponse,
     next: [

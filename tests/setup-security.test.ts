@@ -88,6 +88,55 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
+  it("setup fails closed when non-interactive first-time chat API URL comes only from BUILD_BOT_CHAT_API_URL", async () => {
+    const harness = createHarness({
+      config: {
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+    harness.deps.env = {
+      BUILD_BOT_CHAT_API_URL: "https://env-chat.example",
+    };
+    harness.deps.isInteractive = () => false;
+
+    await expect(runCli(["setup", "--url", "https://interface.example"], harness.deps)).rejects.toThrow(
+      "BUILD_BOT_CHAT_API_URL came from environment for first-time setup. Pass --chat-api-url explicitly to trust it."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("setup prioritizes --chat-api-url over BUILD_BOT_CHAT_API_URL", async () => {
+    const harness = createHarness({
+      config: {
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+    harness.deps.env = {
+      BUILD_BOT_CHAT_API_URL: "https://env-chat.example",
+    };
+    harness.deps.isInteractive = () => false;
+
+    await runCli(
+      [
+        "setup",
+        "--url",
+        "https://interface.example",
+        "--chat-api-url",
+        "https://flag-chat.example",
+      ],
+      harness.deps
+    );
+
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "https://interface.example",
+      chatApiUrl: "https://flag-chat.example",
+      token: "bbt_secret",
+      agent: "default",
+    });
+  });
+
   it("setup fails closed when non-interactive first-time URL comes only from BUILD_BOT_URL", async () => {
     const harness = createHarness({
       config: {
@@ -139,6 +188,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_from_stdin",
       agent: "default",
     });
@@ -159,6 +209,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_from_file",
       agent: "default",
     });
@@ -213,7 +264,8 @@ describe("setup/config trust-boundary hardening", () => {
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      url: null,
+      interfaceUrl: null,
+      chatApiUrl: null,
       token: "bbt_from...",
       agent: null,
       path: harness.configFile,
@@ -228,7 +280,8 @@ describe("setup/config trust-boundary hardening", () => {
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      url: null,
+      interfaceUrl: null,
+      chatApiUrl: null,
       token: "bbt_from...",
       agent: null,
       path: harness.configFile,

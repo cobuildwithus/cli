@@ -3,6 +3,7 @@ import type { CliDeps } from "./types.js";
 
 export interface ApiPostOptions {
   headers?: Record<string, string>;
+  endpoint?: "interface" | "chat";
 }
 
 const MAX_ERROR_TEXT_LENGTH = 240;
@@ -69,7 +70,8 @@ export async function apiPost(
   options: ApiPostOptions = {}
 ): Promise<unknown> {
   const cfg = requireConfig(deps);
-  const endpoint = toEndpoint(cfg.url, pathname);
+  const baseUrl = options.endpoint === "chat" ? cfg.chatApiUrl : cfg.url;
+  const endpoint = toEndpoint(baseUrl, pathname);
 
   const response = await deps.fetch(endpoint, {
     method: "POST",

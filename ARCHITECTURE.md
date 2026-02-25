@@ -35,7 +35,7 @@ buildbot/
 ### Local state runtime
 
 - Config path: `~/.buildbot/config.json`.
-- Stored values: `url`, `token`, optional `agent`.
+- Stored values: `url` (interface base), `chatApiUrl` (chat-api base), `token`, optional `agent`.
 - Writes are full-file JSON rewrites with stable formatting.
 - Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`).
 - Source modules: `src/config.ts`, `src/commands/config.ts`.
@@ -43,7 +43,7 @@ buildbot/
 ### Remote API runtime
 
 - All networked command execution routes through `apiPost`.
-- Endpoint base URL comes from config (`toEndpoint` normalizes slashes).
+- Endpoint base URL is selected per command target (`interface` or `chat`) then normalized via `toEndpoint`.
 - Base URL policy enforces `https` by default; `http` is allowed only for loopback hosts (`localhost`, `127.0.0.1`, `::1`).
 - Base URLs with embedded credentials (`user:pass@host`) are rejected.
 - Auth uses bearer PAT in request header.
@@ -67,7 +67,7 @@ buildbot/
 
 2. Config compatibility invariant
 
-- Config file shape remains backward-compatible (`url`, `token`, `agent`).
+- Config file shape remains backward-compatible and additive (`url`, `chatApiUrl`, `token`, `agent`).
 - Missing required config fields fail with clear remediation guidance.
 
 3. Command envelope invariant
@@ -75,8 +75,8 @@ buildbot/
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
-- `docs` always targets `/api/docs/search`.
-- `tools` targets `/api/buildbot/tools/*` read-only endpoints.
+- `docs` always targets `/api/docs/search` via chat-api base.
+- `tools` targets `/api/buildbot/tools/*` via chat-api base.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `BUILD_BOT_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -99,13 +99,15 @@ buildbot/
 1. Parse `setup` options (`--url`, `--token`, `--agent`, `--network`).
 2. Resolve defaults from config and environment fallbacks (`BUILD_BOT_URL`, `BUILD_BOT_NETWORK`).
 3. Apply interface URL fallback when still missing: `https://co.build` (or `http://localhost:3000` with `--dev`).
-4. If first-time setup is non-interactive and URL comes only from `BUILD_BOT_URL`, fail closed and require explicit `--url`.
-5. Normalize/validate interface URL (auto-add scheme; reject non-loopback `http`).
-6. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
-7. If token is missing and TTY is available, start one-time localhost callback session.
-8. Open interface `/home` with setup query params (`buildBotSetup`, callback URL, state) and wait for browser approval.
-9. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
-10. If approval fails/times out, fall back to hidden manual token prompt.
+4. Resolve chat API URL from explicit input/config/env; otherwise default to `https://chat-api.co.build` (`http://localhost:4000` with `--dev`) or derive from interface URL for non-co.build hosts.
+5. If first-time setup is non-interactive and URL comes only from `BUILD_BOT_URL`, fail closed and require explicit `--url`.
+6. If first-time setup is non-interactive and chat API URL comes only from `BUILD_BOT_CHAT_API_URL`, fail closed and require explicit `--chat-api-url`.
+7. Normalize/validate interface URL and chat API URL (auto-add scheme; reject non-loopback `http`).
+8. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
+9. If token is missing and TTY is available, start one-time localhost callback session.
+10. Open interface `/home` with setup query params (`buildBotSetup`, callback URL, state) and wait for browser approval.
+11. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
+12. If approval fails/times out, fall back to hidden manual token prompt.
 
 ### Wallet lookup flow
 

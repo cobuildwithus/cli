@@ -1,5 +1,6 @@
 export interface BuildBotConfig {
   url?: string;
+  chatApiUrl?: string;
   token?: string;
   agent?: string;
 }

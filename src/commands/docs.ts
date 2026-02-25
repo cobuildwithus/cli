@@ -31,8 +31,7 @@ export async function handleDocsCommand(args: string[], deps: CliDeps): Promise<
   const response = await apiPost(deps, "/api/docs/search", {
     query,
     ...(limit !== undefined ? { limit } : {}),
-  });
+  }, { endpoint: "chat" });
 
   printJson(deps, response);
 }
-
