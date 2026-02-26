@@ -38,6 +38,7 @@ If instructions still conflict after applying this order, ask the user before ac
 - Historical plan docs under `agent-docs/exec-plans/completed/` are immutable snapshots.
 - Always keep `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` current for every coding task (single-agent and multi-agent): claim scope before first edit, list planned symbol add/rename/delete work, and remove your entry when done.
 - Any spawned subagent that may review or edit code must read `COORDINATION_LEDGER.md` first and must not touch files or symbols owned by another active entry.
+- Release ownership is user-operated: do not run release/version-bump/publish flows (including tag-push release triggers) unless the user explicitly asks in the current turn.
 - Run completion workflow audit passes (`simplify`, `test-coverage-audit`, `task-finish-review`) for every non-doc change that touches production code or tests; skip only when the user explicitly says to skip for that turn.
 - Docs/process-only changes skip completion workflow audit passes unless the user explicitly asks to run them.
 - Keep this file short and route-oriented; move durable detail into `agent-docs/`.

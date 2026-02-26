@@ -168,6 +168,8 @@ pnpm review:gpt
 
 ## Release Flow (npm)
 
+Release ownership note: release/version-bump/publish actions are user-operated by default. Agents should not run release flows unless explicitly instructed in the current chat turn.
+
 Run release checks first:
 
 ```bash
