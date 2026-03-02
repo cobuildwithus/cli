@@ -21,6 +21,17 @@ If `cli` is not on `PATH` and you are working from this repository checkout, use
 pnpm start -- <command>
 ```
 
+## Incur Runtime Surfaces
+
+The CLI is backed by Incur command routing and includes built-in discovery commands:
+
+```bash
+cli --help
+cli --llms
+cli skills add
+cli mcp add
+```
+
 ## Setup Flow
 
 Run:
@@ -64,20 +75,26 @@ cli docs <query> [--limit <n>]
 cli tools get-user <fname>
 cli tools get-cast <identifier> [--type <hash|url>]
 cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
-cli tools cobuild-ai-context
+cli tools get-treasury-stats
 cli send usdc <amount> <to> --network <network> --agent <agent>
 cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <agent>
 ```
 
+Group command notes:
+
+- `cli tools` and `cli farcaster` print group help (no-op success) when no subcommand is provided.
+- Unknown subcommands still fail non-zero with explicit error messages.
+
 ## Command Routing
 
-- `docs` calls canonical tool execution first (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) and falls back to interface `POST /api/docs/search` only when canonical routes are unavailable.
-- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call canonical tool execution first (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) and fall back to interface `POST /api/buildbot/tools/*` only when canonical routes are unavailable.
+- `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
+- `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
 - `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
 
 ## Output Contract
 
 - `setup --json` returns an object with `config`, `defaultNetwork`, `wallet`, and `next`.
+- `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
 - Command failures exit non-zero with human-readable diagnostics.
 

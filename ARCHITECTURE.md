@@ -22,7 +22,8 @@ cli/
 ### CLI entrypoint
 
 - `src/index.ts` is the executable entrypoint and delegates to `runCliFromProcess`.
-- `src/cli.ts` owns command parsing, subcommand routing, and top-level error output.
+- `src/cli.ts` owns process lifecycle adapters and bridges process/test harness IO into the runtime.
+- `src/cli-incur.ts` owns command parsing and subcommand routing via Incur (`Cli.create`, command groups, built-in `skills add`, `mcp add`, `--llms`, and `--mcp`).
 - Command families:
   - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap.
   - `config`: local config read/write/inspect.
@@ -56,7 +57,8 @@ cli/
 
 ## Layering Model
 
-- Command and UX orchestration: `src/cli.ts` (`runCli`, `runCliFromProcess`)
+- Runtime composition and command tree: `src/cli-incur.ts` (`createCobuildIncurCli`, argv compatibility preprocessors)
+- Process/test lifecycle adapters: `src/cli.ts` (`runCli`, `runCliFromProcess`)
 - Command handlers: `src/commands/*.ts`
 - Local config boundary: `src/config.ts` (`configPath`, `readConfig`, `writeConfig`, `requireConfig`)
 - Remote transport boundary: `src/transport.ts` (`toEndpoint`, `apiPost`, `apiGet`)

@@ -3,7 +3,7 @@
 ## Command Topology
 
 - Entry: `runCliFromProcess()` in `src/cli.ts` (invoked by `src/index.ts`)
-- Router:
+- Runtime router (Incur command tree in `src/cli-incur.ts`):
   - `setup` -> `handleSetupCommand`
   - `config` -> `handleConfigCommand`
   - `wallet` -> `handleWalletCommand`
@@ -16,9 +16,14 @@
 ## Input and Option Flow
 
 1. Parse raw argv (`process.argv.slice(2)`).
-2. Normalize leading `--` sentinel.
-3. Dispatch by top-level command.
-4. Per-command parse with `parseArgs` and validate required positionals/options.
+2. Normalize leading `--` sentinel in `runCli`.
+3. Preprocess argv compatibility shims in `preprocessIncurArgv`:
+- `setup --json` remapped to command-local setup json mode.
+- `docs -- --<dashed-term>` preserved via escaped positional passthrough.
+- `farcaster post --verify` normalized to `--verify=once`.
+- `farcaster signup --extra-storage -<n>` normalized to equals form.
+4. Incur resolves command path, parses args/options, and routes to adapter handlers.
+5. Adapter handlers call existing command modules, which continue domain validation with `parseArgs` and existing business logic.
 
 ## Setup Flow
 
@@ -102,8 +107,10 @@
 
 ## Error and Exit Flow
 
-- Handler throws -> `runCliFromProcess(...)` catch -> print `Error: <message>` -> exit code `1`.
-- Usage/help commands exit code `0`.
+- `runCli()` executes Incur with buffered stdout + captured exit signal for deterministic test behavior.
+- Incur non-zero exits are normalized to legacy-style error messages where needed (including unknown command mapping).
+- `runCliFromProcess(...)` catches thrown errors -> prints `Error: <message>` to stderr -> exits `1`.
+- Help/usage style commands from Incur (`--help`, group help) exit `0`.
 
 ## Update Rule
 

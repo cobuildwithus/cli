@@ -7,7 +7,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ## Module Map
 
 - Entrypoint: `src/index.ts`
-- Router and process lifecycle: `src/cli.ts`
+- Runtime composition + command tree: `src/cli-incur.ts`
+- Process lifecycle adapters: `src/cli.ts`
 - Command handlers: `src/commands/*.ts`
 - Config boundary: `src/config.ts`
 - Transport boundary: `src/transport.ts`
@@ -84,8 +85,9 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 1. CLI UX boundary
 
-- `printUsage()` and command handlers own human-readable errors and hints.
-- Help and error text should be explicit and action-oriented.
+- Incur owns command discovery/help surfaces (`--help`, `--llms`, built-in skills/MCP commands).
+- Command handlers own domain-specific validation errors and response payloads.
+- Help and error text should remain explicit and action-oriented.
 
 2. Local config boundary
 
@@ -112,6 +114,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 Update this doc when changing:
 
 - command names/options/required args,
+- Incur runtime command registration or argv preprocessor compatibility behavior,
 - `docs`/`tools` command topology or canonical `/v1/tool-executions` endpoint contracts,
 - payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
 - config file path/schema,

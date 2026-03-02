@@ -81,8 +81,10 @@ describe("farcaster command", () => {
   it("requires a subcommand, supports --help, and rejects unknown subcommands", async () => {
     const harness = createHarness();
 
-    await expect(runCli(["farcaster"], harness.deps)).rejects.toThrow("Usage:");
-    await expect(runCli(["farcaster", "--help"], harness.deps)).rejects.toThrow("Usage:");
+    await runCli(["farcaster"], harness.deps);
+    expect(harness.outputs[0]).toContain("cli farcaster");
+    await runCli(["farcaster", "--help"], harness.deps);
+    expect(harness.outputs.at(-1)).toContain("cli farcaster");
     await expect(runCli(["farcaster", "unknown"], harness.deps)).rejects.toThrow(
       "Unknown farcaster subcommand: unknown"
     );
@@ -90,8 +92,10 @@ describe("farcaster command", () => {
 
   it("validates farcaster x402 subcommand usage and unknown subcommands", async () => {
     const harness = createHarness();
-    await expect(runCli(["farcaster", "x402"], harness.deps)).rejects.toThrow("Usage:");
-    await expect(runCli(["farcaster", "x402", "--help"], harness.deps)).rejects.toThrow("Usage:");
+    await runCli(["farcaster", "x402"], harness.deps);
+    expect(harness.outputs[0]).toContain("cli farcaster x402");
+    await runCli(["farcaster", "x402", "--help"], harness.deps);
+    expect(harness.outputs.at(-1)).toContain("cli farcaster x402");
     await expect(runCli(["farcaster", "x402", "nope"], harness.deps)).rejects.toThrow(
       "Unknown farcaster x402 subcommand: nope"
     );

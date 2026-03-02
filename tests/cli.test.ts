@@ -781,7 +781,8 @@ describe("cli", () => {
   it("tools requires a known subcommand", async () => {
     const harness = createHarness();
 
-    await expect(runCli(["tools"], harness.deps)).rejects.toThrow("Usage:");
+    await runCli(["tools"], harness.deps);
+    expect(harness.outputs[0]).toContain("Usage:");
     await expect(runCli(["tools", "unknown"], harness.deps)).rejects.toThrow(
       "Unknown tools subcommand: unknown"
     );
@@ -856,6 +857,43 @@ describe("cli", () => {
       input: {
         identifier: "0xabc",
         type: "hash",
+      },
+    });
+  });
+
+  it("tools get-cast preserves escaped identifiers that start with dashes", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, cast: { hash: "0xabc" } }),
+    });
+
+    await runCli(["tools", "get-cast", "--", "--type"], harness.deps);
+    let [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "getCast",
+      input: {
+        identifier: "--type",
+        type: "hash",
+      },
+    });
+
+    harness.fetchMock.mockClear();
+    await runCli(["tools", "get-cast", "--type", "url", "--", "--hash-like"], harness.deps);
+    [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "getCast",
+      input: {
+        identifier: "--hash-like",
+        type: "url",
       },
     });
   });
@@ -1186,14 +1224,14 @@ describe("cli", () => {
 
   it("farcaster command requires a subcommand", async () => {
     const harness = createHarness();
-    await expect(runCli(["farcaster"], harness.deps)).rejects.toThrow(
-      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]\n  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli farcaster x402 status [--agent <key>]"
-    );
+    await runCli(["farcaster"], harness.deps);
+    expect(harness.outputs[0]).toContain("cli farcaster");
   });
 
   it("farcaster command supports --help and rejects unknown subcommands", async () => {
     const harness = createHarness();
-    await expect(runCli(["farcaster", "--help"], harness.deps)).rejects.toThrow("Usage:");
+    await runCli(["farcaster", "--help"], harness.deps);
+    expect(harness.outputs[0]).toContain("cli farcaster");
     await expect(runCli(["farcaster", "unknown"], harness.deps)).rejects.toThrow(
       "Unknown farcaster subcommand: unknown"
     );

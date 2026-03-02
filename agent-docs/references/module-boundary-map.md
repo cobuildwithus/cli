@@ -4,8 +4,8 @@
 
 ### CLI composition boundary
 
-- Paths: `src/index.ts`, `src/cli.ts`
-- Responsibility: command parsing, usage/help, handler dispatch, result/error output.
+- Paths: `src/index.ts`, `src/cli.ts`, `src/cli-incur.ts`
+- Responsibility: Incur command registration, argv compatibility preprocessing, handler dispatch, and process/test lifecycle adapters.
 - Rule: keep handler orchestration explicit; avoid hidden side effects across handlers.
 
 ### Local config boundary
