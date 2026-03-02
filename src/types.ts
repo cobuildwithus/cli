@@ -1,7 +1,61 @@
+export type SecretRefSource = "env" | "file" | "exec";
+
+export interface SecretRef {
+  source: SecretRefSource;
+  provider: string;
+  id: string;
+}
+
+export type SecretInput = string | SecretRef;
+
+export interface EnvSecretProviderConfig {
+  source: "env";
+  allowlist?: string[];
+}
+
+export type FileSecretProviderMode = "singleValue" | "json";
+
+export interface FileSecretProviderConfig {
+  source: "file";
+  path: string;
+  mode?: FileSecretProviderMode;
+}
+
+export interface ExecSecretProviderConfig {
+  source: "exec";
+  command: string;
+  args?: string[];
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  jsonOnly?: boolean;
+  env?: Record<string, string>;
+  passEnv?: string[];
+}
+
+export type SecretProviderConfig =
+  | EnvSecretProviderConfig
+  | FileSecretProviderConfig
+  | ExecSecretProviderConfig;
+
+export interface CliSecretsConfig {
+  providers?: Record<string, SecretProviderConfig>;
+  defaults?: {
+    env?: string;
+    file?: string;
+    exec?: string;
+  };
+}
+
+export interface CliAuthConfig {
+  tokenRef?: SecretRef;
+}
+
 export interface CliConfig {
   url?: string;
   token?: string;
   agent?: string;
+  auth?: CliAuthConfig;
+  secrets?: CliSecretsConfig;
 }
 
 export interface FsLike {
@@ -29,7 +83,7 @@ export type FetchLike = (
   init?: {
     method?: string;
     headers?: Record<string, string>;
-    body?: string;
+    body?: unknown;
     signal?: AbortSignal;
   }
 ) => Promise<FetchResponseLike>;

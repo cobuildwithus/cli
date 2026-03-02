@@ -36,7 +36,7 @@ This index is the table of contents for durable, repository-local context that a
 
 - Keep AGENTS files short and route-oriented.
 - Update this index whenever docs are added, removed, or moved.
-- Keep docs/tool routing guidance aligned to canonical-first tool execution (`/v1/tool-executions`, optional `/v1/tools`) with documented legacy fallback via interface proxy routes.
+- Keep docs/tool routing guidance aligned to canonical tool execution (`/v1/tool-executions`, optional `/v1/tools`).
 - When CLI docs/tool command surfaces change, keep `skills/cli/SKILL.md` synchronized in the same change.
 - For multi-file/high-risk work, add a plan in `agent-docs/exec-plans/active/`.
 - Keep active plan entries current for in-flight runtime changes.

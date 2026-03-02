@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { configPath, readConfig, writeConfig } from "../config.js";
+import { clearPersistedPatToken, configPath, persistPatToken, readConfig, writeConfig } from "../config.js";
 import { printJson } from "../output.js";
+import { isSecretRef } from "../secrets/ref-contract.js";
+import { resolveSecretRefString } from "../secrets/runtime.js";
 import { buildSetupApprovalUrl, createSetupApprovalSession } from "../setup-approval.js";
 import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
@@ -15,6 +17,10 @@ const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
   "Run setup again and approve a fresh token in the browser.",
+].join(" ");
+const SETUP_AUTH_FAILURE_CLEANUP_WARNING_MESSAGE = [
+  "PAT authorization failed while bootstrapping wallet access.",
+  "Token cleanup may have failed; remove persisted credentials manually before retrying setup.",
 ].join(" ");
 const SETUP_BACKEND_FAILURE_MESSAGE = [
   "Wallet bootstrap failed on the interface server.",
@@ -106,6 +112,20 @@ function isGenericInternalFailure(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
+}
+
+function resolveStoredSetupToken(
+  current: ReturnType<typeof readConfig>,
+  deps: Pick<CliDeps, "fs" | "homedir" | "env">
+): string {
+  if (isSecretRef(current.auth?.tokenRef)) {
+    return resolveSecretRefString({
+      deps,
+      config: current,
+      ref: current.auth.tokenRef,
+    });
+  }
+  return typeof current.token === "string" ? current.token.trim() : "";
 }
 
 function isJsonModeEnabled(value: unknown, deps: Pick<CliDeps, "env">): boolean {
@@ -320,13 +340,6 @@ async function maybeRefocusTerminalWindow(): Promise<void> {
       return;
     }
   }
-}
-
-function clearSavedToken(deps: Pick<CliDeps, "fs" | "homedir">): void {
-  const current = readConfig(deps);
-  if (!current.token) return;
-  const { token: _token, ...next } = current;
-  writeConfig(deps, next);
 }
 
 function printSetupWizardIntro(deps: Pick<CliDeps, "stdout">): void {
@@ -553,7 +566,6 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const interactive = isInteractive(deps) && !jsonMode;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
-  const storedToken = typeof current.token === "string" ? current.token.trim() : "";
   const envUrl = getNonEmptyEnvValue(deps, "COBUILD_CLI_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "COBUILD_CLI_NETWORK");
   const defaultInterfaceUrl =
@@ -582,6 +594,16 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   }
   if (tokenFromOption !== undefined && tokenFromOption.length === 0) {
     throw new Error("Token cannot be empty");
+  }
+  let storedToken = "";
+  if (tokenFromOption === undefined) {
+    try {
+      storedToken = resolveStoredSetupToken(current, deps);
+    } catch (error) {
+      if (!interactive) {
+        throw error;
+      }
+    }
   }
 
   const defaultAgent = current.agent || "default";
@@ -696,7 +718,17 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   /* c8 ignore stop */
 
   const path = configPath(deps);
-  writeConfig(deps, { url, token, agent });
+  const nextConfig = persistPatToken({
+    deps,
+    config: {
+      ...current,
+      url,
+      agent,
+    },
+    token,
+    interfaceUrl: url,
+  });
+  writeConfig(deps, nextConfig);
   if (!jsonMode) {
     deps.stdout(`Saved config: ${path}`);
   }
@@ -708,8 +740,15 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     });
   } catch (error) {
     if (isAuthFailure(error)) {
-      clearSavedToken(deps);
-      throw new Error(SETUP_AUTH_FAILURE_MESSAGE);
+      let cleanupSucceeded = true;
+      try {
+        clearPersistedPatToken(deps);
+      } catch {
+        cleanupSucceeded = false;
+      }
+      throw new Error(
+        cleanupSucceeded ? SETUP_AUTH_FAILURE_MESSAGE : SETUP_AUTH_FAILURE_CLEANUP_WARNING_MESSAGE
+      );
     }
     if (isGenericInternalFailure(error)) {
       throw new Error(SETUP_BACKEND_FAILURE_MESSAGE);

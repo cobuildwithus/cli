@@ -39,7 +39,7 @@
 ## Config and Agent Resolution Flow
 
 1. `readConfig()` loads `~/.cobuild-cli/config.json` if present.
-2. `requireConfig()` enforces presence of interface `url` and `token` for remote commands.
+2. `requireConfig()` enforces presence of interface `url` and resolves PAT from `auth.tokenRef` (or migrates legacy plaintext `token` into a SecretRef).
 3. `resolveAgentKey()` prioritizes command `--agent`, then config `agent`, then `default`.
 
 ## Network Execution Flow
@@ -59,8 +59,7 @@
 2. Validate query is non-empty and `--limit` is an integer in range.
 3. Optionally GET `/v1/tools` to resolve canonical docs tool naming.
 4. POST `/v1/tool-executions` with canonical tool envelope + `{ query, limit? }` input.
-5. If canonical call is unavailable/unsupported, POST `/api/docs/search` fallback.
-6. Normalize output to stable `{ query, count, results }` shape and print JSON.
+5. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
 ## Tools Flow
 
@@ -68,12 +67,7 @@
 2. Validate command-specific argument shape.
 3. Optionally GET `/v1/tools` to resolve canonical tool naming.
 4. POST `/v1/tool-executions` with command-specific canonical tool input.
-5. If canonical call is unavailable/unsupported, POST matching legacy fallback route:
-- `/api/buildbot/tools/get-user`
-- `/api/buildbot/tools/get-cast`
-- `/api/buildbot/tools/cast-preview`
-- `/api/buildbot/tools/cobuild-ai-context`
-6. Normalize output envelopes for stable command JSON shape and print JSON response.
+5. Normalize output envelopes for stable command JSON shape and print JSON response.
 
 ## Idempotency Flow (`send` / `tx`)
 

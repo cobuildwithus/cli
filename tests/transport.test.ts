@@ -127,7 +127,7 @@ describe("transport", () => {
     });
 
     await apiPost(harness.deps, "/v1/tool-executions", {
-      toolName: "getUser",
+      name: "getUser",
       input: { fname: "alice" },
     });
 

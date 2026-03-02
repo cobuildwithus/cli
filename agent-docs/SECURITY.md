@@ -15,7 +15,8 @@
 
 2. Local storage boundary
 
-- `~/.cobuild-cli/config.json` contains sensitive token material.
+- `~/.cobuild-cli/config.json` contains auth/provider metadata and secret references.
+- `~/.cobuild-cli/secrets.json` (default file provider) contains secret values when file-backed storage is used.
 - Config writes should use private dir/file modes (`0700`/`0600`) when supported.
 - Config writes should attempt post-write permission tightening (`chmod`) for dir/file best-effort hardening.
 
@@ -44,6 +45,7 @@
 - Keep token masking in `config show` output.
 - Prefer setup token prompt (hidden input) over shell arguments when interactive.
 - Prefer `--token-file` / `--token-stdin` over `--token` in non-interactive automation.
+- Keep signer private keys out of Farcaster signer metadata files; store signer secrets via SecretRef providers.
 - Avoid logging raw request bodies when they may include sensitive values.
 - Keep endpoint/path construction centralized to reduce injection mistakes.
 - Fail closed on malformed required inputs.

@@ -1,5 +1,12 @@
 import path from "node:path";
 import type { CliConfig, CliDeps } from "./types.js";
+import { buildPatTokenRef, isSecretRef } from "./secrets/ref-contract.js";
+import {
+  deleteSecretRefString,
+  resolveSecretRefString,
+  setSecretRefString,
+  withDefaultSecretProviders,
+} from "./secrets/runtime.js";
 
 function stripDeprecatedChatApiUrl(config: CliConfig): CliConfig {
   if (!Object.prototype.hasOwnProperty.call(config, "chatApiUrl")) {
@@ -8,6 +15,26 @@ function stripDeprecatedChatApiUrl(config: CliConfig): CliConfig {
   const record = config as CliConfig & { chatApiUrl?: unknown };
   const { chatApiUrl: _chatApiUrl, ...rest } = record;
   return rest as CliConfig;
+}
+
+function stripLegacyPlaintextToken(config: CliConfig): CliConfig {
+  if (!Object.prototype.hasOwnProperty.call(config, "token")) {
+    return config;
+  }
+  const record = config as CliConfig & { token?: unknown };
+  const { token: _token, ...rest } = record;
+  return rest as CliConfig;
+}
+
+function stripLegacyPlaintextTokenIfRefExists(config: CliConfig): CliConfig {
+  if (!isSecretRef(config.auth?.tokenRef)) {
+    return config;
+  }
+  return stripLegacyPlaintextToken(config);
+}
+
+function normalizeConfigForWrite(config: CliConfig): CliConfig {
+  return stripLegacyPlaintextTokenIfRefExists(stripDeprecatedChatApiUrl(config));
 }
 
 export function configPath(deps: Pick<CliDeps, "homedir">): string {
@@ -40,7 +67,7 @@ export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): CliConfig {
   const raw = deps.fs.readFileSync(file, "utf8");
   try {
     const parsed = JSON.parse(raw) as CliConfig;
-    if (parsed && typeof parsed === "object") {
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return stripDeprecatedChatApiUrl(parsed);
     }
     return {};
@@ -54,7 +81,7 @@ export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: CliConf
   const dir = path.dirname(file);
   deps.fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-  const payload = JSON.stringify(stripDeprecatedChatApiUrl(next), null, 2);
+  const payload = JSON.stringify(normalizeConfigForWrite(next), null, 2);
 
   if (deps.fs.renameSync) {
     const tmp = path.join(dir, `config.${process.pid}.${Date.now()}.tmp`);
@@ -83,21 +110,130 @@ export interface RequiredConfig {
   agent?: string;
 }
 
-export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir">): RequiredConfig {
+export function persistPatToken(params: {
+  deps: Pick<CliDeps, "fs" | "homedir">;
+  config: CliConfig;
+  token: string;
+  interfaceUrl?: string;
+}): CliConfig {
+  const normalizedToken = params.token.trim();
+  if (!normalizedToken) {
+    throw new Error("Token cannot be empty");
+  }
+
+  const configWithProviders = withDefaultSecretProviders(params.config, params.deps);
+  const tokenRef = buildPatTokenRef(
+    configWithProviders,
+    params.interfaceUrl ?? configWithProviders.url
+  );
+
+  setSecretRefString({
+    deps: params.deps,
+    config: configWithProviders,
+    ref: tokenRef,
+    value: normalizedToken,
+  });
+
+  const next: CliConfig = {
+    ...configWithProviders,
+    auth: {
+      ...(configWithProviders.auth ?? {}),
+      tokenRef,
+    },
+  };
+  return stripLegacyPlaintextToken(next);
+}
+
+export function clearPersistedPatToken(deps: Pick<CliDeps, "fs" | "homedir">): void {
+  const current = readConfig(deps);
+  const hasLegacyToken = typeof current.token === "string" && current.token.trim().length > 0;
+  const hasTokenRef = isSecretRef(current.auth?.tokenRef);
+  if (!hasLegacyToken && !hasTokenRef) {
+    return;
+  }
+
+  const configWithProviders = withDefaultSecretProviders(current, deps);
+
+  if (isSecretRef(configWithProviders.auth?.tokenRef)) {
+    deleteSecretRefString({
+      deps,
+      config: configWithProviders,
+      ref: configWithProviders.auth.tokenRef,
+    });
+  }
+
+  const next: CliConfig = { ...configWithProviders };
+  if (next.auth) {
+    const { tokenRef: _tokenRef, ...restAuth } = next.auth;
+    next.auth = Object.keys(restAuth).length > 0 ? restAuth : undefined;
+  }
+  writeConfig(deps, stripLegacyPlaintextToken(next));
+}
+
+export function resolveMaskedToken(
+  deps: Pick<CliDeps, "fs" | "homedir" | "env">,
+  config: CliConfig
+): string | null {
+  try {
+    if (isSecretRef(config.auth?.tokenRef)) {
+      const token = resolveSecretRefString({
+        deps,
+        config: withDefaultSecretProviders(config, deps),
+        ref: config.auth.tokenRef,
+      });
+      return maskToken(token);
+    }
+  } catch {
+    return null;
+  }
+
+  if (typeof config.token === "string") {
+    return maskToken(config.token.trim());
+  }
+
+  return null;
+}
+
+function resolveRequiredToken(deps: Pick<CliDeps, "fs" | "homedir" | "env">, cfg: CliConfig): string {
+  if (isSecretRef(cfg.auth?.tokenRef)) {
+    return resolveSecretRefString({
+      deps,
+      config: withDefaultSecretProviders(cfg, deps),
+      ref: cfg.auth.tokenRef,
+    });
+  }
+
+  if (typeof cfg.token === "string" && cfg.token.trim().length > 0) {
+    const normalizedLegacyToken = cfg.token.trim();
+    try {
+      const migrated = persistPatToken({
+        deps,
+        config: cfg,
+        token: normalizedLegacyToken,
+        interfaceUrl: cfg.url,
+      });
+      writeConfig(deps, migrated);
+    } catch {
+      // best-effort legacy migration: continue with the valid token for this invocation
+    }
+    return normalizedLegacyToken;
+  }
+
+  throw new Error(
+    "Missing PAT token. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
+  );
+}
+
+export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir" | "env">): RequiredConfig {
   const cfg = readConfig(deps);
   if (!cfg.url) {
     throw new Error(
       "Missing interface API base URL. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
     );
   }
-  if (!cfg.token) {
-    throw new Error(
-      "Missing PAT token. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
-    );
-  }
   return {
     url: cfg.url,
-    token: cfg.token,
+    token: resolveRequiredToken(deps, cfg),
     agent: cfg.agent,
   };
 }

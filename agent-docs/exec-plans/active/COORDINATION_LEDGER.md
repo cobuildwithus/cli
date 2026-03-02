@@ -7,6 +7,7 @@ Use this file only for currently active coding work. Keep it minimal and current
 | Agent/Session | Task | Files in Scope | Symbols (add/rename/delete) | Dependency Notes | Updated (YYYY-MM-DD) |
 | --- | --- | --- | --- | --- | --- |
 | codex-gpt5-shared-review-cli-migration-2026-02-25 | Migrate local review launcher to shared package wrapper/config and install shared dependency | `scripts/chatgpt-oracle-review.sh`, `scripts/review-gpt.config.sh`, `package.json`, lockfile, `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` | replace full local launcher implementation with thin wrapper; add shared package config file | Keep `review:gpt` UX stable while centralizing implementation maintenance | 2026-02-25 |
+| codex-gpt5-farcaster-post-x402-2026-03-02 | Add `farcaster post` direct hub submit with backend x402 payment + local idempotency receipts | `src/commands/farcaster.ts`, `src/usage.ts`, `src/types.ts`, `tests/farcaster-command.test.ts`, `tests/cli.test.ts`, `package.json`, lockfile, `agent-docs/exec-plans/active/2026-03-02-farcaster-post-x402-hub.md`, `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` | add `farcaster post` flow symbols (signer file load, fid resolution, idempotency receipt handling, x402 payment request, hub submit/retry); update farcaster usage text | Depends on interface route `/api/buildbot/farcaster/x402-payment` and keeps existing signup flow unchanged | 2026-03-02 |
 
 ## Rules
 

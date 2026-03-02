@@ -1,9 +1,10 @@
 import { parseArgs } from "node:util";
-import { configPath, maskToken, readConfig, writeConfig } from "../config.js";
+import { configPath, persistPatToken, readConfig, resolveMaskedToken, writeConfig } from "../config.js";
 import { printJson } from "../output.js";
 import { printUsage } from "../usage.js";
 import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
+import { isSecretRef } from "../secrets/ref-contract.js";
 
 const CONFIG_SET_USAGE =
   "Usage: cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
@@ -61,12 +62,17 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
     }
 
     const current = readConfig(deps);
-    const next = { ...current };
+    let next = { ...current };
     if (typeof parsed.values.url === "string") {
       next.url = parsed.values.url;
     }
     if (tokenFromOption !== undefined) {
-      next.token = tokenFromOption;
+      next = persistPatToken({
+        deps,
+        config: next,
+        token: tokenFromOption,
+        interfaceUrl: next.url,
+      });
     }
     if (typeof parsed.values.agent === "string") {
       next.agent = parsed.values.agent;
@@ -81,7 +87,8 @@ export async function handleConfigCommand(args: string[], deps: CliDeps): Promis
     const current = readConfig(deps);
     printJson(deps, {
       interfaceUrl: current.url ?? null,
-      token: maskToken(current.token),
+      token: resolveMaskedToken(deps, current),
+      tokenRef: isSecretRef(current.auth?.tokenRef) ? current.auth.tokenRef : null,
       agent: current.agent ?? null,
       path: configPath(deps),
     });

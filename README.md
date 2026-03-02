@@ -103,6 +103,7 @@ For `setup`, values resolve in this order:
 1. Interface URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
 2. Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
 3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved config token -> interactive browser approval/manual prompt.
+3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved secret ref in config (`auth.tokenRef`) -> interactive browser approval/manual prompt.
 
 For runtime commands:
 
@@ -118,7 +119,7 @@ For runtime commands:
 ## Command Auth Requirements
 
 - No pre-existing token needed: `setup`, `config set`, `config show`, and `--help`.
-- Requires saved config token + interface URL: `wallet`, `docs`, `tools`, `send`, `tx`.
+- Requires saved interface URL + resolvable PAT secret ref: `wallet`, `docs`, `tools`, `send`, `tx`.
 - Usually requires funded wallet: `send`, and most state-changing `tx` calls.
 
 ## Command Reference

@@ -8,6 +8,7 @@ Usage:
   cli config show
   cli wallet [--network <network>] [--agent <key>]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
+  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -28,6 +29,8 @@ Examples:
   cli wallet --network base-sepolia
   cli farcaster signup --agent default
   cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
+  cli farcaster post --text "Ship update"
+  cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will

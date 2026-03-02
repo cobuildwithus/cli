@@ -6,6 +6,40 @@ import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
 
+function expectedDefaultSecretsConfig() {
+  return {
+    providers: {
+      default: {
+        source: "file",
+        path: "/tmp/cli-tests/.cobuild-cli/secrets.json",
+        mode: "json",
+      },
+    },
+    defaults: {
+      env: "default",
+      file: "default",
+      exec: "default",
+    },
+  } as const;
+}
+
+function expectedPatTokenRef(interfaceUrl: string | null) {
+  if (!interfaceUrl) {
+    return {
+      source: "file",
+      provider: "default",
+      id: "/pat:default",
+    } as const;
+  }
+  const origin = new URL(interfaceUrl).origin;
+  const encoded = origin.replaceAll("~", "~0").replaceAll("/", "~1");
+  return {
+    source: "file",
+    provider: "default",
+    id: `/pat:${encoded}`,
+  } as const;
+}
+
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
     ok: status >= 200 && status < 300,
@@ -105,8 +139,11 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://interface.example",
-      token: "bbt_secret",
       agent: "default",
+      auth: {
+        tokenRef: expectedPatTokenRef("https://interface.example"),
+      },
+      secrets: expectedDefaultSecretsConfig(),
     });
   });
 
@@ -161,8 +198,11 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
-      token: "bbt_from_stdin",
       agent: "default",
+      auth: {
+        tokenRef: expectedPatTokenRef("https://api.example"),
+      },
+      secrets: expectedDefaultSecretsConfig(),
     });
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(init?.headers).toMatchObject({
@@ -181,13 +221,124 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
-      token: "bbt_from_file",
       agent: "default",
+      auth: {
+        tokenRef: expectedPatTokenRef("https://api.example"),
+      },
+      secrets: expectedDefaultSecretsConfig(),
     });
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(init?.headers).toMatchObject({
       authorization: "Bearer bbt_from_file",
     });
+  });
+
+  it("setup preserves auth-failure messaging when token cleanup write fails", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder(
+        {
+          ok: false,
+          error: "unauthorized",
+        },
+        401
+      ),
+    });
+
+    let renameCount = 0;
+    const originalRename = harness.deps.fs.renameSync;
+    harness.deps.fs.renameSync = (oldPath, newPath) => {
+      if (newPath === harness.configFile) {
+        renameCount += 1;
+        if (renameCount >= 2) {
+          throw new Error("EIO: simulated cleanup rename failure");
+        }
+      }
+      originalRename?.(oldPath, newPath);
+    };
+
+    await expect(
+      runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], harness.deps)
+    ).rejects.toThrow(
+      "PAT authorization failed while bootstrapping wallet access. Token cleanup may have failed; remove persisted credentials manually before retrying setup."
+    );
+  });
+
+  it("setup reuses persisted tokenRef values in non-interactive mode", async () => {
+    const secretsPath = "/tmp/cli-tests/.cobuild-cli/secrets.json";
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        agent: "default",
+        auth: {
+          tokenRef: expectedPatTokenRef("https://api.example"),
+        },
+        secrets: expectedDefaultSecretsConfig(),
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+    harness.deps.isInteractive = () => false;
+    harness.files.set(
+      secretsPath,
+      JSON.stringify(
+        {
+          "pat:https://api.example": "bbt_saved_secret",
+        },
+        null,
+        2
+      )
+    );
+
+    await runCli(["setup", "--url", "https://api.example"], harness.deps);
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(init?.headers).toMatchObject({
+      authorization: "Bearer bbt_saved_secret",
+    });
+  });
+
+  it("setup honors explicit --token when stored tokenRef cannot be resolved", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        agent: "default",
+        auth: {
+          tokenRef: {
+            source: "env",
+            provider: "default",
+            id: "MISSING_STORED_PAT",
+          },
+        },
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--url", "https://api.example", "--token", "bbt_override"], harness.deps);
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(init?.headers).toMatchObject({
+      authorization: "Bearer bbt_override",
+    });
+  });
+
+  it("setup surfaces stored tokenRef resolution errors in non-interactive mode without token override", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        agent: "default",
+        auth: {
+          tokenRef: {
+            source: "env",
+            provider: "default",
+            id: "MISSING_STORED_PAT",
+          },
+        },
+      },
+    });
+    harness.deps.isInteractive = () => false;
+
+    await expect(runCli(["setup", "--url", "https://api.example"], harness.deps)).rejects.toThrow(
+      'Environment variable "MISSING_STORED_PAT" is missing or empty.'
+    );
   });
 
   it("setup rejects multiple token input sources", async () => {
@@ -237,6 +388,7 @@ describe("setup/config trust-boundary hardening", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
       token: "bbt_from...",
+      tokenRef: expectedPatTokenRef(null),
       agent: null,
       path: harness.configFile,
     });
@@ -252,6 +404,7 @@ describe("setup/config trust-boundary hardening", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
       token: "bbt_from...",
+      tokenRef: expectedPatTokenRef(null),
       agent: null,
       path: harness.configFile,
     });

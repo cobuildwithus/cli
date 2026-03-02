@@ -9,12 +9,13 @@
 ## Endpoint Routing Expectations
 
 - Command transport must always resolve against configured interface API base URL.
-- `docs` and `tools` must execute canonical chat-api tool routes first (`GET /v1/tools` as needed, `POST /v1/tool-executions`) and use legacy interface proxy paths only as compatibility fallback.
+- `docs` and `tools` must execute canonical chat-api tool routes (`GET /v1/tools` as needed, `POST /v1/tool-executions`).
 - Configuration output must only expose interface routing state.
 
 ## Configuration Expectations
 
 - Config writes should preserve `~/.cobuild-cli/config.json` compatibility.
+- Config should store auth/provider metadata and secret references (not plaintext PAT/signer private keys).
 - Missing required auth/config values should fail fast with precise remediation guidance.
 - New config keys should be reflected in command help and docs in the same change set.
 

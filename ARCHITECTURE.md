@@ -1,6 +1,6 @@
 # CLI Architecture
 
-Last updated: 2026-02-25
+Last updated: 2026-03-02
 
 See `README.md` for setup/use context. Canonical docs map: `agent-docs/index.md`.
 
@@ -27,6 +27,7 @@ cli/
   - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap.
   - `config`: local config read/write/inspect.
   - `wallet`: wallet lookup via interface API.
+  - `farcaster`: Farcaster signup + signer registration orchestration (`signup`).
   - `docs`: docs search query via docs search API.
   - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `cobuild-ai-context`).
   - `send`: token transfer execution envelope.
@@ -35,7 +36,8 @@ cli/
 ### Local state runtime
 
 - Config path: `~/.cobuild-cli/config.json`.
-- Stored values: `url` (interface base), `token`, optional `agent`.
+- Stored values: `url` (interface base), optional `agent`, auth metadata (`auth.tokenRef`), and secrets provider metadata (`secrets.*`).
+- Secret values are resolved through SecretRefs (`env|file|exec` sources), with default file-backed storage at `~/.cobuild-cli/secrets.json`.
 - Writes are full-file JSON rewrites with stable formatting.
 - Writes use best-effort private directory/file modes and atomic replace (`tmp` + `rename`) with post-write chmod tightening.
 - Source modules: `src/config.ts`, `src/commands/config.ts`.
@@ -50,7 +52,7 @@ cli/
 - Request dispatch enforces a default network timeout with abort semantics.
 - Custom transport headers cannot override reserved auth/content headers.
 - Response handling normalizes JSON and non-JSON failure payloads with bounded, sanitized error text.
-- Source modules: `src/transport.ts`, `src/commands/{wallet,docs,tools,send,tx}.ts`.
+- Source modules: `src/transport.ts`, `src/commands/{wallet,farcaster,docs,tools,send,tx}.ts`.
 
 ## Layering Model
 
@@ -69,7 +71,7 @@ cli/
 
 2. Config compatibility invariant
 
-- Config file shape uses interface-only routing fields (`url`, `token`, `agent`).
+- Config file shape stores interface routing + auth metadata (`url`, `agent`, `auth.tokenRef`, `secrets` provider/default metadata).
 - Legacy `chatApiUrl` values are ignored and are not persisted on writes.
 - Missing required config fields fail with clear remediation guidance.
 
@@ -78,8 +80,8 @@ cli/
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
+- `farcaster signup` targets `/api/buildbot/farcaster/signup`, generates Ed25519 signer keys locally, and stores the private signer key via secret provider refs (metadata-only signer file).
 - `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via interface base.
-- `docs` and `tools` fall back to legacy interface proxy paths (`/api/docs/search`, `/api/buildbot/tools/*`) only when canonical surfaces are unavailable/unsupported.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -108,7 +110,7 @@ cli/
 6. Accept token source from exactly one input (`--token`, `--token-file`, or `--token-stdin`), otherwise fail.
 7. If token is missing and TTY is available, start one-time localhost callback session.
 8. Open interface `/home` with setup query params for non-secret fields and fragment params for callback/state, then wait for browser approval.
-9. On approval, receive PAT over loopback callback, persist config, and bootstrap wallet.
+9. On approval, receive PAT over loopback callback, persist PAT via secret provider ref, and bootstrap wallet.
 10. If approval fails/times out, fall back to hidden manual token prompt.
 
 ### Wallet lookup flow
@@ -117,6 +119,14 @@ cli/
 2. Resolve agent key from flag or config default.
 3. Build payload and POST `/api/buildbot/wallet`.
 4. Print normalized JSON result.
+
+### Farcaster signup flow
+
+1. Parse `farcaster signup` options (`--agent`, `--recovery`, `--extra-storage`, `--out-dir`).
+2. Resolve agent key from explicit flag or saved config.
+3. Generate an Ed25519 signer keypair locally in the CLI process.
+4. POST signup payload (`signerPublicKey`, optional recovery/storage options) to `/api/buildbot/farcaster/signup`.
+5. On successful completion, persist signer secret locally to a private file and print JSON result.
 
 ### Token send flow
 
@@ -137,19 +147,13 @@ cli/
 1. Parse positional query text and optional `--limit`.
 2. Validate non-empty query and `--limit` integer range.
 3. Resolve docs tool execution against canonical surfaces (`GET /v1/tools` optional, `POST /v1/tool-executions` primary).
-4. If canonical call is unavailable/unsupported, fall back to `POST /api/docs/search`.
-5. Normalize to stable `{ query, count, results }` JSON output.
+4. Normalize to stable `{ query, count, results }` JSON output.
 
 ### Buildbot tools flow
 
 1. Parse `tools` subcommand and validate command-specific flags/arguments.
 2. Resolve canonical tool name (`GET /v1/tools` optional) and execute `POST /v1/tool-executions`.
-3. If canonical call is unavailable/unsupported, fall back to legacy tool proxy route:
-- `/api/buildbot/tools/get-user`
-- `/api/buildbot/tools/get-cast`
-- `/api/buildbot/tools/cast-preview`
-- `/api/buildbot/tools/cobuild-ai-context`
-4. Normalize output envelopes to preserve command JSON shape.
+3. Normalize output envelopes to preserve command JSON shape.
 
 ## Documentation Map
 

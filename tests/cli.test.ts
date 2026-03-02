@@ -10,6 +10,51 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+function expectedPatTokenRef(interfaceUrl: string | null) {
+  if (!interfaceUrl) {
+    return {
+      source: "file",
+      provider: "default",
+      id: "/pat:default",
+    };
+  }
+  const origin = new URL(interfaceUrl).origin;
+  const encoded = origin.replaceAll("~", "~0").replaceAll("/", "~1");
+  return {
+    source: "file",
+    provider: "default",
+    id: `/pat:${encoded}`,
+  };
+}
+
+function expectedDefaultSecretsConfig() {
+  return {
+    providers: {
+      default: {
+        source: "file",
+        path: "/tmp/cli-tests/.cobuild-cli/secrets.json",
+        mode: "json",
+      },
+    },
+    defaults: {
+      env: "default",
+      file: "default",
+      exec: "default",
+    },
+  };
+}
+
+function expectedPersistedSetupConfig(url: string) {
+  return {
+    url,
+    agent: "default",
+    auth: {
+      tokenRef: expectedPatTokenRef(url),
+    },
+    secrets: expectedDefaultSecretsConfig(),
+  };
+}
+
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
     ok: status >= 200 && status < 300,
@@ -77,6 +122,7 @@ describe("cli", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
       token: "abcdefgh...",
+      tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "ops",
       path: harness.configFile,
     });
@@ -116,6 +162,7 @@ describe("cli", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
       token: null,
+      tokenRef: null,
       agent: null,
       path: harness.configFile,
     });
@@ -136,6 +183,7 @@ describe("cli", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
       token: "next-tok...",
+      tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "agent-a",
       path: harness.configFile,
     });
@@ -254,6 +302,7 @@ describe("cli", () => {
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
       agent: "default",
+      secrets: expectedDefaultSecretsConfig(),
     });
   });
 
@@ -279,11 +328,9 @@ describe("cli", () => {
       "Wallet bootstrap failed on the interface server. Check interface logs, run the CLI SQL migrations, and verify CDP env vars are set (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET)."
     );
 
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "https://api.example",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("https://api.example")
+    );
   });
 
   it("setup defaults interface url to co.build in non-interactive mode", async () => {
@@ -295,11 +342,9 @@ describe("cli", () => {
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "https://co.build",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("https://co.build")
+    );
   });
 
   it("setup supports --dev default url for localhost", async () => {
@@ -311,11 +356,9 @@ describe("cli", () => {
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "http://localhost:3000",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("http://localhost:3000")
+    );
   });
 
   it("setup normalizes bare --url host input", async () => {
@@ -327,11 +370,9 @@ describe("cli", () => {
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "http://localhost:3000",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("http://localhost:3000")
+    );
   });
 
   it("setup normalizes bare localhost host input with a path", async () => {
@@ -346,11 +387,9 @@ describe("cli", () => {
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "http://localhost:3000/co.build",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("http://localhost:3000/co.build")
+    );
   });
 
   it("setup normalizes bare public host input to https", async () => {
@@ -362,11 +401,9 @@ describe("cli", () => {
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
-    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
-      url: "https://co.build",
-      token: "bbt_secret",
-      agent: "default",
-    });
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("https://co.build")
+    );
   });
 
   it("setup requires token in non-interactive mode when none is configured", async () => {
@@ -495,13 +532,8 @@ describe("cli", () => {
       "https://interface.example/v1/tool-executions"
     );
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "docsSearch",
       name: "docsSearch",
       input: {
-        query: "setup approval",
-        limit: 5,
-      },
-      arguments: {
         query: "setup approval",
         limit: 5,
       },
@@ -533,10 +565,8 @@ describe("cli", () => {
       "https://api.example/v1/tool-executions"
     );
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "docsSearch",
       name: "docsSearch",
       input: { query: "setup approval" },
-      arguments: { query: "setup approval" },
     });
   });
 
@@ -560,10 +590,8 @@ describe("cli", () => {
       "https://api.example/v1/tool-executions"
     );
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "docsSearch",
       name: "docsSearch",
       input: { query: "--token-stdin" },
-      arguments: { query: "--token-stdin" },
     });
   });
 
@@ -776,15 +804,18 @@ describe("cli", () => {
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "getUser",
       name: "getUser",
       input: { fname: "alice" },
-      arguments: { fname: "alice" },
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       result: { fid: 1, fname: "alice" },
     });
+  });
+
+  it("tools get-user requires a fname", async () => {
+    const harness = createHarness();
+    await expect(runCli(["tools", "get-user"], harness.deps)).rejects.toThrow("Usage:");
   });
 
   it("tools get-cast infers URL type and allows explicit type", async () => {
@@ -806,13 +837,8 @@ describe("cli", () => {
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "getCast",
       name: "getCast",
       input: {
-        identifier: "https://warpcast.com/alice/0xabc",
-        type: "url",
-      },
-      arguments: {
         identifier: "https://warpcast.com/alice/0xabc",
         type: "url",
       },
@@ -826,13 +852,8 @@ describe("cli", () => {
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "getCast",
       name: "getCast",
       input: {
-        identifier: "0xabc",
-        type: "hash",
-      },
-      arguments: {
         identifier: "0xabc",
         type: "hash",
       },
@@ -899,14 +920,8 @@ describe("cli", () => {
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "castPreview",
       name: "castPreview",
       input: {
-        text: "hello",
-        embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
-        parent: "0xparent",
-      },
-      arguments: {
         text: "hello",
         embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
         parent: "0xparent",
@@ -934,29 +949,31 @@ describe("cli", () => {
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      toolName: "getCobuildAiContext",
       name: "getCobuildAiContext",
       input: {},
-      arguments: {},
     });
   });
 
-  it("tools get-user normalizes fallback responses that omit ok", async () => {
+  it("tools get-user normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
-        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+        if (url.endsWith("/v1/tools")) {
           return {
-            ok: false,
-            status: 404,
-            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "getUser" }] }),
           };
         }
-        if (url.endsWith("/api/buildbot/tools/get-user")) {
+        if (url.endsWith("/v1/tool-executions")) {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            name: "getUser",
+            input: { fname: "alice" },
+          });
           return {
             ok: true,
             status: 200,
@@ -978,22 +995,26 @@ describe("cli", () => {
     });
   });
 
-  it("tools get-cast normalizes fallback responses that omit ok", async () => {
+  it("tools get-cast normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
-        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+        if (url.endsWith("/v1/tools")) {
           return {
-            ok: false,
-            status: 404,
-            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "getCast" }] }),
           };
         }
-        if (url.endsWith("/api/buildbot/tools/get-cast")) {
+        if (url.endsWith("/v1/tool-executions")) {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            name: "getCast",
+            input: { identifier: "0xabc", type: "hash" },
+          });
           return {
             ok: true,
             status: 200,
@@ -1015,22 +1036,26 @@ describe("cli", () => {
     });
   });
 
-  it("tools cast-preview normalizes fallback responses that omit ok", async () => {
+  it("tools cast-preview normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
-        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+        if (url.endsWith("/v1/tools")) {
           return {
-            ok: false,
-            status: 404,
-            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "castPreview" }] }),
           };
         }
-        if (url.endsWith("/api/buildbot/tools/cast-preview")) {
+        if (url.endsWith("/v1/tool-executions")) {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            name: "castPreview",
+            input: { text: "hello" },
+          });
           return {
             ok: true,
             status: 200,
@@ -1052,22 +1077,26 @@ describe("cli", () => {
     });
   });
 
-  it("tools cobuild-ai-context normalizes fallback responses that omit ok", async () => {
+  it("tools cobuild-ai-context normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
-        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+        if (url.endsWith("/v1/tools")) {
           return {
-            ok: false,
-            status: 404,
-            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "getCobuildAiContext" }] }),
           };
         }
-        if (url.endsWith("/api/buildbot/tools/cobuild-ai-context")) {
+        if (url.endsWith("/v1/tool-executions")) {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            name: "getCobuildAiContext",
+            input: {},
+          });
           return {
             ok: true,
             status: 200,
@@ -1089,7 +1118,7 @@ describe("cli", () => {
     });
   });
 
-  it("docs falls back to legacy docs endpoint when canonical tool routes are unavailable", async () => {
+  it("docs errors when canonical tool routes are unavailable", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1104,16 +1133,36 @@ describe("cli", () => {
             text: async () => JSON.stringify({ ok: false, error: "Not found" }),
           };
         }
-        if (url.endsWith("/api/docs/search")) {
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await expect(runCli(["docs", "setup", "approval"], harness.deps)).rejects.toThrow(
+      "Request failed (status 404): Not found"
+    );
+
+    expect(
+      harness.fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/docs/search"))
+    ).toBe(false);
+  });
+
+  it("tools get-user errors when canonical tool routes are unavailable", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
           return {
-            ok: true,
-            status: 200,
-            text: async () =>
-              JSON.stringify({
-                query: "setup approval",
-                count: 1,
-                results: [{ filename: "self-hosted/chat-api.mdx" }],
-              }),
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
           };
         }
         return {
@@ -1124,61 +1173,227 @@ describe("cli", () => {
       },
     });
 
-    await runCli(["docs", "setup", "approval"], harness.deps);
-
-    const [, legacyInit] = findFetchCallByUrl(
-      harness.fetchMock.mock.calls,
-      "https://interface.example/api/docs/search"
+    await expect(runCli(["tools", "get-user", "alice"], harness.deps)).rejects.toThrow(
+      "Request failed (status 404): Not found"
     );
-    expect(JSON.parse(String(legacyInit?.body))).toEqual({ query: "setup approval" });
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      query: "setup approval",
-      count: 1,
-      results: [{ filename: "self-hosted/chat-api.mdx" }],
+
+    expect(
+      harness.fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/buildbot/tools/get-user")
+      )
+    ).toBe(false);
+  });
+
+  it("farcaster command requires a subcommand", async () => {
+    const harness = createHarness();
+    await expect(runCli(["farcaster"], harness.deps)).rejects.toThrow(
+      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify]"
+    );
+  });
+
+  it("farcaster command supports --help and rejects unknown subcommands", async () => {
+    const harness = createHarness();
+    await expect(runCli(["farcaster", "--help"], harness.deps)).rejects.toThrow("Usage:");
+    await expect(runCli(["farcaster", "unknown"], harness.deps)).rejects.toThrow(
+      "Unknown farcaster subcommand: unknown"
+    );
+  });
+
+  it("farcaster signup posts signer key and stores signer secret on success", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        result: {
+          status: "complete",
+          network: "optimism",
+          ownerAddress: "0x0000000000000000000000000000000000000001",
+          custodyAddress: "0x0000000000000000000000000000000000000002",
+          recoveryAddress: "0x0000000000000000000000000000000000000001",
+          fid: "123",
+          idGatewayPriceWei: "7000000000000000",
+          registerTxHash: "0xregister",
+          addKeyTxHash: "0xadd",
+        },
+      }),
+    });
+
+    await runCli(["farcaster", "signup"], harness.deps);
+
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/buildbot/farcaster/signup");
+    const body = JSON.parse(String(init?.body)) as {
+      signerPublicKey: string;
+      recoveryAddress?: string;
+    };
+    expect(body.signerPublicKey).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(body.recoveryAddress).toBeUndefined();
+
+    const output = parseLastJsonOutput(harness.outputs) as {
+      signer?: { publicKey?: string; saved?: boolean; file?: string };
+    };
+    expect(output.signer).toEqual({
+      publicKey: body.signerPublicKey,
+      saved: true,
+      file: "ed25519-signer.json",
+    });
+
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/stored-agent/farcaster/ed25519-signer.json";
+    const secretsPath = "/tmp/cli-tests/.cobuild-cli/secrets.json";
+    const savedSigner = JSON.parse(harness.files.get(signerPath) ?? "{}") as {
+      publicKey?: string;
+      signerRef?: { source?: string; provider?: string; id?: string };
+      fid?: string;
+      network?: string;
+    };
+    expect(savedSigner.publicKey).toBe(body.signerPublicKey);
+    expect(savedSigner.signerRef).toEqual({
+      source: "file",
+      provider: "default",
+      id: "/farcaster:ed25519:stored-agent:signer",
+    });
+    expect(savedSigner.fid).toBe("123");
+    expect(savedSigner.network).toBe("optimism");
+    expect(JSON.parse(harness.files.get(secretsPath) ?? "{}")).toMatchObject({
+      "farcaster:ed25519:stored-agent:signer": expect.stringMatching(/^0x[0-9a-f]{64}$/),
     });
   });
 
-  it("tools get-user falls back to legacy endpoint when canonical tool routes are unavailable", async () => {
+  it("farcaster signup supports recovery and does not persist signer on needs_funding", async () => {
     const harness = createHarness({
       config: {
-        url: "https://interface.example",
+        url: "https://api.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
-        const url = String(input);
-        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
-          return {
-            ok: false,
-            status: 404,
-            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
-          };
-        }
-        if (url.endsWith("/api/buildbot/tools/get-user")) {
-          return {
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify({ ok: true, result: { fid: 1, fname: "alice" } }),
-          };
-        }
-        return {
-          ok: false,
-          status: 500,
-          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
-        };
-      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        result: {
+          status: "needs_funding",
+          network: "optimism",
+          ownerAddress: "0x0000000000000000000000000000000000000001",
+          custodyAddress: "0x0000000000000000000000000000000000000002",
+          recoveryAddress: "0x0000000000000000000000000000000000000009",
+          idGatewayPriceWei: "7000000000000000",
+          idGatewayPriceEth: "0.007",
+          balanceWei: "0",
+          balanceEth: "0",
+          requiredWei: "7200000000000000",
+          requiredEth: "0.0072",
+        },
+      }),
     });
 
-    await runCli(["tools", "get-user", "alice"], harness.deps);
-
-    const [, legacyInit] = findFetchCallByUrl(
-      harness.fetchMock.mock.calls,
-      "https://interface.example/api/buildbot/tools/get-user"
+    await runCli(
+      [
+        "farcaster",
+        "signup",
+        "--recovery",
+        "0x0000000000000000000000000000000000000009",
+      ],
+      harness.deps
     );
-    expect(JSON.parse(String(legacyInit?.body))).toEqual({ fname: "alice" });
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      ok: true,
-      result: { fid: 1, fname: "alice" },
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as {
+      signerPublicKey: string;
+      recoveryAddress?: string;
+    };
+    expect(body.recoveryAddress).toBe("0x0000000000000000000000000000000000000009");
+
+    const output = parseLastJsonOutput(harness.outputs) as {
+      signer?: { publicKey?: string; saved?: boolean; file?: string };
+    };
+    expect(output.signer).toEqual({
+      publicKey: body.signerPublicKey,
+      saved: false,
+      file: "ed25519-signer.json",
     });
+
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/ed25519-signer.json";
+    expect(harness.files.get(signerPath)).toBeUndefined();
+  });
+
+  it("farcaster signup validates extra storage and recovery address", async () => {
+    const harness = createHarness();
+    await expect(
+      runCli(["farcaster", "signup", "--extra-storage", "-1"], harness.deps)
+    ).rejects.toThrow("--extra-storage must be a non-negative integer");
+    await expect(
+      runCli(["farcaster", "signup", "--recovery", "0xdeadbeef"], harness.deps)
+    ).rejects.toThrow("--recovery must be a 20-byte hex address");
+  });
+
+  it("farcaster signup passes extra storage and custom signer output directory", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        result: {
+          status: "complete",
+          network: "optimism",
+          ownerAddress: "0x0000000000000000000000000000000000000001",
+          custodyAddress: "0x0000000000000000000000000000000000000002",
+          recoveryAddress: "0x0000000000000000000000000000000000000001",
+        },
+      }),
+    });
+
+    await runCli(
+      [
+        "farcaster",
+        "signup",
+        "--extra-storage",
+        "2",
+        "--out-dir",
+        "/tmp/cli-tests/custom-farcaster",
+      ],
+      harness.deps
+    );
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as {
+      signerPublicKey: string;
+      extraStorage?: string;
+    };
+    expect(body.extraStorage).toBe("2");
+
+    const signerPath = "/tmp/cli-tests/custom-farcaster/ed25519-signer.json";
+    expect(harness.files.get(signerPath)).toBeTruthy();
+  });
+
+  it("farcaster signup validates out-dir and reports existing fid/custody on 409", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder(
+        {
+          ok: false,
+          error: "Farcaster account already exists for this agent wallet (fid: 77).",
+          details: {
+            fid: "77",
+            custodyAddress: "0x0000000000000000000000000000000000000002",
+          },
+        },
+        409
+      ),
+    });
+
+    await expect(
+      runCli(["farcaster", "signup", "--out-dir", "   "], createHarness().deps)
+    ).rejects.toThrow("--out-dir cannot be empty");
+
+    await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
+      "Farcaster account already exists for this agent wallet (fid=77, custodyAddress=0x0000000000000000000000000000000000000002). Use a different --agent key for a new Farcaster signup."
+    );
   });
 
   it("send validates required positionals", async () => {

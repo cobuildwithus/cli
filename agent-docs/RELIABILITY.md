@@ -2,7 +2,7 @@
 
 ## Core Invariants
 
-1. Required config (`url`, `token`) is validated before network execution.
+1. Required config (`url`, resolved PAT via SecretRef or migrated legacy token) is validated before network execution.
 2. Command payload contracts remain stable and explicit.
 3. API failures normalize to actionable, bounded CLI errors.
 4. Local config writes are atomic full rewrites with deterministic JSON formatting.
@@ -23,35 +23,39 @@
 
 - CLI exits with clear remediation (`cli setup` recommended).
 
-2. Invalid command usage
+2. Unresolved secret refs
+
+- CLI fails fast with explicit provider/ref context when a required secret cannot be resolved.
+
+3. Invalid command usage
 
 - CLI exits with explicit usage guidance for the affected command.
 
-3. Remote API non-2xx or `{ ok: false }`
+4. Remote API non-2xx or `{ ok: false }`
 
 - CLI surfaces normalized error message without stack traces or token leaks.
 
-4. Non-JSON API response
+5. Non-JSON API response
 
 - CLI wraps payload text into bounded error handling path.
 
-5. Insecure base URL configuration
+6. Insecure base URL configuration
 
 - Non-loopback `http` base URLs and credential-bearing URLs fail before request dispatch.
 
-6. Invalid `--decimals`
+7. Invalid `--decimals`
 
 - CLI rejects non-integer values and out-of-range values outside `0..255`.
 
-7. Invalid idempotency key
+8. Invalid idempotency key
 
 - CLI rejects non-UUID-v4 `--idempotency-key` values before network calls.
 
-8. Invalid transfer/tx irreversible input values
+9. Invalid transfer/tx irreversible input values
 
 - CLI rejects malformed destination addresses, malformed tx calldata, and malformed amount/value decimals before network calls.
 
-9. Hung network call
+10. Hung network call
 
 - Transport aborts request after default timeout and returns actionable timeout error text.
 
@@ -66,6 +70,7 @@
 - Missing-config command failures.
 - Endpoint construction for base URL and path normalization.
 - Command payload shape for wallet/send/tx.
+- SecretRef resolution and legacy plaintext token migration semantics.
 - Error normalization for non-JSON and `{ ok: false }` responses.
 - Setup/config token-source exclusivity (`--token`, `--token-file`, `--token-stdin`).
 - Secure base URL validation and pre-request rejection semantics.
