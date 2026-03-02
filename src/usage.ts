@@ -8,7 +8,7 @@ Usage:
   cli config show
   cli wallet [--network <network>] [--agent <key>]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
-  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
+  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
   cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
   cli farcaster x402 status [--agent <key>]
   cli docs <query> [--limit <n>]
@@ -34,6 +34,7 @@ Examples:
   cli farcaster x402 init --agent default --mode local-generate
   cli farcaster x402 status --agent default
   cli farcaster post --text "Ship update"
+  cli farcaster post --text "Replying on thread" --reply-to 123:0x1111111111111111111111111111111111111111
   cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Message } from "@farcaster/hub-nodejs";
 import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
 
@@ -1442,6 +1443,12 @@ describe("farcaster command", () => {
     await expect(runCli(["farcaster", "post", "--text", "ok", "--fid", "abc"], harness.deps)).rejects.toThrow(
       "--fid must be a positive integer"
     );
+    await expect(
+      runCli(["farcaster", "post", "--text", "ok", "--reply-to", "not-a-reply-target"], harness.deps)
+    ).rejects.toThrow("--reply-to must be in the format <parent-fid:0x-parent-hash>");
+    await expect(
+      runCli(["farcaster", "post", "--text", "ok", "--reply-to", "123:0xdeadbeef"], harness.deps)
+    ).rejects.toThrow("--reply-to parent hash must be 0x + 40 hex chars");
 
     const tooLong = "a".repeat(321);
     await expect(runCli(["farcaster", "post", "--text", tooLong], harness.deps)).rejects.toThrow(
@@ -1545,6 +1552,88 @@ describe("farcaster command", () => {
     };
     expect(output.result?.fid).toBe(456);
     expect(output.result?.hubResponse).toBe("accepted");
+  });
+
+  it("supports reply posts through --reply-to and encodes parentCastId", async () => {
+    const signerPath = "/tmp/cli-tests/custom-reply-signer.json";
+    const idempotencyKey = "13bf2cd4-1e2e-4ec9-b97d-5fc816a993be";
+    const parentHashHex = `0x${"a".repeat(40)}`;
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                ok: true,
+                result: {
+                  xPayment: "reply-payment",
+                  agentKey: "default",
+                },
+              }),
+          };
+        }
+        if (url === "https://hub-api.neynar.com/v1/submitMessage") {
+          const body = init?.body;
+          const bytes = body instanceof Uint8Array ? body : new Uint8Array(Buffer.from(String(body ?? ""), "utf8"));
+          const message = Message.decode(bytes);
+          expect(message.data?.castAddBody?.parentCastId?.fid).toBe(789);
+          expect(Buffer.from(message.data?.castAddBody?.parentCastId?.hash ?? []).toString("hex")).toBe(
+            "a".repeat(40)
+          );
+          return { ok: true, status: 200, text: async () => "accepted" };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+    setHostedX402PayerConfig(harness);
+
+    harness.files.set(
+      signerPath,
+      JSON.stringify(
+        {
+          version: 1,
+          algorithm: "ed25519",
+          publicKey: `0x${"11".repeat(32)}`,
+          privateKeyHex: `0x${"22".repeat(32)}`,
+        },
+        null,
+        2
+      )
+    );
+
+    await runCli(
+      [
+        "farcaster",
+        "post",
+        "--text",
+        "Replying on thread",
+        "--fid",
+        "456",
+        "--reply-to",
+        `789:${parentHashHex}`,
+        "--signer-file",
+        signerPath,
+        "--idempotency-key",
+        idempotencyKey,
+      ],
+      harness.deps
+    );
+
+    const output = parseLastJsonOutput(harness.outputs) as {
+      result?: {
+        parentAuthorFid?: number;
+        parentHashHex?: string;
+      };
+    };
+    expect(output.result?.parentAuthorFid).toBe(789);
+    expect(output.result?.parentHashHex).toBe(parentHashHex);
   });
 
   it("migrates legacy plaintext signer file to signerRef storage during post", async () => {

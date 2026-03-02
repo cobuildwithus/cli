@@ -32,7 +32,7 @@ import {
 
 const FARCASTER_USAGE = `Usage:
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
-  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
+  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
   cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
   cli farcaster x402 status [--agent <key>]`;
 const SIGNER_FILE_NAME = "ed25519-signer.json";
@@ -46,6 +46,7 @@ const HUB_VERIFY_TIMEOUT_MS = 10_000;
 const VERIFY_DELAY_MS = 1_200;
 const VERIFY_POLL_MAX_ATTEMPTS = 5;
 const FARCASTER_MAX_CAST_TEXT_BYTES = 320;
+const FARCASTER_CAST_HASH_HEX_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const POST_RECEIPT_VERSION = 1;
 const X402_VERSION = 1;
 const X402_SCHEME = "exact";
@@ -69,6 +70,10 @@ interface MaskingWriter extends Writable {
 }
 
 type HexString = `0x${string}`;
+type FarcasterReplyTarget = {
+  parentAuthorFid: number;
+  parentHashHex: HexString;
+};
 
 type StoredFarcasterSigner = {
   publicKey: HexString;
@@ -103,6 +108,7 @@ type FarcasterPostReceipt = {
     text: string;
     verify: boolean;
     verifyMode?: "once" | "poll";
+    replyTo?: FarcasterReplyTarget;
   };
   castHashHex: HexString;
   messageBytesBase64: string;
@@ -210,6 +216,37 @@ function parseExtraStorage(value: string | undefined): string | undefined {
     throw new Error("--extra-storage must be a non-negative integer");
   }
   return trimmed;
+}
+
+function parseReplyToOption(value: string | undefined): FarcasterReplyTarget | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("--reply-to cannot be empty");
+  }
+
+  const separator = trimmed.indexOf(":");
+  if (separator <= 0 || separator === trimmed.length - 1) {
+    throw new Error("--reply-to must be in the format <parent-fid:0x-parent-hash>");
+  }
+
+  const parentFidRaw = trimmed.slice(0, separator).trim();
+  const parentHashRaw = trimmed.slice(separator + 1).trim().toLowerCase();
+  if (!/^\d+$/.test(parentFidRaw)) {
+    throw new Error("--reply-to parent fid must be a positive integer");
+  }
+  const parentAuthorFid = Number.parseInt(parentFidRaw, 10);
+  if (!Number.isSafeInteger(parentAuthorFid) || parentAuthorFid <= 0) {
+    throw new Error("--reply-to parent fid must be a positive integer");
+  }
+  if (!FARCASTER_CAST_HASH_HEX_PATTERN.test(parentHashRaw)) {
+    throw new Error("--reply-to parent hash must be 0x + 40 hex chars");
+  }
+
+  return {
+    parentAuthorFid,
+    parentHashHex: parentHashRaw as HexString,
+  };
 }
 
 function resolveSignerOutputDirectory(params: {
@@ -997,6 +1034,17 @@ function isHexLike(value: unknown): value is HexString {
   return typeof value === "string" && /^0x[0-9a-fA-F]+$/.test(value);
 }
 
+function isFarcasterReplyTarget(value: unknown): value is FarcasterReplyTarget {
+  const record = asRecord(value);
+  return (
+    typeof record.parentAuthorFid === "number" &&
+    Number.isSafeInteger(record.parentAuthorFid) &&
+    record.parentAuthorFid > 0 &&
+    typeof record.parentHashHex === "string" &&
+    FARCASTER_CAST_HASH_HEX_PATTERN.test(record.parentHashHex)
+  );
+}
+
 function isFarcasterPostVerifyResult(value: unknown): value is FarcasterPostVerifyResult {
   const record = asRecord(value);
   return (
@@ -1054,6 +1102,7 @@ function isCurrentFarcasterPostReceipt(value: unknown): value is FarcasterPostRe
     (request.verifyMode === undefined ||
       request.verifyMode === "once" ||
       request.verifyMode === "poll") &&
+    (request.replyTo === undefined || isFarcasterReplyTarget(request.replyTo)) &&
     isHexLike(record.castHashHex) &&
     typeof record.messageBytesBase64 === "string" &&
     typeof record.savedAt === "string"
@@ -1163,15 +1212,19 @@ function assertPostReceiptMatch(params: {
   text: string;
   verify: boolean;
   verifyMode: X402VerifyMode;
+  replyTo?: FarcasterReplyTarget;
 }): void {
   const receiptVerify = params.receipt.request.verify ?? false;
   const receiptVerifyMode = params.receipt.request.verifyMode ?? (receiptVerify ? "once" : "none");
+  const expectedReplyTo = params.replyTo ?? null;
+  const receiptReplyTo = params.receipt.request.replyTo ?? null;
   if (
     params.receipt.idempotencyKey !== params.idempotencyKey ||
     params.receipt.request.fid !== params.fid ||
     params.receipt.request.text !== params.text ||
     receiptVerify !== params.verify ||
-    receiptVerifyMode !== params.verifyMode
+    receiptVerifyMode !== params.verifyMode ||
+    JSON.stringify(receiptReplyTo) !== JSON.stringify(expectedReplyTo)
   ) {
     throw new Error(
       "Idempotency key was already used for a different Farcaster post request."
@@ -1224,10 +1277,17 @@ function buildPostResultPayload(params: {
   castHashHex: HexString;
   result: FarcasterPostReceiptResult;
   fallbackAgentKey: string;
+  replyTo?: FarcasterReplyTarget;
 }): Record<string, unknown> {
   return {
     fid: params.fid,
     text: params.text,
+    ...(params.replyTo
+      ? {
+          parentAuthorFid: params.replyTo.parentAuthorFid,
+          parentHashHex: params.replyTo.parentHashHex,
+        }
+      : {}),
     castHashHex: params.castHashHex,
     hubResponseStatus: params.result.hubResponseStatus,
     hubResponse: parseHubResponseBody(params.result.hubResponseText),
@@ -1308,6 +1368,7 @@ async function buildCastMessage(params: {
   fid: number;
   text: string;
   signerPrivateKeyHex: HexString;
+  replyTo?: FarcasterReplyTarget;
 }): Promise<{ messageBytes: Uint8Array; castHashHex: HexString }> {
   const signer = new NobleEd25519Signer(hexToBytes(params.signerPrivateKeyHex));
   const castResult = await makeCastAdd(
@@ -1318,6 +1379,14 @@ async function buildCastMessage(params: {
       mentions: [],
       mentionsPositions: [],
       type: CastType.CAST,
+      ...(params.replyTo
+        ? {
+            parentCastId: {
+              fid: params.replyTo.parentAuthorFid,
+              hash: hexToBytes(params.replyTo.parentHashHex),
+            },
+          }
+        : {}),
     },
     {
       fid: params.fid,
@@ -1879,6 +1948,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       agent: { type: "string" },
       text: { type: "string" },
       fid: { type: "string" },
+      "reply-to": { type: "string" },
       "signer-file": { type: "string" },
       "idempotency-key": { type: "string" },
       verify: { type: "string" },
@@ -1898,6 +1968,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
   const idempotencyKey = resolveExecIdempotencyKey(parsed.values["idempotency-key"], deps);
   const verifyMode = resolveVerifyMode(parsed.values.verify);
   const verify = verifyMode !== "none";
+  const replyTo = parseReplyToOption(parsed.values["reply-to"]);
   const signerFile = normalizeSignerFileOption(parsed.values["signer-file"]);
   const signerFilePath = resolveSignerFilePath({
     deps,
@@ -1932,6 +2003,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       text,
       verify,
       verifyMode,
+      replyTo,
     });
     if (existingReceipt.state === "succeeded" && existingReceipt.result) {
       printJson(deps, {
@@ -1944,6 +2016,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
           castHashHex: existingReceipt.castHashHex,
           result: existingReceipt.result,
           fallbackAgentKey: agentKey,
+          replyTo: existingReceipt.request.replyTo,
         }),
       });
       return;
@@ -1979,6 +2052,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
         fid,
         text,
         signerPrivateKeyHex: signer.privateKeyHex,
+        replyTo,
       });
     } catch (error) {
       throwWithIdempotencyKey(error, idempotencyKey);
@@ -1999,6 +2073,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
           fid,
           text,
           verify,
+          ...(replyTo ? { replyTo } : {}),
           ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
         },
         castHashHex,
@@ -2066,6 +2141,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
         fid,
         text,
         verify,
+        ...(replyTo ? { replyTo } : {}),
         ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
       },
       castHashHex,
@@ -2086,6 +2162,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       castHashHex,
       result,
       fallbackAgentKey: agentKey,
+      replyTo,
     }),
   });
 }

@@ -1187,7 +1187,7 @@ describe("cli", () => {
   it("farcaster command requires a subcommand", async () => {
     const harness = createHarness();
     await expect(runCli(["farcaster"], harness.deps)).rejects.toThrow(
-      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]\n  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli farcaster x402 status [--agent <key>]"
+      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]\n  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli farcaster x402 status [--agent <key>]"
     );
   });
 
