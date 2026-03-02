@@ -53,8 +53,9 @@ const X402_SCHEME = "exact";
 const X402_NETWORK = "base";
 const X402_TOKEN_SYMBOL = "usdc";
 const X402_USDC_CONTRACT = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-const X402_PAY_TO_ADDRESS = "0xa6a8736f18f383f1cc2d938576933ee5cd359f24";
+const X402_PAY_TO_ADDRESS = "0xA6a8736f18f383f1cc2d938576933E5eA7Df01A1".toLowerCase();
 const X402_VALUE_MICRO_USDC = "1000";
+const X402_VALUE_USDC_DISPLAY = "0.001";
 const BASE_CHAIN_ID = 8453;
 const USDC_EIP712_DOMAIN_NAME = "USD Coin";
 const USDC_EIP712_DOMAIN_VERSION = "2";
@@ -1416,6 +1417,9 @@ async function buildLocalX402PaymentHeader(params: {
   privateKeyHex: HexString;
 }): Promise<X402PaymentHeader> {
   const account = privateKeyToAccount(params.privateKeyHex);
+  if (params.payerAddress.toLowerCase() !== account.address.toLowerCase()) {
+    throw new Error("Local payer config mismatch: payerAddress does not match private key.");
+  }
   const nonce = buildAuthorizationNonce();
   const validBefore = Math.floor(Date.now() / 1000) + X402_AUTH_TTL_SECONDS;
   const authorization = {
@@ -1539,7 +1543,7 @@ async function fetchCastById(params: {
   payer: ResolvedPostPayer;
   fid: number;
   castHashHex: HexString;
-}): Promise<{ status: number; body: string }> {
+}): Promise<{ status: number; body: string; usedPaidVerificationCall: boolean }> {
   const castByIdUrl = new URL(NEYNAR_HUB_CAST_BY_ID_URL);
   castByIdUrl.searchParams.set("fid", String(params.fid));
   castByIdUrl.searchParams.set("hash", params.castHashHex);
@@ -1561,6 +1565,7 @@ async function fetchCastById(params: {
     return {
       status: unauthenticated.status,
       body: unauthenticatedBody,
+      usedPaidVerificationCall: false,
     };
   }
 
@@ -1585,11 +1590,12 @@ async function fetchCastById(params: {
   return {
     status: paidResponse.status,
     body: await paidResponse.text(),
+    usedPaidVerificationCall: true,
   };
 }
 
 async function verifyCastInclusion(params: {
-  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir" | "stderr">;
   agentKey: string;
   payer: ResolvedPostPayer;
   fid: number;
@@ -1597,6 +1603,7 @@ async function verifyCastInclusion(params: {
   mode: X402VerifyMode;
 }): Promise<FarcasterPostVerifyResult> {
   const maxAttempts = params.mode === "poll" ? VERIFY_POLL_MAX_ATTEMPTS : 1;
+  let paidVerificationWarningShown = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     await waitForMs(VERIFY_DELAY_MS);
     const verification = await fetchCastById({
@@ -1606,6 +1613,12 @@ async function verifyCastInclusion(params: {
       fid: params.fid,
       castHashHex: params.castHashHex,
     });
+    if (verification.usedPaidVerificationCall && !paidVerificationWarningShown) {
+      paidVerificationWarningShown = true;
+      params.deps.stderr(
+        `Verification reads hit Neynar hub paywall (HTTP 402); verification calls may cost ${X402_VALUE_USDC_DISPLAY} USDC each.`
+      );
+    }
 
     if (verification.status >= 200 && verification.status < 300) {
       return {
@@ -2034,6 +2047,11 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     agentKey,
     payerConfig,
   });
+  if (verifyMode === "poll") {
+    deps.stderr(
+      `Verification polling may incur up to ${VERIFY_POLL_MAX_ATTEMPTS} additional paid hub calls (${X402_VALUE_USDC_DISPLAY} USDC each).`
+    );
+  }
 
   const resumePending = existingReceipt?.state === "pending" ? existingReceipt : null;
   let castHashHex: HexString;

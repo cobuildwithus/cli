@@ -437,11 +437,14 @@ describe("farcaster command", () => {
           expect(xPayment.length).toBeGreaterThan(0);
           const decoded = JSON.parse(Buffer.from(xPayment, "base64").toString("utf8")) as {
             network?: string;
-            payload?: { authorization?: { value?: string; from?: string } };
+            payload?: { authorization?: { value?: string; from?: string; to?: string } };
           };
           expect(decoded.network).toBe("base");
           expect(decoded.payload?.authorization?.value).toBe("1000");
           expect(decoded.payload?.authorization?.from).toMatch(/^0x[0-9a-fA-F]{40}$/);
+          expect(decoded.payload?.authorization?.to).toBe(
+            "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1"
+          );
           return {
             ok: true,
             status: 200,
@@ -912,6 +915,11 @@ describe("farcaster command", () => {
       included: true,
       attempts: 1,
     });
+    expect(
+      harness.errors.some((line) =>
+        line.includes("Verification reads hit Neynar hub paywall (HTTP 402);")
+      )
+    ).toBe(false);
   });
 
   it("retries verification reads in poll mode until inclusion is observed", async () => {
@@ -980,6 +988,11 @@ describe("farcaster command", () => {
       },
     });
     expect(verifyCalls).toBe(2);
+    expect(
+      harness.errors.some((line) =>
+        line.includes("Verification polling may incur up to 5 additional paid hub calls (0.001 USDC each).")
+      )
+    ).toBe(true);
   });
 
   it("fails poll verification after max 404 checks", async () => {
@@ -1182,6 +1195,13 @@ describe("farcaster command", () => {
 
     await runCli(["farcaster", "post", "--text", "Ship update", "--verify=once"], harness.deps);
     expect(castByIdCalls).toBe(2);
+    expect(
+      harness.errors.some((line) =>
+        line.includes(
+          "Verification reads hit Neynar hub paywall (HTTP 402); verification calls may cost 0.001 USDC each."
+        )
+      )
+    ).toBe(true);
   });
 
   it("replays successful post response when the same idempotency key is reused", async () => {

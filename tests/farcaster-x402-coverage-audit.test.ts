@@ -166,4 +166,85 @@ describe("farcaster x402 coverage audit", () => {
       `Cast was not observed in Neynar hub read after one delayed verification check (idempotency key: ${idempotencyKey})`
     );
   });
+
+  it("warns on verification paywall and uses hosted payment header when cast reads return 402", async () => {
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/ed25519-signer.json";
+    let castByIdCalls = 0;
+    let x402Calls = 0;
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
+          x402Calls += 1;
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                ok: true,
+                result: {
+                  xPayment: "payment-verify-hosted-402",
+                  agentKey: "default",
+                },
+              }),
+          };
+        }
+        if (url === "https://hub-api.neynar.com/v1/submitMessage") {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true }),
+          };
+        }
+        if (url.startsWith("https://hub-api.neynar.com/v1/castById")) {
+          castByIdCalls += 1;
+          if (castByIdCalls === 1) {
+            return {
+              ok: false,
+              status: 402,
+              text: async () => "payment required",
+            };
+          }
+          expect((init?.headers as Record<string, string>)["X-PAYMENT"]).toBe("payment-verify-hosted-402");
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+    setHostedX402PayerConfig(harness, "0x0000000000000000000000000000000000000009");
+    harness.files.set(
+      signerPath,
+      JSON.stringify(
+        {
+          version: 1,
+          algorithm: "ed25519",
+          publicKey: `0x${"11".repeat(32)}`,
+          privateKeyHex: `0x${"22".repeat(32)}`,
+          fid: "123",
+        },
+        null,
+        2
+      )
+    );
+
+    await runCli(["farcaster", "post", "--text", "Ship update", "--verify=once"], harness.deps);
+
+    expect(castByIdCalls).toBe(2);
+    expect(x402Calls).toBe(2);
+    expect(
+      harness.errors.some((line) =>
+        line.includes(
+          "Verification reads hit Neynar hub paywall (HTTP 402); verification calls may cost 0.001 USDC each."
+        )
+      )
+    ).toBe(true);
+  });
 });
