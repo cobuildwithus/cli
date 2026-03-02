@@ -1,26 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { executeToolWithLegacyFallback, shouldFallbackToLegacyToolRoute } from "../src/commands/tool-execution.js";
-import { ApiRequestError } from "../src/transport.js";
+import { executeCanonicalToolOnly } from "../src/commands/tool-execution.js";
 import { createHarness } from "./helpers.js";
 
 describe("tool execution helper", () => {
-  it("classifies fallback-eligible request errors", () => {
-    expect(shouldFallbackToLegacyToolRoute(new Error("boom"))).toBe(false);
-    expect(shouldFallbackToLegacyToolRoute(new ApiRequestError(404, "Not found"))).toBe(true);
-    expect(shouldFallbackToLegacyToolRoute(new ApiRequestError(500, "boom"))).toBe(false);
-  });
-
   it("rejects empty canonical tool names", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: [" ", ""],
         input: {},
-        legacyPath: "/api/legacy",
-        legacyBody: {},
       })
     ).rejects.toThrow("At least one canonical tool name must be configured.");
   });
@@ -39,7 +30,8 @@ describe("tool execution helper", () => {
         }
         if (url.endsWith("/v1/tool-executions")) {
           const body = JSON.parse(String(init?.body));
-          expect(body.toolName).toBe("get-user");
+          expect(body.name).toBe("get-user");
+          expect(body.input).toEqual({ fname: "alice" });
           return {
             ok: true,
             status: 200,
@@ -51,11 +43,9 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["getUser", "get-user"],
         input: { fname: "alice" },
-        legacyPath: "/api/buildbot/tools/get-user",
-        legacyBody: { fname: "alice" },
       })
     ).resolves.toEqual({ fid: 1, fname: "alice" });
   });
@@ -74,7 +64,8 @@ describe("tool execution helper", () => {
         }
         if (url.endsWith("/v1/tool-executions")) {
           const body = JSON.parse(String(init?.body));
-          expect(body.toolName).toBe("cast-preview");
+          expect(body.name).toBe("cast-preview");
+          expect(body.input).toEqual({ text: "hello" });
           return {
             ok: true,
             status: 200,
@@ -86,11 +77,9 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["castPreview", "cast-preview"],
         input: { text: "hello" },
-        legacyPath: "/api/buildbot/tools/cast-preview",
-        legacyBody: { text: "hello" },
       })
     ).resolves.toEqual({ text: "hello" });
   });
@@ -109,7 +98,8 @@ describe("tool execution helper", () => {
         }
         if (url.endsWith("/v1/tool-executions")) {
           const body = JSON.parse(String(init?.body));
-          expect(body.toolName).toBe("docs_search");
+          expect(body.name).toBe("docs_search");
+          expect(body.input).toEqual({ query: "setup" });
           return {
             ok: true,
             status: 200,
@@ -121,11 +111,9 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["docsSearch", "docs_search"],
         input: { query: "setup" },
-        legacyPath: "/api/docs/search",
-        legacyBody: { query: "setup" },
       })
     ).resolves.toEqual([{ id: "a" }]);
   });
@@ -133,7 +121,7 @@ describe("tool execution helper", () => {
   it("returns raw canonical payload when there is no known execution result key", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
           return {
@@ -143,6 +131,11 @@ describe("tool execution helper", () => {
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          expect(body).toEqual({
+            name: "getUser",
+            input: { fname: "alice" },
+          });
           return {
             ok: true,
             status: 200,
@@ -154,16 +147,14 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["getUser"],
         input: { fname: "alice" },
-        legacyPath: "/api/buildbot/tools/get-user",
-        legacyBody: { fname: "alice" },
       })
     ).resolves.toEqual({ foo: "bar" });
   });
 
-  it("falls back to legacy route when canonical endpoints are unavailable", async () => {
+  it("throws when canonical execution routes are unavailable", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
       fetchResponder: async (input) => {
@@ -175,29 +166,19 @@ describe("tool execution helper", () => {
             text: async () => JSON.stringify({ ok: false, error: "Not found" }),
           };
         }
-        if (url.endsWith("/api/docs/search")) {
-          return {
-            ok: true,
-            status: 200,
-            text: async () =>
-              JSON.stringify({ query: "setup", count: 1, results: [{ filename: "docs.mdx" }] }),
-          };
-        }
         throw new Error(`Unexpected URL: ${url}`);
       },
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["docsSearch"],
         input: { query: "setup" },
-        legacyPath: "/api/docs/search",
-        legacyBody: { query: "setup" },
       })
-    ).resolves.toEqual({ query: "setup", count: 1, results: [{ filename: "docs.mdx" }] });
+    ).rejects.toThrow("Request failed (status 404): Not found");
   });
 
-  it("throws non-fallback discovery errors and skips canonical execution", async () => {
+  it("throws non-retryable discovery errors and skips canonical execution", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
       fetchResponder: async (input) => {
@@ -214,18 +195,59 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
+      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["getUser"],
         input: { fname: "alice" },
-        legacyPath: "/api/buildbot/tools/get-user",
-        legacyBody: { fname: "alice" },
       })
     ).rejects.toThrow("Request failed (status 500): boom");
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("throws non-fallback canonical execution errors without legacy fallback", async () => {
+  it("retries with the next canonical candidate on retryable execution errors", async () => {
+    const attemptedToolNames: string[] = [];
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify([]),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          attemptedToolNames.push(body.name);
+          if (body.name === "docsSearch") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ result: { fid: 7, fname: "alice" } }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["docsSearch", "file_search"],
+        input: { query: "setup" },
+      })
+    ).resolves.toEqual({ fid: 7, fname: "alice" });
+
+    expect(attemptedToolNames).toEqual(["docsSearch", "file_search"]);
+  });
+
+  it("throws non-retryable canonical execution errors without trying additional candidates", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
       fetchResponder: async (input) => {
@@ -249,18 +271,16 @@ describe("tool execution helper", () => {
     });
 
     await expect(
-      executeToolWithLegacyFallback(harness.deps, {
-        canonicalToolNames: ["getUser"],
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["getUser", "get-user"],
         input: { fname: "alice" },
-        legacyPath: "/api/buildbot/tools/get-user",
-        legacyBody: { fname: "alice" },
       })
     ).rejects.toThrow("Request failed (status 500): boom");
 
     expect(
-      harness.fetchMock.mock.calls.some(([input]) =>
-        String(input).endsWith("/api/buildbot/tools/get-user")
+      harness.fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/v1/tool-executions")
       )
-    ).toBe(false);
+    ).toHaveLength(1);
   });
 });
