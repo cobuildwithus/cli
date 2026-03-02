@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { apiPost, toEndpoint } from "../src/transport.js";
+import { apiGet, apiPost, toEndpoint } from "../src/transport.js";
 import { createHarness } from "./helpers.js";
 
 describe("transport", () => {
@@ -113,7 +113,7 @@ describe("transport", () => {
     );
   });
 
-  it("routes docs endpoint requests through the interface URL", async () => {
+  it("routes canonical tool execution requests through the interface URL", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -126,13 +126,17 @@ describe("transport", () => {
       }),
     });
 
-    await apiPost(harness.deps, "/api/docs/search", { query: "setup" });
+    await apiPost(harness.deps, "/v1/tool-executions", {
+      toolName: "getUser",
+      input: { fname: "alice" },
+    });
 
-    const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/docs/search");
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
+    expect(init).toMatchObject({ method: "POST" });
   });
 
-  it("ignores deprecated chatApiUrl values and still routes through interface URL", async () => {
+  it("ignores deprecated chatApiUrl values and still routes canonical discovery through interface URL", async () => {
     const harness = createHarness({
       rawConfig: JSON.stringify(
         {
@@ -150,10 +154,11 @@ describe("transport", () => {
       }),
     });
 
-    await apiPost(harness.deps, "/api/docs/search", { query: "setup" });
+    await apiGet(harness.deps, "/v1/tools");
 
-    const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/docs/search");
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://interface.example/v1/tools");
+    expect(init).toMatchObject({ method: "GET" });
   });
 
   it("rejects insecure transport before sending bearer token", async () => {

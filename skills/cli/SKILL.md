@@ -71,8 +71,8 @@ cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <ag
 
 ## Command Routing
 
-- `docs` calls interface API `POST /api/docs/search`.
-- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call interface API `POST /api/buildbot/tools/*`.
+- `docs` calls canonical tool execution first (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) and falls back to interface `POST /api/docs/search` only when canonical routes are unavailable.
+- `tools get-user|get-cast|cast-preview|cobuild-ai-context` call canonical tool execution first (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) and fall back to interface `POST /api/buildbot/tools/*` only when canonical routes are unavailable.
 - `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
 
 ## Output Contract

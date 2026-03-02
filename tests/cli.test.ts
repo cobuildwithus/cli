@@ -18,6 +18,17 @@ function createJsonResponder(body: unknown, status = 200) {
   });
 }
 
+function findFetchCallByUrl(
+  calls: any[][],
+  expectedUrl: string
+): [string | URL, any] {
+  const match = calls.find(([input]) => String(input) === expectedUrl);
+  if (!match) {
+    throw new Error(`Expected fetch call for ${expectedUrl}`);
+  }
+  return match as [string | URL, any];
+}
+
 describe("cli", () => {
   it("prints usage when command is missing", async () => {
     const harness = createHarness();
@@ -475,11 +486,25 @@ describe("cli", () => {
 
     await runCli(["docs", "setup", "approval", "--limit", "5"], harness.deps);
 
-    const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/docs/search");
+    const [discoveryInput, discoveryInit] = harness.fetchMock.mock.calls[0];
+    expect(String(discoveryInput)).toBe("https://interface.example/v1/tools");
+    expect(discoveryInit).toMatchObject({ method: "GET" });
+
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
     expect(JSON.parse(String(init?.body))).toEqual({
-      query: "setup approval",
-      limit: 5,
+      toolName: "docsSearch",
+      name: "docsSearch",
+      input: {
+        query: "setup approval",
+        limit: 5,
+      },
+      arguments: {
+        query: "setup approval",
+        limit: 5,
+      },
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       query: "setup approval",
@@ -503,9 +528,15 @@ describe("cli", () => {
 
     await runCli(["docs", "setup", "approval"], harness.deps);
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://api.example/v1/tool-executions"
+    );
     expect(JSON.parse(String(init?.body))).toEqual({
-      query: "setup approval",
+      toolName: "docsSearch",
+      name: "docsSearch",
+      input: { query: "setup approval" },
+      arguments: { query: "setup approval" },
     });
   });
 
@@ -524,9 +555,198 @@ describe("cli", () => {
 
     await runCli(["docs", "--", "--token-stdin"], harness.deps);
 
-    const [, init] = harness.fetchMock.mock.calls[0];
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://api.example/v1/tool-executions"
+    );
     expect(JSON.parse(String(init?.body))).toEqual({
-      query: "--token-stdin",
+      toolName: "docsSearch",
+      name: "docsSearch",
+      input: { query: "--token-stdin" },
+      arguments: { query: "--token-stdin" },
+    });
+  });
+
+  it("docs normalizes canonical array output to stable docs envelope", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ output: [{ filename: "one.mdx" }] }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["docs", "setup"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup",
+      count: 1,
+      results: [{ filename: "one.mdx" }],
+    });
+  });
+
+  it("docs normalizes canonical payloads that expose results without count", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ query: "setup", results: [{ filename: "one.mdx" }] }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["docs", "setup"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup",
+      count: 1,
+      results: [{ filename: "one.mdx" }],
+    });
+  });
+
+  it("docs normalizes scalar canonical payloads to a single-result envelope", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ result: "snippet" }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["docs", "setup"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup",
+      count: 1,
+      results: ["snippet"],
+    });
+  });
+
+  it("docs normalizes canonical data arrays and null payloads", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ data: [{ filename: "one.mdx" }] }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["docs", "setup"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup",
+      count: 1,
+      results: [{ filename: "one.mdx" }],
+    });
+
+    harness.fetchMock.mockClear();
+    harness.deps.fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/v1/tools")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+        };
+      }
+      if (url.endsWith("/v1/tool-executions")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ result: null }),
+        };
+      }
+      return {
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+      };
+    };
+
+    await runCli(["docs", "setup"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup",
+      count: 0,
+      results: [],
     });
   });
 
@@ -550,9 +770,17 @@ describe("cli", () => {
 
     await runCli(["tools", "get-user", "alice"], harness.deps);
 
-    const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/tools/get-user");
-    expect(JSON.parse(String(init?.body))).toEqual({ fname: "alice" });
+    const [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      toolName: "getUser",
+      name: "getUser",
+      input: { fname: "alice" },
+      arguments: { fname: "alice" },
+    });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       result: { fid: 1, fname: "alice" },
@@ -572,20 +800,42 @@ describe("cli", () => {
       ["tools", "get-cast", "https://warpcast.com/alice/0xabc"],
       harness.deps
     );
-    let [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/tools/get-cast");
+    let [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      identifier: "https://warpcast.com/alice/0xabc",
-      type: "url",
+      toolName: "getCast",
+      name: "getCast",
+      input: {
+        identifier: "https://warpcast.com/alice/0xabc",
+        type: "url",
+      },
+      arguments: {
+        identifier: "https://warpcast.com/alice/0xabc",
+        type: "url",
+      },
     });
 
     harness.fetchMock.mockClear();
     await runCli(["tools", "get-cast", "0xabc", "--type", "hash"], harness.deps);
-    [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/tools/get-cast");
+    [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      identifier: "0xabc",
-      type: "hash",
+      toolName: "getCast",
+      name: "getCast",
+      input: {
+        identifier: "0xabc",
+        type: "hash",
+      },
+      arguments: {
+        identifier: "0xabc",
+        type: "hash",
+      },
     });
   });
 
@@ -643,12 +893,24 @@ describe("cli", () => {
       harness.deps
     );
 
-    const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/tools/cast-preview");
+    const [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      text: "hello",
-      embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
-      parent: "0xparent",
+      toolName: "castPreview",
+      name: "castPreview",
+      input: {
+        text: "hello",
+        embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
+        parent: "0xparent",
+      },
+      arguments: {
+        text: "hello",
+        embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
+        parent: "0xparent",
+      },
     });
   });
 
@@ -666,9 +928,257 @@ describe("cli", () => {
     );
 
     await runCli(["tools", "cobuild-ai-context"], harness.deps);
-    const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/tools/cobuild-ai-context");
-    expect(JSON.parse(String(init?.body))).toEqual({});
+    const [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      toolName: "getCobuildAiContext",
+      name: "getCobuildAiContext",
+      input: {},
+      arguments: {},
+    });
+  });
+
+  it("tools get-user normalizes fallback responses that omit ok", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/buildbot/tools/get-user")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ result: { fid: 1, fname: "alice" } }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "get-user", "alice"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      result: { fid: 1, fname: "alice" },
+    });
+  });
+
+  it("tools get-cast normalizes fallback responses that omit ok", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/buildbot/tools/get-cast")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ cast: { hash: "0xabc" } }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "get-cast", "0xabc", "--type", "hash"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      cast: { hash: "0xabc" },
+    });
+  });
+
+  it("tools cast-preview normalizes fallback responses that omit ok", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/buildbot/tools/cast-preview")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ cast: { text: "hello" } }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "cast-preview", "--text", "hello"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      cast: { text: "hello" },
+    });
+  });
+
+  it("tools cobuild-ai-context normalizes fallback responses that omit ok", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/buildbot/tools/cobuild-ai-context")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ data: { asOf: "2026-02-25T00:00:00.000Z" } }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "cobuild-ai-context"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: { asOf: "2026-02-25T00:00:00.000Z" },
+    });
+  });
+
+  it("docs falls back to legacy docs endpoint when canonical tool routes are unavailable", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/docs/search")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                query: "setup approval",
+                count: 1,
+                results: [{ filename: "self-hosted/chat-api.mdx" }],
+              }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["docs", "setup", "approval"], harness.deps);
+
+    const [, legacyInit] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/api/docs/search"
+    );
+    expect(JSON.parse(String(legacyInit?.body))).toEqual({ query: "setup approval" });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      query: "setup approval",
+      count: 1,
+      results: [{ filename: "self-hosted/chat-api.mdx" }],
+    });
+  });
+
+  it("tools get-user falls back to legacy endpoint when canonical tool routes are unavailable", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/api/buildbot/tools/get-user")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true, result: { fid: 1, fname: "alice" } }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "get-user", "alice"], harness.deps);
+
+    const [, legacyInit] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/api/buildbot/tools/get-user"
+    );
+    expect(JSON.parse(String(legacyInit?.body))).toEqual({ fname: "alice" });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      result: { fid: 1, fname: "alice" },
+    });
   });
 
   it("send validates required positionals", async () => {

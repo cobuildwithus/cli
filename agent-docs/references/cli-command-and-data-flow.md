@@ -45,10 +45,10 @@
 ## Network Execution Flow
 
 1. Build payload in handler.
-2. `apiPost(pathname, body, options)` resolves endpoint from interface base URL via `toEndpoint`.
+2. `apiPost(pathname, body, options)` / `apiGet(pathname, options)` resolve endpoints from interface base URL via `toEndpoint`.
 3. `toEndpoint` enforces secure base URL policy (`https`, loopback-only `http`) and rejects URL credentials.
 4. Transport validates caller-provided headers cannot override reserved auth/content headers.
-5. Send JSON POST with bearer token and default timeout+abort semantics.
+5. Send authenticated JSON request with bearer token and default timeout+abort semantics.
 6. Parse response text to JSON when possible.
 7. Throw bounded, sanitized, status-prefixed errors for non-2xx or `{ ok: false }`.
 8. Emit success payload with `printJson`.
@@ -57,21 +57,23 @@
 
 1. Parse query from positionals and optional `--limit`.
 2. Validate query is non-empty and `--limit` is an integer in range.
-3. POST `/api/docs/search` with `{ query, limit? }`.
-4. Route uses the interface API base URL.
-5. Print JSON response from the docs endpoint.
+3. Optionally GET `/v1/tools` to resolve canonical docs tool naming.
+4. POST `/v1/tool-executions` with canonical tool envelope + `{ query, limit? }` input.
+5. If canonical call is unavailable/unsupported, POST `/api/docs/search` fallback.
+6. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
 ## Tools Flow
 
 1. Parse `tools` subcommand and options.
 2. Validate command-specific argument shape.
-3. Dispatch to one of:
-- `POST /api/buildbot/tools/get-user`
-- `POST /api/buildbot/tools/get-cast`
-- `POST /api/buildbot/tools/cast-preview`
-- `POST /api/buildbot/tools/cobuild-ai-context`
-4. Route uses the interface API base URL.
-5. Print JSON response.
+3. Optionally GET `/v1/tools` to resolve canonical tool naming.
+4. POST `/v1/tool-executions` with command-specific canonical tool input.
+5. If canonical call is unavailable/unsupported, POST matching legacy fallback route:
+- `/api/buildbot/tools/get-user`
+- `/api/buildbot/tools/get-cast`
+- `/api/buildbot/tools/cast-preview`
+- `/api/buildbot/tools/cobuild-ai-context`
+6. Normalize output envelopes for stable command JSON shape and print JSON response.
 
 ## Idempotency Flow (`send` / `tx`)
 

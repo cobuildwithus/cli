@@ -1,7 +1,7 @@
 import { requireConfig } from "./config.js";
 import type { CliDeps } from "./types.js";
 
-export interface ApiPostOptions {
+export interface ApiRequestOptions {
   headers?: Record<string, string>;
   timeoutMs?: number;
 }
@@ -10,9 +10,24 @@ const MAX_ERROR_TEXT_LENGTH = 240;
 const DEFAULT_API_TIMEOUT_MS = 30_000;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const RESERVED_HEADER_NAMES = new Set(["authorization", "content-type"]);
+const DEFAULT_REQUEST_HEADERS = {
+  "content-type": "application/json",
+} as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly detail: string | null;
+
+  constructor(status: number, detail: string | null) {
+    super(formatRequestError(status, detail));
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.detail = detail;
+  }
 }
 
 function parseAndValidateBaseUrl(baseUrl: string): URL {
@@ -88,12 +103,16 @@ export function toEndpoint(baseUrl: string, pathname: string): URL {
   return new URL(normalizedPath, normalizedBase);
 }
 
-export async function apiPost(
-  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">,
-  pathname: string,
-  body: Record<string, unknown>,
-  options: ApiPostOptions = {}
-): Promise<unknown> {
+interface ApiRequestArgs {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  pathname: string;
+  method: "GET" | "POST";
+  body?: Record<string, unknown>;
+  options?: ApiRequestOptions;
+}
+
+async function apiRequest(args: ApiRequestArgs): Promise<unknown> {
+  const { deps, pathname, method, body, options = {} } = args;
   const cfg = requireConfig(deps);
   const endpoint = toEndpoint(cfg.url, pathname);
   const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
@@ -108,13 +127,13 @@ export async function apiPost(
   let response;
   try {
     response = await deps.fetch(endpoint, {
-      method: "POST",
+      method,
       headers: {
-        "content-type": "application/json",
+        ...DEFAULT_REQUEST_HEADERS,
         authorization: `Bearer ${cfg.token}`,
         ...(options.headers ?? {}),
       },
-      body: JSON.stringify(body),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
   } catch (error) {
@@ -136,11 +155,38 @@ export async function apiPost(
 
   if (!response.ok || (isRecord(payload) && payload.ok === false)) {
     const rawDetail = isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
-    const errorMessage = formatRequestError(response.status, rawDetail);
-    throw new Error(errorMessage);
+    throw new ApiRequestError(response.status, rawDetail);
   }
 
   return payload;
+}
+
+export async function apiPost(
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">,
+  pathname: string,
+  body: Record<string, unknown>,
+  options: ApiRequestOptions = {}
+): Promise<unknown> {
+  return apiRequest({
+    deps,
+    pathname,
+    method: "POST",
+    body,
+    options,
+  });
+}
+
+export async function apiGet(
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">,
+  pathname: string,
+  options: ApiRequestOptions = {}
+): Promise<unknown> {
+  return apiRequest({
+    deps,
+    pathname,
+    method: "GET",
+    options,
+  });
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {

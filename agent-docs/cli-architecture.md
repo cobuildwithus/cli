@@ -40,7 +40,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `docs`
 
 - `docs <query> [--limit <n>]`
-- Calls `/api/docs/search` with query payload via interface API base URL.
+- Calls canonical chat-api tool surfaces via interface API base URL (`GET /v1/tools` when needed, `POST /v1/tool-executions` primary).
+- Falls back to `/api/docs/search` only when canonical tool surfaces are unavailable/unsupported.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
 ### `tools`
@@ -49,7 +50,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
 - `tools cobuild-ai-context`
-- Calls `/api/buildbot/tools/*` endpoints with command-specific payloads via interface API base URL.
+- Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) via interface API base URL.
+- Falls back to `/api/buildbot/tools/*` only when canonical tool surfaces are unavailable/unsupported.
 - Intended for read-only access to interface tool routes.
 
 ### `send`
@@ -83,7 +85,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 3. Network boundary
 
-- `apiPost` is the only POST transport path for commands.
+- `apiPost` handles all command POSTs and `apiGet` handles canonical tool discovery.
 - Endpoint composition goes through `toEndpoint` (never raw string concat in handlers).
 - Transport enforces secure base URL policy (`https`, except loopback `http`) and rejects embedded credentials.
 - Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
@@ -99,7 +101,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 Update this doc when changing:
 
 - command names/options/required args,
-- `docs`/`tools` command topology or `/api/docs/search` and `/api/buildbot/tools/*` endpoint contracts,
+- `docs`/`tools` command topology or canonical `/v1/tool-executions` + legacy fallback endpoint contracts,
 - payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
 - config file path/schema,
 - transport/auth/error normalization behavior,

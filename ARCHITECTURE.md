@@ -42,7 +42,7 @@ cli/
 
 ### Remote API runtime
 
-- All networked command execution routes through `apiPost`.
+- All networked command execution routes through transport helpers (`apiPost`, `apiGet`).
 - Endpoint base URL always uses configured interface URL and is normalized via `toEndpoint`.
 - Base URL policy enforces `https` by default; `http` is allowed only for loopback hosts (`localhost`, `127.0.0.1`, `::1`).
 - Base URLs with embedded credentials (`user:pass@host`) are rejected.
@@ -57,7 +57,7 @@ cli/
 - Command and UX orchestration: `src/cli.ts` (`runCli`, `runCliFromProcess`)
 - Command handlers: `src/commands/*.ts`
 - Local config boundary: `src/config.ts` (`configPath`, `readConfig`, `writeConfig`, `requireConfig`)
-- Remote transport boundary: `src/transport.ts` (`toEndpoint`, `apiPost`)
+- Remote transport boundary: `src/transport.ts` (`toEndpoint`, `apiPost`, `apiGet`)
 - Shared output behavior: `src/output.ts`, `src/usage.ts`
 
 ## Critical Architecture Invariants
@@ -78,8 +78,8 @@ cli/
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
-- `docs` always targets `/api/docs/search` via interface base.
-- `tools` targets `/api/buildbot/tools/*` via interface base.
+- `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via interface base.
+- `docs` and `tools` fall back to legacy interface proxy paths (`/api/docs/search`, `/api/buildbot/tools/*`) only when canonical surfaces are unavailable/unsupported.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -136,18 +136,20 @@ cli/
 
 1. Parse positional query text and optional `--limit`.
 2. Validate non-empty query and `--limit` integer range.
-3. Build payload and POST `/api/docs/search`.
-4. Print normalized JSON result.
+3. Resolve docs tool execution against canonical surfaces (`GET /v1/tools` optional, `POST /v1/tool-executions` primary).
+4. If canonical call is unavailable/unsupported, fall back to `POST /api/docs/search`.
+5. Normalize to stable `{ query, count, results }` JSON output.
 
 ### Buildbot tools flow
 
 1. Parse `tools` subcommand and validate command-specific flags/arguments.
-2. Build payload and POST one of:
+2. Resolve canonical tool name (`GET /v1/tools` optional) and execute `POST /v1/tool-executions`.
+3. If canonical call is unavailable/unsupported, fall back to legacy tool proxy route:
 - `/api/buildbot/tools/get-user`
 - `/api/buildbot/tools/get-cast`
 - `/api/buildbot/tools/cast-preview`
 - `/api/buildbot/tools/cobuild-ai-context`
-3. Print normalized JSON result.
+4. Normalize output envelopes to preserve command JSON shape.
 
 ## Documentation Map
 

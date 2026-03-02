@@ -9,7 +9,7 @@
 ## Endpoint Routing Expectations
 
 - Command transport must always resolve against configured interface API base URL.
-- `docs` and `tools` must use interface routes with unchanged path names (`/api/docs/search`, `/api/buildbot/tools/*`).
+- `docs` and `tools` must execute canonical chat-api tool routes first (`GET /v1/tools` as needed, `POST /v1/tool-executions`) and use legacy interface proxy paths only as compatibility fallback.
 - Configuration output must only expose interface routing state.
 
 ## Configuration Expectations
