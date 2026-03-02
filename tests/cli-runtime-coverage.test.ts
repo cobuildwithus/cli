@@ -41,6 +41,22 @@ describe("cli runtime coverage", () => {
     ).toEqual(["tools", "get-cast", "--type", "url", "__incur_positional__hello world"]);
   });
 
+  it("normalizes preprocessing when global flags appear before the command", () => {
+    expect(
+      cliIncur.preprocessIncurArgv(["--verbose", "docs", "how", "to", "send", "usdc"])
+    ).toEqual(["--verbose", "docs", "__incur_positional__how to send usdc"]);
+
+    expect(
+      cliIncur.preprocessIncurArgv(["--json", "farcaster", "post", "--verify"])
+    ).toEqual(["--json", "farcaster", "post", "--verify=once"]);
+  });
+
+  it("treats leading --json as setup machine-mode when command is setup", () => {
+    expect(
+      cliIncur.preprocessIncurArgv(["--json", "setup", "--url", "https://api.example"])
+    ).toEqual(["setup", "--setup-json", "--url", "https://api.example"]);
+  });
+
   it("rethrows unexpected runtime errors from serve", async () => {
     const harness = createHarness();
     const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
@@ -94,6 +110,77 @@ describe("cli runtime coverage", () => {
       },
     } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
     await expect(runCli(["wallet"], harness.deps)).rejects.toThrow("raw failure text");
+
+    createSpy.mockReturnValueOnce({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.("{\"ok\":false}\n");
+        options?.exit?.(1);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+    await expect(runCli(["wallet"], harness.deps)).rejects.toThrow("{\"ok\":false}");
+
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it("marks --mcp mode and skips stdout buffering adapter", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli").mockReturnValue({
+      async serve() {
+        return;
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+
+    await runCli(["--mcp"], harness.deps);
+
+    expect(preprocessSpy).toHaveBeenCalledWith(["--mcp"]);
+    expect(createSpy).toHaveBeenCalledWith(harness.deps, { mcpMode: true });
+    expect(harness.outputs).toEqual([]);
+
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it("does not treat positional '--mcp' as MCP runtime mode", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli").mockReturnValue({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void }) {
+        options?.stdout?.("{\"ok\":true}\n");
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+
+    await runCli(["docs", "--", "--mcp"], harness.deps);
+
+    expect(preprocessSpy).toHaveBeenCalledWith(["docs", "--", "--mcp"]);
+    expect(createSpy).toHaveBeenCalledWith(harness.deps, { mcpMode: false });
+    expect(harness.outputs).toEqual(['{"ok":true}']);
+
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it("detects --mcp after --format variants and ignores unknown leading flags", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli").mockReturnValue({
+      async serve() {
+        return;
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+
+    await runCli(["--format", "json", "--mcp"], harness.deps);
+    await runCli(["--format=json", "--mcp"], harness.deps);
+    await runCli(["--unknown-flag", "wallet"], harness.deps);
+
+    expect(preprocessSpy).toHaveBeenNthCalledWith(1, ["--format", "json", "--mcp"]);
+    expect(preprocessSpy).toHaveBeenNthCalledWith(2, ["--format=json", "--mcp"]);
+    expect(preprocessSpy).toHaveBeenNthCalledWith(3, ["--unknown-flag", "wallet"]);
+
+    expect(createSpy).toHaveBeenNthCalledWith(1, harness.deps, { mcpMode: true });
+    expect(createSpy).toHaveBeenNthCalledWith(2, harness.deps, { mcpMode: true });
+    expect(createSpy).toHaveBeenNthCalledWith(3, harness.deps, { mcpMode: false });
 
     preprocessSpy.mockRestore();
     createSpy.mockRestore();

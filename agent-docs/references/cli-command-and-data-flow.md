@@ -4,14 +4,14 @@
 
 - Entry: `runCliFromProcess()` in `src/cli.ts` (invoked by `src/index.ts`)
 - Runtime router (Incur command tree in `src/cli-incur.ts`):
-  - `setup` -> `handleSetupCommand`
-  - `config` -> `handleConfigCommand`
-  - `wallet` -> `handleWalletCommand`
-  - `farcaster` -> `handleFarcasterCommand`
-  - `docs` -> `handleDocsCommand`
-  - `tools` -> `handleToolsCommand`
-  - `send` -> `handleSendCommand`
-  - `tx` -> `handleTxCommand`
+  - `setup` -> `executeSetupCommand`
+  - `config` -> `executeConfigSetCommand` / `executeConfigShowCommand`
+  - `wallet` -> `executeWalletCommand`
+  - `farcaster` -> `executeFarcaster*Command`
+  - `docs` -> `executeDocsCommand`
+  - `tools` -> `executeTools*Command`
+  - `send` -> `executeSendCommand`
+  - `tx` -> `executeTxCommand`
 
 ## Input and Option Flow
 
@@ -19,11 +19,12 @@
 2. Normalize leading `--` sentinel in `runCli`.
 3. Preprocess argv compatibility shims in `preprocessIncurArgv`:
 - `setup --json` remapped to command-local setup json mode.
+- `--json setup ...` remapped to setup-local machine mode (`--setup-json`) while preserving other leading global flags.
 - `docs -- --<dashed-term>` preserved via escaped positional passthrough.
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.
-4. Incur resolves command path, parses args/options, and routes to adapter handlers.
-5. Adapter handlers call existing command modules, which continue domain validation with `parseArgs` and existing business logic.
+4. Incur resolves command path, parses args/options, and routes directly to structured command executors.
+5. Legacy `handle*Command` wrappers remain for compatibility/tests and call the same executors after `parseArgs`.
 
 ## Setup Flow
 
@@ -108,6 +109,7 @@
 ## Error and Exit Flow
 
 - `runCli()` executes Incur with buffered stdout + captured exit signal for deterministic test behavior.
+- `runCli()` bypasses output buffering for `--mcp` runtime startup and marks setup as unavailable in MCP mode.
 - Incur non-zero exits are normalized to legacy-style error messages where needed (including unknown command mapping).
 - `runCliFromProcess(...)` catches thrown errors -> prints `Error: <message>` to stderr -> exits `1`.
 - Help/usage style commands from Incur (`--help`, group help) exit `0`.

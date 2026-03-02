@@ -18,25 +18,25 @@ import {
 const SEND_USAGE =
   "Usage: cli send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]";
 
-export async function handleSendCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      network: { type: "string" },
-      decimals: { type: "string" },
-      agent: { type: "string" },
-      "idempotency-key": { type: "string" },
-    },
-    args,
-    allowPositionals: true,
-    strict: true,
-  });
+export interface SendCommandInput {
+  token?: string;
+  amount?: string;
+  to?: string;
+  network?: string;
+  decimals?: string;
+  agent?: string;
+  idempotencyKey?: string;
+}
 
-  const [token, amount, to] = parsed.positionals;
+export async function executeSendCommand(input: SendCommandInput, deps: CliDeps): Promise<Record<string, unknown>> {
+  const token = input.token;
+  const amount = input.amount;
+  const to = input.to;
   if (!token || !amount || !to) {
     throw new Error(SEND_USAGE);
   }
 
-  const decimals = parseIntegerOption(parsed.values.decimals, "--decimals");
+  const decimals = parseIntegerOption(input.decimals, "--decimals");
   if (decimals !== undefined && (decimals < 0 || decimals > 255)) {
     throw new Error("--decimals must be between 0 and 255");
   }
@@ -44,9 +44,9 @@ export async function handleSendCommand(args: string[], deps: CliDeps): Promise<
   validateEvmAddress(to, "to");
 
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
-  const network = resolveNetwork(parsed.values.network);
-  const idempotencyKey = resolveExecIdempotencyKey(parsed.values["idempotency-key"], deps);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+  const network = resolveNetwork(input.network);
+  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
   let response: unknown;
   try {
@@ -70,5 +70,35 @@ export async function handleSendCommand(args: string[], deps: CliDeps): Promise<
     throwWithIdempotencyKey(error, idempotencyKey);
   }
 
-  printJson(deps, withIdempotencyKey(idempotencyKey, response));
+  return withIdempotencyKey(idempotencyKey, response);
 }
+
+/* c8 ignore start */
+export async function handleSendCommand(args: string[], deps: CliDeps): Promise<void> {
+  const parsed = parseArgs({
+    options: {
+      network: { type: "string" },
+      decimals: { type: "string" },
+      agent: { type: "string" },
+      "idempotency-key": { type: "string" },
+    },
+    args,
+    allowPositionals: true,
+    strict: true,
+  });
+
+  const output = await executeSendCommand(
+    {
+      token: parsed.positionals[0],
+      amount: parsed.positionals[1],
+      to: parsed.positionals[2],
+      network: parsed.values.network,
+      decimals: parsed.values.decimals,
+      agent: parsed.values.agent,
+      idempotencyKey: parsed.values["idempotency-key"],
+    },
+    deps
+  );
+  printJson(deps, output);
+}
+/* c8 ignore stop */

@@ -1,34 +1,41 @@
 import { Cli, z } from "incur";
-import { handleConfigCommand } from "./commands/config.js";
-import { handleDocsCommand } from "./commands/docs.js";
-import { handleFarcasterCommand } from "./commands/farcaster.js";
-import { handleSendCommand } from "./commands/send.js";
-import { handleSetupCommand } from "./commands/setup.js";
-import { handleToolsCommand } from "./commands/tools.js";
-import { handleTxCommand } from "./commands/tx.js";
-import { handleWalletCommand } from "./commands/wallet.js";
+import {
+  executeConfigSetCommand,
+  executeConfigShowCommand,
+} from "./commands/config.js";
+import { executeDocsCommand } from "./commands/docs.js";
+import {
+  executeFarcasterPostCommand,
+  executeFarcasterSignupCommand,
+  executeFarcasterX402InitCommand,
+  executeFarcasterX402StatusCommand,
+} from "./commands/farcaster.js";
+import { executeSendCommand } from "./commands/send.js";
+import { executeSetupCommand } from "./commands/setup.js";
+import {
+  executeToolsCastPreviewCommand,
+  executeToolsGetCastCommand,
+  executeToolsGetUserCommand,
+  executeToolsTreasuryStatsCommand,
+} from "./commands/tools.js";
+import { executeTxCommand } from "./commands/tx.js";
+import { executeWalletCommand } from "./commands/wallet.js";
 import type { CliDeps } from "./types.js";
 
 const POSITIONAL_ESCAPE_PREFIX = "__incur_positional__";
+const LEADING_GLOBAL_BOOLEAN_FLAGS = new Set([
+  "--verbose",
+  "--json",
+  "--llms",
+  "--mcp",
+  "--help",
+  "-h",
+  "--version",
+]);
+const LEADING_GLOBAL_VALUE_FLAGS = new Set(["--format"]);
 
-function pushOption(argv: string[], flag: string, value: unknown): void {
-  if (value === undefined || value === null) return;
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      pushOption(argv, flag, item);
-    }
-    return;
-  }
-
-  if (typeof value === "boolean") {
-    if (value) {
-      argv.push(`--${flag}`);
-    }
-    return;
-  }
-
-  argv.push(`--${flag}`, String(value));
+export interface CobuildIncurCliOptions {
+  mcpMode?: boolean;
 }
 
 function encodeEscapedPositional(value: string): string {
@@ -170,13 +177,81 @@ function normalizeSetupArgv(argv: string[]): string[] {
   return argv.map((token) => (token === "--json" ? "--setup-json" : token));
 }
 
-export function preprocessIncurArgv(argv: string[]): string[] {
-  return normalizeSetupArgv(
-    normalizeToolsArgv(normalizeDocsArgv(normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(argv))))
-  );
+function consumeLeadingGlobalFlag(argv: string[], index: number): number {
+  const token = argv[index]!;
+
+  if (LEADING_GLOBAL_BOOLEAN_FLAGS.has(token)) {
+    return index + 1;
+  }
+
+  for (const flag of LEADING_GLOBAL_VALUE_FLAGS) {
+    if (token === flag) {
+      if (index + 1 < argv.length) {
+        return index + 2;
+      }
+      return index + 1;
+    }
+
+    if (token.startsWith(`${flag}=`)) {
+      return index + 1;
+    }
+  }
+
+  return index;
 }
 
-export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
+function splitLeadingGlobalArgv(argv: string[]): { leading: string[]; tail: string[] } {
+  let index = 0;
+  while (index < argv.length) {
+    const token = argv[index]!;
+    if (token === "--") break;
+    if (!token.startsWith("-")) break;
+
+    const consumed = consumeLeadingGlobalFlag(argv, index);
+    if (consumed === index) break;
+    index = consumed;
+  }
+
+  return {
+    leading: argv.slice(0, index),
+    tail: argv.slice(index),
+  };
+}
+
+export function preprocessIncurArgv(argv: string[]): string[] {
+  const { leading, tail } = splitLeadingGlobalArgv(argv);
+  if (tail.length === 0) {
+    return argv;
+  }
+
+  let normalizedLeading = [...leading];
+  let normalizedTail = [...tail];
+
+  if (normalizedTail[0] === "setup") {
+    let setupJsonRequestedFromLeading = false;
+    normalizedLeading = normalizedLeading.filter((token) => {
+      if (token === "--json") {
+        setupJsonRequestedFromLeading = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (setupJsonRequestedFromLeading && !normalizedTail.includes("--setup-json")) {
+      normalizedTail = [normalizedTail[0]!, "--setup-json", ...normalizedTail.slice(1)];
+    }
+  }
+
+  const commandNormalizedTail = normalizeSetupArgv(
+    normalizeToolsArgv(
+      normalizeDocsArgv(normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail)))
+    )
+  );
+
+  return [...normalizedLeading, ...commandNormalizedTail];
+}
+
+export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOptions = {}): Cli.Cli {
   const docsArgs = z.object({
     query: z.string().optional(),
   });
@@ -197,19 +272,22 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         agent: z.string().optional(),
       }),
       run(context) {
-        const argv = ["set"];
-        pushOption(argv, "url", context.options.url);
-        pushOption(argv, "token", context.options.token);
-        pushOption(argv, "token-file", context.options.tokenFile);
-        pushOption(argv, "token-stdin", context.options.tokenStdin);
-        pushOption(argv, "agent", context.options.agent);
-        return handleConfigCommand(argv, deps);
+        return executeConfigSetCommand(
+          {
+            url: context.options.url,
+            token: context.options.token,
+            tokenFile: context.options.tokenFile,
+            tokenStdin: context.options.tokenStdin,
+            agent: context.options.agent,
+          },
+          deps
+        );
       },
     })
     .command("show", {
       description: "Print effective config and auth metadata",
       run() {
-        return handleConfigCommand(["show"], deps);
+        return executeConfigShowCommand(deps);
       },
     });
 
@@ -220,8 +298,15 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
       description: "Lookup user profile by name",
       args: toolNameArgs,
       run(context) {
-        const value = typeof context.args.value === "string" ? decodeEscapedPositional(context.args.value) : undefined;
-        return handleToolsCommand(["get-user", ...(value ? [value] : [])], deps);
+        return executeToolsGetUserCommand(
+          {
+            fname:
+              typeof context.args.value === "string"
+                ? decodeEscapedPositional(context.args.value)
+                : undefined,
+          },
+          deps
+        );
       },
     })
     .command("get-cast", {
@@ -231,16 +316,16 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         type: z.string().optional(),
       }),
       run(context) {
-        const value = typeof context.args.value === "string" ? decodeEscapedPositional(context.args.value) : undefined;
-        const argv = ["get-cast"];
-        pushOption(argv, "type", context.options.type);
-        if (value) {
-          if (value.startsWith("-")) {
-            argv.push("--");
-          }
-          argv.push(value);
-        }
-        return handleToolsCommand(argv, deps);
+        return executeToolsGetCastCommand(
+          {
+            identifier:
+              typeof context.args.value === "string"
+                ? decodeEscapedPositional(context.args.value)
+                : undefined,
+            type: context.options.type,
+          },
+          deps
+        );
       },
     })
     .command("cast-preview", {
@@ -251,21 +336,23 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         parent: z.string().optional(),
       }),
       run(context) {
-        const argv = ["cast-preview"];
-        pushOption(argv, "text", context.options.text);
-        pushOption(argv, "embed", context.options.embed);
-        pushOption(argv, "parent", context.options.parent);
-        return handleToolsCommand(argv, deps);
+        return executeToolsCastPreviewCommand(
+          {
+            text: context.options.text,
+            embed: context.options.embed,
+            parent: context.options.parent,
+          },
+          deps
+        );
       },
     })
     .command("get-treasury-stats", {
       description: "Fetch treasury stats snapshot",
       args: z.object({
-        extra: z.string().optional(),
+        extra: z.never().optional(),
       }),
-      run(context) {
-        const extraArgs = typeof context.args.extra === "string" ? [context.args.extra] : [];
-        return handleToolsCommand(["get-treasury-stats", ...extraArgs], deps);
+      run() {
+        return executeToolsTreasuryStatsCommand(deps);
       },
     });
 
@@ -282,15 +369,16 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         prompt: z.boolean().optional(),
       }),
       run(context) {
-        const argv = ["x402", "init"];
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "mode", context.options.mode);
-        pushOption(argv, "private-key-stdin", context.options.privateKeyStdin);
-        pushOption(argv, "private-key-file", context.options.privateKeyFile);
-        if (context.options.prompt === false) {
-          argv.push("--no-prompt");
-        }
-        return handleFarcasterCommand(argv, deps);
+        return executeFarcasterX402InitCommand(
+          {
+            agent: context.options.agent,
+            mode: context.options.mode,
+            privateKeyStdin: context.options.privateKeyStdin,
+            privateKeyFile: context.options.privateKeyFile,
+            noPrompt: context.options.prompt === false,
+          },
+          deps
+        );
       },
     })
     .command("status", {
@@ -299,9 +387,12 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         agent: z.string().optional(),
       }),
       run(context) {
-        const argv = ["x402", "status"];
-        pushOption(argv, "agent", context.options.agent);
-        return handleFarcasterCommand(argv, deps);
+        return executeFarcasterX402StatusCommand(
+          {
+            agent: context.options.agent,
+          },
+          deps
+        );
       },
     });
 
@@ -317,12 +408,15 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         outDir: z.string().optional(),
       }),
       run(context) {
-        const argv = ["signup"];
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "recovery", context.options.recovery);
-        pushOption(argv, "extra-storage", context.options.extraStorage);
-        pushOption(argv, "out-dir", context.options.outDir);
-        return handleFarcasterCommand(argv, deps);
+        return executeFarcasterSignupCommand(
+          {
+            agent: context.options.agent,
+            recovery: context.options.recovery,
+            extraStorage: context.options.extraStorage,
+            outDir: context.options.outDir,
+          },
+          deps
+        );
       },
     })
     .command("post", {
@@ -337,15 +431,18 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         verify: z.string().optional(),
       }),
       run(context) {
-        const argv = ["post"];
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "text", context.options.text);
-        pushOption(argv, "fid", context.options.fid);
-        pushOption(argv, "reply-to", context.options.replyTo);
-        pushOption(argv, "signer-file", context.options.signerFile);
-        pushOption(argv, "idempotency-key", context.options.idempotencyKey);
-        pushOption(argv, "verify", context.options.verify);
-        return handleFarcasterCommand(argv, deps);
+        return executeFarcasterPostCommand(
+          {
+            agent: context.options.agent,
+            text: context.options.text,
+            fid: context.options.fid,
+            replyTo: context.options.replyTo,
+            signerFile: context.options.signerFile,
+            idempotencyKey: context.options.idempotencyKey,
+            verify: context.options.verify,
+          },
+          deps
+        );
       },
     })
     .command(farcasterX402);
@@ -378,17 +475,24 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         link: z.boolean().optional(),
       }),
       run(context) {
-        const argv: string[] = [];
-        pushOption(argv, "url", context.options.url);
-        pushOption(argv, "dev", context.options.dev);
-        pushOption(argv, "token", context.options.token);
-        pushOption(argv, "token-file", context.options.tokenFile);
-        pushOption(argv, "token-stdin", context.options.tokenStdin);
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "network", context.options.network);
-        pushOption(argv, "json", context.options.setupJson);
-        pushOption(argv, "link", context.options.link);
-        return handleSetupCommand(argv, deps);
+        if (options.mcpMode) {
+          throw new Error("setup is not available in MCP mode");
+        }
+
+        return executeSetupCommand(
+          {
+            url: context.options.url,
+            dev: context.options.dev,
+            token: context.options.token,
+            tokenFile: context.options.tokenFile,
+            tokenStdin: context.options.tokenStdin,
+            agent: context.options.agent,
+            network: context.options.network,
+            json: context.options.setupJson,
+            link: context.options.link,
+          },
+          deps
+        );
       },
     })
     .command(config)
@@ -399,10 +503,13 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         agent: z.string().optional(),
       }),
       run(context) {
-        const argv: string[] = [];
-        pushOption(argv, "network", context.options.network);
-        pushOption(argv, "agent", context.options.agent);
-        return handleWalletCommand(argv, deps);
+        return executeWalletCommand(
+          {
+            network: context.options.network,
+            agent: context.options.agent,
+          },
+          deps
+        );
       },
     })
     .command("docs", {
@@ -412,16 +519,16 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         limit: z.string().optional(),
       }),
       run(context) {
-        const query = typeof context.args.query === "string" ? decodeEscapedPositional(context.args.query) : undefined;
-        const argv: string[] = [];
-        pushOption(argv, "limit", context.options.limit);
-        if (typeof query === "string" && query.startsWith("-")) {
-          argv.push("--");
-        }
-        if (typeof query === "string" && query.length > 0) {
-          argv.push(query);
-        }
-        return handleDocsCommand(argv, deps);
+        return executeDocsCommand(
+          {
+            query:
+              typeof context.args.query === "string"
+                ? decodeEscapedPositional(context.args.query)
+                : undefined,
+            limit: context.options.limit,
+          },
+          deps
+        );
       },
     })
     .command(tools)
@@ -440,14 +547,18 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         idempotencyKey: z.string().optional(),
       }),
       run(context) {
-        const argv = [context.args.token, context.args.amount, context.args.to].filter(
-          (value): value is string => typeof value === "string"
+        return executeSendCommand(
+          {
+            token: context.args.token,
+            amount: context.args.amount,
+            to: context.args.to,
+            network: context.options.network,
+            decimals: context.options.decimals,
+            agent: context.options.agent,
+            idempotencyKey: context.options.idempotencyKey,
+          },
+          deps
         );
-        pushOption(argv, "network", context.options.network);
-        pushOption(argv, "decimals", context.options.decimals);
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "idempotency-key", context.options.idempotencyKey);
-        return handleSendCommand(argv, deps);
       },
     })
     .command("tx", {
@@ -461,14 +572,17 @@ export function createCobuildIncurCli(deps: CliDeps): Cli.Cli {
         idempotencyKey: z.string().optional(),
       }),
       run(context) {
-        const argv: string[] = [];
-        pushOption(argv, "to", context.options.to);
-        pushOption(argv, "data", context.options.data);
-        pushOption(argv, "value", context.options.value);
-        pushOption(argv, "network", context.options.network);
-        pushOption(argv, "agent", context.options.agent);
-        pushOption(argv, "idempotency-key", context.options.idempotencyKey);
-        return handleTxCommand(argv, deps);
+        return executeTxCommand(
+          {
+            to: context.options.to,
+            data: context.options.data,
+            value: context.options.value,
+            network: context.options.network,
+            agent: context.options.agent,
+            idempotencyKey: context.options.idempotencyKey,
+          },
+          deps
+        );
       },
     });
 }

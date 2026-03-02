@@ -59,7 +59,7 @@ cli/
 
 - Runtime composition and command tree: `src/cli-incur.ts` (`createCobuildIncurCli`, argv compatibility preprocessors)
 - Process/test lifecycle adapters: `src/cli.ts` (`runCli`, `runCliFromProcess`)
-- Command handlers: `src/commands/*.ts`
+- Command executors + legacy wrappers: `src/commands/*.ts`
 - Local config boundary: `src/config.ts` (`configPath`, `readConfig`, `writeConfig`, `requireConfig`)
 - Remote transport boundary: `src/transport.ts` (`toEndpoint`, `apiPost`, `apiGet`)
 - Shared output behavior: `src/output.ts`, `src/usage.ts`

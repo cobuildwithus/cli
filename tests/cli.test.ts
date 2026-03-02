@@ -118,12 +118,41 @@ describe("cli", () => {
 
     await runCli(["config", "show"], harness.deps);
 
-    expect(harness.outputs[0]).toContain("Saved config");
+    expect(JSON.parse(harness.outputs[0] ?? "null")).toEqual({
+      ok: true,
+      path: harness.configFile,
+    });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
       token: "abcdefgh...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "ops",
+      path: harness.configFile,
+    });
+  });
+
+  it("config set preserves values that start with '-' when provided with equals syntax", async () => {
+    const harness = createHarness();
+
+    await runCli(
+      [
+        "config",
+        "set",
+        "--url",
+        "https://api.example",
+        "--token",
+        "abcdefghijk",
+        "--agent=-ops",
+      ],
+      harness.deps
+    );
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: "https://api.example",
+      token: "abcdefgh...",
+      tokenRef: expectedPatTokenRef("https://api.example"),
+      agent: "-ops",
       path: harness.configFile,
     });
   });
@@ -250,6 +279,41 @@ describe("cli", () => {
     );
 
     expect(harness.outputs).not.toContain(`Saved config: ${harness.configFile}`);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      config: {
+        interfaceUrl: "https://api.example",
+        agent: "default",
+        path: harness.configFile,
+      },
+      defaultNetwork: "base-sepolia",
+      wallet: { ok: true, address: "0xabc" },
+      next: [
+        "Run: cli wallet",
+        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+      ],
+    });
+  });
+
+  it("setup also enables machine-readable mode when --json appears before the command", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(
+      [
+        "--json",
+        "setup",
+        "--url",
+        "https://api.example",
+        "--token",
+        "bbt_secret",
+        "--network",
+        "base-sepolia",
+      ],
+      harness.deps
+    );
+
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       config: {
@@ -977,7 +1041,7 @@ describe("cli", () => {
     });
 
     await expect(runCli(["tools", "get-treasury-stats", "extra"], harness.deps)).rejects.toThrow(
-      "Usage:"
+      "Invalid input: expected never, received string"
     );
 
     await runCli(["tools", "get-treasury-stats"], harness.deps);

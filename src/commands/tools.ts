@@ -2,20 +2,18 @@ import { parseArgs } from "node:util";
 import { printJson } from "../output.js";
 import { asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
-import { executeToolWithLegacyFallback } from "./tool-execution.js";
+import { executeCanonicalToolOnly } from "./tool-execution.js";
 
 const TOOLS_USAGE = `Usage:
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
   cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
-  cli tools cobuild-ai-context`;
+  cli tools get-treasury-stats`;
 const GET_USER_CANONICAL_TOOL_NAMES = ["getUser", "get-user"];
 const GET_CAST_CANONICAL_TOOL_NAMES = ["getCast", "get-cast"];
 const CAST_PREVIEW_CANONICAL_TOOL_NAMES = ["castPreview", "cast-preview"];
-const COBUILD_CONTEXT_CANONICAL_TOOL_NAMES = [
-  "getCobuildAiContext",
-  "cobuild-ai-context",
-  "get_cobuild_ai_context",
+const TREASURY_STATS_CANONICAL_TOOL_NAMES = [
+  "get-treasury-stats",
 ];
 
 function inferCastIdentifierType(identifier: string): "hash" | "url" {
@@ -70,7 +68,7 @@ function normalizeCastPreviewResponse(payload: unknown): Record<string, unknown>
   return { ok: true, cast: payload };
 }
 
-function normalizeCobuildAiContextResponse(payload: unknown): Record<string, unknown> {
+function normalizeTreasuryStatsResponse(payload: unknown): Record<string, unknown> {
   const record = asRecord(payload);
   if (hasOwn(record, "data")) {
     if (typeof record.ok === "boolean") {
@@ -81,18 +79,95 @@ function normalizeCobuildAiContextResponse(payload: unknown): Record<string, unk
   return { ok: true, data: payload };
 }
 
-async function handleToolsGetUserCommand(args: string[], deps: CliDeps): Promise<void> {
-  const fname = args.join(" ").trim();
+export interface ToolsGetUserInput {
+  fname?: string;
+}
+
+export interface ToolsGetCastInput {
+  identifier?: string;
+  type?: string;
+}
+
+export interface ToolsCastPreviewInput {
+  text?: string;
+  embed?: string[];
+  parent?: string;
+}
+
+export async function executeToolsGetUserCommand(
+  input: ToolsGetUserInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const fname = input.fname?.trim() ?? "";
   if (!fname) throw new Error(TOOLS_USAGE);
 
   const request = { fname };
-  const response = await executeToolWithLegacyFallback(deps, {
+  const response = await executeCanonicalToolOnly(deps, {
     canonicalToolNames: GET_USER_CANONICAL_TOOL_NAMES,
     input: request,
-    legacyPath: "/api/buildbot/tools/get-user",
-    legacyBody: request,
   });
-  printJson(deps, normalizeGetUserResponse(response));
+  return normalizeGetUserResponse(response);
+}
+
+export async function executeToolsGetCastCommand(
+  input: ToolsGetCastInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const identifier = input.identifier?.trim() ?? "";
+  if (!identifier) throw new Error(TOOLS_USAGE);
+
+  const type = parseCastType(input.type, identifier);
+  const request = {
+    identifier,
+    type,
+  };
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: GET_CAST_CANONICAL_TOOL_NAMES,
+    input: request,
+  });
+  return normalizeGetCastResponse(response);
+}
+
+export async function executeToolsCastPreviewCommand(
+  input: ToolsCastPreviewInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const text = input.text?.trim();
+  if (!text) throw new Error(TOOLS_USAGE);
+
+  const embedUrls = parseEmbedUrls(input.embed);
+  if (embedUrls.length > 2) {
+    throw new Error("A maximum of two --embed values are allowed.");
+  }
+
+  const request = {
+    text,
+    ...(embedUrls.length ? { embeds: embedUrls.map((url) => ({ url })) } : {}),
+    ...(input.parent ? { parent: input.parent } : {}),
+  };
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: CAST_PREVIEW_CANONICAL_TOOL_NAMES,
+    input: request,
+  });
+  return normalizeCastPreviewResponse(response);
+}
+
+export async function executeToolsTreasuryStatsCommand(deps: CliDeps): Promise<Record<string, unknown>> {
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: TREASURY_STATS_CANONICAL_TOOL_NAMES,
+    input: {},
+  });
+  return normalizeTreasuryStatsResponse(response);
+}
+
+async function handleToolsGetUserCommand(args: string[], deps: CliDeps): Promise<void> {
+  const output = await executeToolsGetUserCommand(
+    {
+      fname: args.join(" "),
+    },
+    deps
+  );
+  printJson(deps, output);
 }
 
 async function handleToolsGetCastCommand(args: string[], deps: CliDeps): Promise<void> {
@@ -105,21 +180,14 @@ async function handleToolsGetCastCommand(args: string[], deps: CliDeps): Promise
     strict: true,
   });
 
-  const identifier = parsed.positionals.join(" ").trim();
-  if (!identifier) throw new Error(TOOLS_USAGE);
-
-  const type = parseCastType(parsed.values.type, identifier);
-  const request = {
-    identifier,
-    type,
-  };
-  const response = await executeToolWithLegacyFallback(deps, {
-    canonicalToolNames: GET_CAST_CANONICAL_TOOL_NAMES,
-    input: request,
-    legacyPath: "/api/buildbot/tools/get-cast",
-    legacyBody: request,
-  });
-  printJson(deps, normalizeGetCastResponse(response));
+  const output = await executeToolsGetCastCommand(
+    {
+      identifier: parsed.positionals.join(" "),
+      type: parsed.values.type,
+    },
+    deps
+  );
+  printJson(deps, output);
 }
 
 async function handleToolsCastPreviewCommand(args: string[], deps: CliDeps): Promise<void> {
@@ -134,38 +202,22 @@ async function handleToolsCastPreviewCommand(args: string[], deps: CliDeps): Pro
     strict: true,
   });
 
-  const text = parsed.values.text?.trim();
-  if (!text) throw new Error(TOOLS_USAGE);
-
-  const embedUrls = parseEmbedUrls(parsed.values.embed);
-  if (embedUrls.length > 2) {
-    throw new Error("A maximum of two --embed values are allowed.");
-  }
-
-  const request = {
-    text,
-    ...(embedUrls.length ? { embeds: embedUrls.map((url) => ({ url })) } : {}),
-    ...(parsed.values.parent ? { parent: parsed.values.parent } : {}),
-  };
-  const response = await executeToolWithLegacyFallback(deps, {
-    canonicalToolNames: CAST_PREVIEW_CANONICAL_TOOL_NAMES,
-    input: request,
-    legacyPath: "/api/buildbot/tools/cast-preview",
-    legacyBody: request,
-  });
-  printJson(deps, normalizeCastPreviewResponse(response));
+  const output = await executeToolsCastPreviewCommand(
+    {
+      text: parsed.values.text,
+      embed: parsed.values.embed,
+      parent: parsed.values.parent,
+    },
+    deps
+  );
+  printJson(deps, output);
 }
 
-async function handleToolsCobuildAiContextCommand(args: string[], deps: CliDeps): Promise<void> {
+async function handleToolsTreasuryStatsCommand(args: string[], deps: CliDeps): Promise<void> {
   if (args.length > 0) throw new Error(TOOLS_USAGE);
 
-  const response = await executeToolWithLegacyFallback(deps, {
-    canonicalToolNames: COBUILD_CONTEXT_CANONICAL_TOOL_NAMES,
-    input: {},
-    legacyPath: "/api/buildbot/tools/cobuild-ai-context",
-    legacyBody: {},
-  });
-  printJson(deps, normalizeCobuildAiContextResponse(response));
+  const output = await executeToolsTreasuryStatsCommand(deps);
+  printJson(deps, output);
 }
 
 export async function handleToolsCommand(args: string[], deps: CliDeps): Promise<void> {
@@ -187,8 +239,8 @@ export async function handleToolsCommand(args: string[], deps: CliDeps): Promise
     return;
   }
 
-  if (subcommand === "cobuild-ai-context") {
-    await handleToolsCobuildAiContextCommand(rest, deps);
+  if (subcommand === "get-treasury-stats") {
+    await handleToolsTreasuryStatsCommand(rest, deps);
     return;
   }
 

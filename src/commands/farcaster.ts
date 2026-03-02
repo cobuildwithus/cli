@@ -1518,23 +1518,90 @@ async function requestHostedX402PaymentHeader(params: {
   };
 }
 
+function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "hosted"): void {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(xPaymentBase64, "base64").toString("utf-8"));
+  } catch {
+    throw new Error(`x402 payment header from ${source} source is not valid base64 JSON.`);
+  }
+
+  if (typeof decoded !== "object" || decoded === null) {
+    throw new Error(`x402 payment header from ${source} source is not a JSON object.`);
+  }
+
+  const payload = decoded as Record<string, unknown>;
+
+  if (payload.network !== X402_NETWORK) {
+    throw new Error(
+      `x402 payment header network mismatch: expected "${X402_NETWORK}", got "${String(payload.network)}".`
+    );
+  }
+
+  const inner = payload.payload as Record<string, unknown> | undefined;
+  const auth = inner?.authorization as Record<string, unknown> | undefined;
+  if (!auth) {
+    throw new Error(`x402 payment header from ${source} source is missing payload.authorization.`);
+  }
+
+  if (typeof auth.to !== "string" || auth.to.trim().length === 0) {
+    throw new Error(`x402 payment header from ${source} source is missing payload.authorization.to.`);
+  }
+
+  const normalizedTo = auth.to.toLowerCase();
+  if (normalizedTo !== X402_PAY_TO_ADDRESS) {
+    throw new Error(
+      `x402 payment "to" address mismatch: expected ${X402_PAY_TO_ADDRESS}, got ${normalizedTo}. Refusing to send payment to unknown address.`
+    );
+  }
+
+  const normalizedValue = String(auth.value);
+  if (normalizedValue !== X402_VALUE_MICRO_USDC) {
+    throw new Error(
+      `x402 payment value mismatch: expected ${X402_VALUE_MICRO_USDC}, got ${normalizedValue}. Refusing to send unexpected payment amount.`
+    );
+  }
+
+  if (typeof auth.validBefore !== "string" && typeof auth.validBefore !== "number") {
+    throw new Error(
+      `x402 payment header from ${source} source is missing payload.authorization.validBefore.`
+    );
+  }
+
+  const validBefore = Number(auth.validBefore);
+  if (!Number.isFinite(validBefore)) {
+    throw new Error(
+      `x402 payment header from ${source} source has invalid payload.authorization.validBefore (${String(auth.validBefore)}).`
+    );
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (validBefore <= nowSeconds) {
+    throw new Error(`x402 payment header from ${source} source has expired (validBefore=${validBefore}).`);
+  }
+}
+
 async function requestX402PaymentHeader(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
   expectedAgentKey: string;
   payer: ResolvedPostPayer;
 }): Promise<X402PaymentHeader> {
-  if (params.payer.mode === "local") {
-    return buildLocalX402PaymentHeader({
-      expectedAgentKey: params.expectedAgentKey,
-      payerAddress: params.payer.payerAddress,
-      privateKeyHex: params.payer.privateKeyHex,
-    });
-  }
-  return requestHostedX402PaymentHeader({
-    deps: params.deps,
-    expectedAgentKey: params.expectedAgentKey,
-    fallbackPayerAddress: params.payer.payerAddress,
-  });
+  const result =
+    params.payer.mode === "local"
+      ? await buildLocalX402PaymentHeader({
+          expectedAgentKey: params.expectedAgentKey,
+          payerAddress: params.payer.payerAddress,
+          privateKeyHex: params.payer.privateKeyHex,
+        })
+      : await requestHostedX402PaymentHeader({
+          deps: params.deps,
+          expectedAgentKey: params.expectedAgentKey,
+          fallbackPayerAddress: params.payer.payerAddress,
+        });
+
+  validateX402PaymentPayload(result.xPayment, params.payer.mode);
+
+  return result;
 }
 
 async function fetchCastById(params: {
@@ -1716,30 +1783,49 @@ async function submitCastToHub(params: {
   throw new Error("Failed to submit cast to Neynar hub.");
 }
 
-async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Promise<void> {
-  const normalizedArgs = normalizeSignupArgs(args);
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      recovery: { type: "string" },
-      "extra-storage": { type: "string" },
-      "out-dir": { type: "string" },
-    },
-    args: normalizedArgs,
-    allowPositionals: false,
-    strict: true,
-  });
+export interface FarcasterSignupCommandInput {
+  agent?: string;
+  recovery?: string;
+  extraStorage?: string;
+  outDir?: string;
+}
 
+export interface FarcasterX402InitCommandInput {
+  agent?: string;
+  mode?: string;
+  privateKeyStdin?: boolean;
+  privateKeyFile?: string;
+  noPrompt?: boolean;
+}
+
+export interface FarcasterX402StatusCommandInput {
+  agent?: string;
+}
+
+export interface FarcasterPostCommandInput {
+  agent?: string;
+  text?: string;
+  fid?: string;
+  replyTo?: string;
+  signerFile?: string;
+  idempotencyKey?: string;
+  verify?: string;
+}
+
+export async function executeFarcasterSignupCommand(
+  input: FarcasterSignupCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
 
-  const recovery = parsed.values.recovery?.trim();
+  const recovery = input.recovery?.trim();
   if (recovery) {
     validateEvmAddress(recovery, "--recovery");
   }
 
-  const extraStorage = parseExtraStorage(parsed.values["extra-storage"]);
-  const outDir = normalizeDirectoryOption(parsed.values["out-dir"], "--out-dir");
+  const extraStorage = parseExtraStorage(input.extraStorage);
+  const outDir = normalizeDirectoryOption(input.outDir, "--out-dir");
   const outputDirectory = resolveSignerOutputDirectory({
     deps,
     agentKey,
@@ -1806,8 +1892,7 @@ async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Prom
     }
 
     if (payerConfigReadFailed) {
-      printJson(deps, output);
-      return;
+      return output;
     }
 
     if (!payerConfig) {
@@ -1839,41 +1924,30 @@ async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Prom
         output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
       }
     }
-    printJson(deps, output);
-    return;
+    return output;
   }
 
-  printJson(deps, withSignerInfo(payload, signerPublicKey, false));
+  return withSignerInfo(payload, signerPublicKey, false);
 }
 
-async function handleFarcasterX402InitCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      mode: { type: "string" },
-      "private-key-stdin": { type: "boolean", default: false },
-      "private-key-file": { type: "string" },
-      "no-prompt": { type: "boolean", default: false },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
+export async function executeFarcasterX402InitCommand(
+  input: FarcasterX402InitCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
   const setup = await runX402InitWorkflow({
     deps,
     currentConfig: current,
     agentKey,
-    modeArg: parsed.values.mode,
-    noPrompt: parsed.values["no-prompt"] ?? false,
-    privateKeyStdin: parsed.values["private-key-stdin"] ?? false,
-    privateKeyFile: parsed.values["private-key-file"],
+    modeArg: input.mode,
+    noPrompt: input.noPrompt ?? false,
+    privateKeyStdin: input.privateKeyStdin ?? false,
+    privateKeyFile: input.privateKeyFile,
   });
   printX402FundingHints(deps, setup);
 
-  printJson(deps, {
+  return {
     ok: true,
     agentKey,
     x402: {
@@ -1883,21 +1957,15 @@ async function handleFarcasterX402InitCommand(args: string[], deps: CliDeps): Pr
       token: X402_TOKEN_SYMBOL,
       costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
     },
-  });
+  };
 }
 
-async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
+export async function executeFarcasterX402StatusCommand(
+  input: FarcasterX402StatusCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
   const stored = readStoredX402PayerConfig({
     deps,
     agentKey,
@@ -1941,7 +2009,7 @@ async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): 
     });
   }
 
-  printJson(deps, {
+  return {
     ok: true,
     agentKey,
     x402: {
@@ -1951,38 +2019,25 @@ async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): 
       token: stored.token,
       costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
     },
-  });
+  };
 }
 
-async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promise<void> {
-  const normalizedArgs = normalizePostArgs(args);
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      text: { type: "string" },
-      fid: { type: "string" },
-      "reply-to": { type: "string" },
-      "signer-file": { type: "string" },
-      "idempotency-key": { type: "string" },
-      verify: { type: "string" },
-    },
-    args: normalizedArgs,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const text = normalizeTextOption(parsed.values.text);
+export async function executeFarcasterPostCommand(
+  input: FarcasterPostCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const text = normalizeTextOption(input.text);
   if (!text) {
     throw new Error(FARCASTER_USAGE);
   }
 
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
-  const idempotencyKey = resolveExecIdempotencyKey(parsed.values["idempotency-key"], deps);
-  const verifyMode = resolveVerifyMode(parsed.values.verify);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
+  const verifyMode = resolveVerifyMode(input.verify);
   const verify = verifyMode !== "none";
-  const replyTo = parseReplyToOption(parsed.values["reply-to"]);
-  const signerFile = normalizeSignerFileOption(parsed.values["signer-file"]);
+  const replyTo = parseReplyToOption(input.replyTo);
+  const signerFile = normalizeSignerFileOption(input.signerFile);
   const signerFilePath = resolveSignerFilePath({
     deps,
     agentKey,
@@ -1995,7 +2050,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     signerFilePath,
   });
   const fid = resolvePostFid({
-    inputFid: parsed.values.fid,
+    inputFid: input.fid,
     signerFid: signer.fid,
   });
 
@@ -2019,7 +2074,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       replyTo,
     });
     if (existingReceipt.state === "succeeded" && existingReceipt.result) {
-      printJson(deps, {
+      return {
         ok: true,
         replayed: true,
         idempotencyKey,
@@ -2031,8 +2086,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
           fallbackAgentKey: agentKey,
           replyTo: existingReceipt.request.replyTo,
         }),
-      });
-      return;
+      };
     }
   }
 
@@ -2169,7 +2223,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     },
   });
 
-  printJson(deps, {
+  return {
     ok: true,
     replayed: false,
     resumedPending: Boolean(resumePending),
@@ -2182,7 +2236,112 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       fallbackAgentKey: agentKey,
       replyTo,
     }),
+  };
+}
+
+/* c8 ignore start */
+async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Promise<void> {
+  const normalizedArgs = normalizeSignupArgs(args);
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
+      recovery: { type: "string" },
+      "extra-storage": { type: "string" },
+      "out-dir": { type: "string" },
+    },
+    args: normalizedArgs,
+    allowPositionals: false,
+    strict: true,
   });
+
+  const output = await executeFarcasterSignupCommand(
+    {
+      agent: parsed.values.agent,
+      recovery: parsed.values.recovery,
+      extraStorage: parsed.values["extra-storage"],
+      outDir: parsed.values["out-dir"],
+    },
+    deps
+  );
+  printJson(deps, output);
+}
+
+async function handleFarcasterX402InitCommand(args: string[], deps: CliDeps): Promise<void> {
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
+      mode: { type: "string" },
+      "private-key-stdin": { type: "boolean", default: false },
+      "private-key-file": { type: "string" },
+      "no-prompt": { type: "boolean", default: false },
+    },
+    args,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const output = await executeFarcasterX402InitCommand(
+    {
+      agent: parsed.values.agent,
+      mode: parsed.values.mode,
+      privateKeyStdin: parsed.values["private-key-stdin"],
+      privateKeyFile: parsed.values["private-key-file"],
+      noPrompt: parsed.values["no-prompt"],
+    },
+    deps
+  );
+  printJson(deps, output);
+}
+
+async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): Promise<void> {
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
+    },
+    args,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const output = await executeFarcasterX402StatusCommand(
+    {
+      agent: parsed.values.agent,
+    },
+    deps
+  );
+  printJson(deps, output);
+}
+
+async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promise<void> {
+  const normalizedArgs = normalizePostArgs(args);
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
+      text: { type: "string" },
+      fid: { type: "string" },
+      "reply-to": { type: "string" },
+      "signer-file": { type: "string" },
+      "idempotency-key": { type: "string" },
+      verify: { type: "string" },
+    },
+    args: normalizedArgs,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const output = await executeFarcasterPostCommand(
+    {
+      agent: parsed.values.agent,
+      text: parsed.values.text,
+      fid: parsed.values.fid,
+      replyTo: parsed.values["reply-to"],
+      signerFile: parsed.values["signer-file"],
+      idempotencyKey: parsed.values["idempotency-key"],
+      verify: parsed.values.verify,
+    },
+    deps
+  );
+  printJson(deps, output);
 }
 
 async function handleFarcasterX402Command(args: string[], deps: CliDeps): Promise<void> {
@@ -2224,3 +2383,4 @@ export async function handleFarcasterCommand(args: string[], deps: CliDeps): Pro
 
   throw new Error(`Unknown farcaster subcommand: ${subcommand}`);
 }
+/* c8 ignore stop */

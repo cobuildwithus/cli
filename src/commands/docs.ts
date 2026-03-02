@@ -3,7 +3,7 @@ import { printJson } from "../output.js";
 import { asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import { parseIntegerOption } from "./shared.js";
-import { executeToolWithLegacyFallback } from "./tool-execution.js";
+import { executeCanonicalToolOnly } from "./tool-execution.js";
 
 const DOCS_USAGE = "Usage: cli docs <query> [--limit <n>]";
 const DOCS_LIMIT_MIN = 1;
@@ -43,6 +43,36 @@ function normalizeDocsResponse(query: string, payload: unknown): Record<string, 
   return { query, count: 1, results: [payload] };
 }
 
+export interface DocsCommandInput {
+  query?: string;
+  limit?: string;
+}
+
+export async function executeDocsCommand(input: DocsCommandInput, deps: CliDeps): Promise<Record<string, unknown>> {
+  const query = input.query?.trim() ?? "";
+  if (!query) {
+    throw new Error(DOCS_USAGE);
+  }
+
+  const limit = parseIntegerOption(input.limit, "--limit");
+  if (limit !== undefined && (limit < DOCS_LIMIT_MIN || limit > DOCS_LIMIT_MAX)) {
+    throw new Error(`--limit must be between ${DOCS_LIMIT_MIN} and ${DOCS_LIMIT_MAX}`);
+  }
+
+  const request = {
+    query,
+    ...(limit !== undefined ? { limit } : {}),
+  };
+
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: DOCS_CANONICAL_TOOL_NAMES,
+    input: request,
+  });
+
+  return normalizeDocsResponse(query, response);
+}
+
+/* c8 ignore start */
 export async function handleDocsCommand(args: string[], deps: CliDeps): Promise<void> {
   const parsed = parseArgs({
     options: {
@@ -53,27 +83,13 @@ export async function handleDocsCommand(args: string[], deps: CliDeps): Promise<
     strict: true,
   });
 
-  const query = parsed.positionals.join(" ").trim();
-  if (!query) {
-    throw new Error(DOCS_USAGE);
-  }
-
-  const limit = parseIntegerOption(parsed.values.limit, "--limit");
-  if (limit !== undefined && (limit < DOCS_LIMIT_MIN || limit > DOCS_LIMIT_MAX)) {
-    throw new Error(`--limit must be between ${DOCS_LIMIT_MIN} and ${DOCS_LIMIT_MAX}`);
-  }
-
-  const request = {
-    query,
-    ...(limit !== undefined ? { limit } : {}),
-  };
-
-  const response = await executeToolWithLegacyFallback(deps, {
-    canonicalToolNames: DOCS_CANONICAL_TOOL_NAMES,
-    input: request,
-    legacyPath: "/api/docs/search",
-    legacyBody: request,
-  });
-
-  printJson(deps, normalizeDocsResponse(query, response));
+  const output = await executeDocsCommand(
+    {
+      query: parsed.positionals.join(" "),
+      limit: parsed.values.limit,
+    },
+    deps
+  );
+  printJson(deps, output);
 }
+/* c8 ignore stop */

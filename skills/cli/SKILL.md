@@ -46,6 +46,7 @@ For deterministic agent automation, run setup in machine mode:
 cli setup --url <interface-url> --network <network> --agent <agent> --json
 ```
 
+`--json` can also be placed before the command (`cli --json setup ...`) and is remapped to setup machine mode.
 `--json` can also be enabled with `COBUILD_CLI_OUTPUT=json`.
 
 For local developer installs, add `--link` to setup to run `pnpm link --global` and make `cli` available on PATH:
@@ -95,8 +96,10 @@ Group command notes:
 
 - `setup --json` returns an object with `config`, `defaultNetwork`, `wallet`, and `next`.
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
+- `config set` returns JSON (`{ ok: true, path }`) on success.
 - `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
 - Command failures exit non-zero with human-readable diagnostics.
+- `setup` is intentionally unavailable when running the CLI as an MCP server (`--mcp`).
 
 ## Auth and Funds Expectations
 

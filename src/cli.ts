@@ -68,6 +68,40 @@ function extractIncurErrorMessage(outputs: string[], exitCode: number): string {
   return normalizeCommandNotFoundMessage(joined);
 }
 
+function isMcpRequested(argv: string[]): boolean {
+  let index = 0;
+  while (index < argv.length) {
+    const token = argv[index]!;
+    if (token === "--") return false;
+    if (!token.startsWith("-")) return false;
+    if (token === "--mcp") return true;
+
+    if (token === "--format") {
+      index += 2;
+      continue;
+    }
+    if (token.startsWith("--format=")) {
+      index += 1;
+      continue;
+    }
+
+    if (
+      token === "--verbose" ||
+      token === "--json" ||
+      token === "--llms" ||
+      token === "--help" ||
+      token === "-h" ||
+      token === "--version"
+    ) {
+      index += 1;
+      continue;
+    }
+
+    return false;
+  }
+  return false;
+}
+
 export function createCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {
   return {
     ...defaultDeps,
@@ -87,19 +121,23 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
     normalizedArgv.shift();
   }
 
-  const cli = createCobuildIncurCli(deps);
+  const mcpRequested = isMcpRequested(normalizedArgv);
+  const cli = createCobuildIncurCli(deps, { mcpMode: mcpRequested });
   const outputBuffer: string[] = [];
   const serveArgv = preprocessIncurArgv(normalizedArgv);
-
-  try {
-    await cli.serve(serveArgv, {
-      env: deps.env,
-      stdout: (chunk) => {
+  const outputWriter = mcpRequested
+    ? undefined
+    : (chunk: string) => {
         const message = stripTrailingNewline(chunk);
         if (message.length > 0) {
           outputBuffer.push(message);
         }
-      },
+      };
+
+  try {
+    await cli.serve(serveArgv, {
+      env: deps.env,
+      ...(outputWriter ? { stdout: outputWriter } : {}),
       exit: (code) => {
         throw new IncurExitSignal(code);
       },
@@ -107,7 +145,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
   } catch (error) {
     if (error instanceof IncurExitSignal) {
       if (error.code === 0) {
-        flushOutputBuffer(outputBuffer, deps.stdout);
+        if (!mcpRequested) {
+          flushOutputBuffer(outputBuffer, deps.stdout);
+        }
         return;
       }
       throw new Error(extractIncurErrorMessage(outputBuffer, error.code));
@@ -115,7 +155,9 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
     throw error;
   }
 
-  flushOutputBuffer(outputBuffer, deps.stdout);
+  if (!mcpRequested) {
+    flushOutputBuffer(outputBuffer, deps.stdout);
+  }
 }
 
 export async function runCliFromProcess(

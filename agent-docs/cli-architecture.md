@@ -86,7 +86,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 1. CLI UX boundary
 
 - Incur owns command discovery/help surfaces (`--help`, `--llms`, built-in skills/MCP commands).
-- Command handlers own domain-specific validation errors and response payloads.
+- Incur command schemas own primary argument/option parsing; command executors own domain validation and response payloads.
 - Help and error text should remain explicit and action-oriented.
 
 2. Local config boundary

@@ -34,6 +34,30 @@ const DEFAULT_INTERFACE_URL = "https://co.build";
 const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
 const LOOPBACK_INTERFACE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+export interface SetupCommandInput {
+  url?: string;
+  dev?: boolean;
+  token?: string;
+  tokenFile?: string;
+  tokenStdin?: boolean;
+  agent?: string;
+  network?: string;
+  json?: boolean;
+  link?: boolean;
+}
+
+export interface SetupCommandOutput {
+  ok: true;
+  config: {
+    interfaceUrl: string;
+    agent: string;
+    path: string;
+  };
+  defaultNetwork: string;
+  wallet: unknown;
+  next: string[];
+}
+
 /* c8 ignore start */
 function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
   if (deps.isInteractive) return deps.isInteractive();
@@ -419,6 +443,8 @@ async function maybeOpenInterface(
 
 type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
 
+type SetupOutputMode = "legacy" | "structured";
+
 async function requestTokenViaBrowser(params: {
   interfaceUrl: string;
   agent: string;
@@ -534,47 +560,34 @@ async function promptSecret(question: string): Promise<string> {
 }
 /* c8 ignore stop */
 
-export async function handleSetupCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      url: { type: "string" },
-      dev: { type: "boolean" },
-      token: { type: "string" },
-      "token-file": { type: "string" },
-      "token-stdin": { type: "boolean" },
-      agent: { type: "string" },
-      network: { type: "string" },
-      json: { type: "boolean" },
-      link: { type: "boolean" },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
+async function runSetupCommand(
+  input: SetupCommandInput,
+  deps: CliDeps,
+  outputMode: SetupOutputMode
+): Promise<SetupCommandOutput> {
   const tokenSourceCount = countTokenSources({
-    token: parsed.values.token,
-    tokenFile: parsed.values["token-file"],
-    tokenStdin: parsed.values["token-stdin"],
+    token: input.token,
+    tokenFile: input.tokenFile,
+    tokenStdin: input.tokenStdin,
   });
   if (tokenSourceCount > 1) {
     throw new Error(`${SETUP_USAGE}\nProvide only one of --token, --token-file, or --token-stdin.`);
   }
 
   const current = readConfig(deps);
-  const jsonMode = isJsonModeEnabled(parsed.values.json, deps);
+  const jsonMode = isJsonModeEnabled(input.json, deps);
   const interactive = isInteractive(deps) && !jsonMode;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
   const envUrl = getNonEmptyEnvValue(deps, "COBUILD_CLI_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "COBUILD_CLI_NETWORK");
   const defaultInterfaceUrl =
-    parsed.values.dev === true ? DEFAULT_DEV_INTERFACE_URL : DEFAULT_INTERFACE_URL;
+    input.dev === true ? DEFAULT_DEV_INTERFACE_URL : DEFAULT_INTERFACE_URL;
 
   let urlSource: SetupValueSource = "default";
   let url: string | undefined;
-  if (typeof parsed.values.url === "string") {
-    url = parsed.values.url;
+  if (typeof input.url === "string") {
+    url = input.url;
     urlSource = "flag";
   } else if (storedUrl) {
     url = storedUrl;
@@ -585,11 +598,11 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   }
 
   let tokenFromOption: string | undefined;
-  if (typeof parsed.values.token === "string") {
-    tokenFromOption = normalizeTokenInput(parsed.values.token);
-  } else if (typeof parsed.values["token-file"] === "string") {
-    tokenFromOption = readTokenFromFile(parsed.values["token-file"], deps);
-  } else if (parsed.values["token-stdin"] === true) {
+  if (typeof input.token === "string") {
+    tokenFromOption = normalizeTokenInput(input.token);
+  } else if (typeof input.tokenFile === "string") {
+    tokenFromOption = readTokenFromFile(input.tokenFile, deps);
+  } else if (input.tokenStdin === true) {
     tokenFromOption = await readTokenFromStdin(deps);
   }
   if (tokenFromOption !== undefined && tokenFromOption.length === 0) {
@@ -609,8 +622,8 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   const defaultAgent = current.agent || "default";
   let networkSource: SetupValueSource = "default";
   let defaultNetwork = "base-sepolia";
-  if (typeof parsed.values.network === "string") {
-    defaultNetwork = parsed.values.network;
+  if (typeof input.network === "string") {
+    defaultNetwork = input.network;
     networkSource = "flag";
   } else if (envNetwork) {
     defaultNetwork = envNetwork;
@@ -618,7 +631,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
   }
 
   let token = tokenFromOption ?? (storedToken || undefined);
-  const agent = parsed.values.agent || defaultAgent;
+  const agent = input.agent || defaultAgent;
 
   /* c8 ignore start */
   if (interactive) {
@@ -729,7 +742,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     interfaceUrl: url,
   });
   writeConfig(deps, nextConfig);
-  if (!jsonMode) {
+  if (!jsonMode && outputMode === "legacy") {
     deps.stdout(`Saved config: ${path}`);
   }
   let walletResponse: unknown;
@@ -756,7 +769,7 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
     throw error;
   }
 
-  const successPayload = {
+  const successPayload: SetupCommandOutput = {
     ok: true,
     config: { interfaceUrl: url, agent, path },
     defaultNetwork,
@@ -769,18 +782,66 @@ export async function handleSetupCommand(args: string[], deps: CliDeps): Promise
 
   const linkStatus = jsonMode
     ? "not-requested"
-    : await maybeLinkCliGlobalCommand(deps, parsed.values.link === true);
+    : await maybeLinkCliGlobalCommand(deps, input.link === true);
 
-  if (jsonMode || !interactive) {
+  if (outputMode === "legacy" && (jsonMode || !interactive)) {
     printJson(deps, successPayload);
-    return;
+    return successPayload;
   }
 
-  printSetupSuccessSummary({
-    deps,
-    configPath: path,
-    defaultNetwork,
-    walletAddress: getSetupWalletAddress(walletResponse),
-    linkStatus,
-  });
+  if (outputMode === "legacy") {
+    printSetupSuccessSummary({
+      deps,
+      configPath: path,
+      defaultNetwork,
+      walletAddress: getSetupWalletAddress(walletResponse),
+      linkStatus,
+    });
+  }
+
+  return successPayload;
 }
+
+export async function executeSetupCommand(
+  input: SetupCommandInput,
+  deps: CliDeps
+): Promise<SetupCommandOutput> {
+  return await runSetupCommand(input, deps, "structured");
+}
+
+/* c8 ignore start */
+export async function handleSetupCommand(args: string[], deps: CliDeps): Promise<void> {
+  const parsed = parseArgs({
+    options: {
+      url: { type: "string" },
+      dev: { type: "boolean" },
+      token: { type: "string" },
+      "token-file": { type: "string" },
+      "token-stdin": { type: "boolean" },
+      agent: { type: "string" },
+      network: { type: "string" },
+      json: { type: "boolean" },
+      link: { type: "boolean" },
+    },
+    args,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  await runSetupCommand(
+    {
+      url: parsed.values.url,
+      dev: parsed.values.dev,
+      token: parsed.values.token,
+      tokenFile: parsed.values["token-file"],
+      tokenStdin: parsed.values["token-stdin"],
+      agent: parsed.values.agent,
+      network: parsed.values.network,
+      json: parsed.values.json,
+      link: parsed.values.link,
+    },
+    deps,
+    "legacy"
+  );
+}
+/* c8 ignore stop */

@@ -7,6 +7,7 @@ Use this file only for currently active coding work. Keep it minimal and current
 | Agent/Session | Task | Files in Scope | Symbols (add/rename/delete) | Dependency Notes | Updated (YYYY-MM-DD) |
 | --- | --- | --- | --- | --- | --- |
 | codex-gpt5-shared-review-cli-migration-2026-02-25 | Migrate local review launcher to shared package wrapper/config and install shared dependency | `scripts/chatgpt-oracle-review.sh`, `scripts/review-gpt.config.sh`, `package.json`, lockfile, `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` | replace full local launcher implementation with thin wrapper; add shared package config file | Keep `review:gpt` UX stable while centralizing implementation maintenance | 2026-02-25 |
+| codex-gpt5-cli-x402-validation-tests-2026-03-02 | Add missing negative tests for x402 payment payload validation in Farcaster post flow | `src/commands/farcaster.ts`, `tests/farcaster-command.test.ts`, `tests/farcaster-x402-coverage-audit.test.ts`, `tests/setup-command-coverage.test.ts`, `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` | add test cases for invalid/malicious/expired x402 payment header payloads; tighten `validateX402PaymentPayload` handling for non-finite `validBefore`; update verify-flow fixtures to valid x402 headers; add direct coverage for `executeSetupCommand` | Keep coverage aligned with recent x402 payload validation hardening in `src/commands/farcaster.ts` while restoring global coverage gate | 2026-03-02 |
 
 ## Rules
 
