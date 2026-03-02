@@ -21,12 +21,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly detail: string | null;
+  readonly payload: unknown;
 
-  constructor(status: number, detail: string | null) {
+  constructor(status: number, detail: string | null, payload: unknown = null) {
     super(formatRequestError(status, detail));
     this.name = "ApiRequestError";
     this.status = status;
     this.detail = detail;
+    this.payload = payload;
   }
 }
 
@@ -155,7 +157,7 @@ async function apiRequest(args: ApiRequestArgs): Promise<unknown> {
 
   if (!response.ok || (isRecord(payload) && payload.ok === false)) {
     const rawDetail = isRecord(payload) && typeof payload.error === "string" ? payload.error : null;
-    throw new ApiRequestError(response.status, rawDetail);
+    throw new ApiRequestError(response.status, rawDetail, payload);
   }
 
   return payload;

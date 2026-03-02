@@ -7,6 +7,7 @@ Usage:
   cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
   cli config show
   cli wallet [--network <network>] [--agent <key>]
+  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -25,6 +26,8 @@ Examples:
   cli config set --url http://localhost:3000 --token bbt_xxx --agent default
   cli config set --token-file ./cli.token
   cli wallet --network base-sepolia
+  cli farcaster signup --agent default
+  cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will

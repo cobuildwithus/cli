@@ -1,5 +1,6 @@
 import { handleConfigCommand } from "./commands/config.js";
 import { handleDocsCommand } from "./commands/docs.js";
+import { handleFarcasterCommand } from "./commands/farcaster.js";
 import { handleSendCommand } from "./commands/send.js";
 import { handleSetupCommand } from "./commands/setup.js";
 import { handleToolsCommand } from "./commands/tools.js";
@@ -45,6 +46,11 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
 
   if (command === "docs") {
     await handleDocsCommand(args.slice(1), deps);
+    return;
+  }
+
+  if (command === "farcaster") {
+    await handleFarcasterCommand(args.slice(1), deps);
     return;
   }
 
