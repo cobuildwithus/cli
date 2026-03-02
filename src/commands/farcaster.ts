@@ -682,16 +682,24 @@ function writeStoredX402PayerConfig(params: {
 function resolveWalletAddressFromPayload(payload: unknown): string | null {
   const root = asRecord(payload);
   const result = asRecord(root.result);
-  const ownerAccountAddress =
-    typeof result.ownerAccountAddress === "string" ? result.ownerAccountAddress : null;
-  if (ownerAccountAddress) {
+  const ownerAccountAddress = result.ownerAccountAddress;
+  if (typeof ownerAccountAddress === "string") {
+    if (!isEvmAddress(ownerAccountAddress)) {
+      throw new Error("Backend wallet response returned invalid EVM address at result.ownerAccountAddress.");
+    }
     return ownerAccountAddress;
   }
   const wallet = asRecord(result.wallet);
   if (typeof wallet.address === "string") {
+    if (!isEvmAddress(wallet.address)) {
+      throw new Error("Backend wallet response returned invalid EVM address at result.wallet.address.");
+    }
     return wallet.address;
   }
   if (typeof root.ownerAccountAddress === "string") {
+    if (!isEvmAddress(root.ownerAccountAddress)) {
+      throw new Error("Backend wallet response returned invalid EVM address at ownerAccountAddress.");
+    }
     return root.ownerAccountAddress;
   }
   return null;
@@ -1701,10 +1709,25 @@ async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Prom
       result,
     });
     const output = withSignerInfo(payload, signerPublicKey, true) as Record<string, unknown>;
-    const payerConfig = readStoredX402PayerConfig({
-      deps,
-      agentKey,
-    });
+    let payerConfig: StoredX402PayerConfig | null = null;
+    let payerConfigReadFailed = false;
+    try {
+      payerConfig = readStoredX402PayerConfig({
+        deps,
+        agentKey,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      deps.stderr(`x402 payer setup skipped: ${message}`);
+      output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
+      payerConfigReadFailed = true;
+    }
+
+    if (payerConfigReadFailed) {
+      printJson(deps, output);
+      return;
+    }
+
     if (!payerConfig) {
       if (isInteractive(deps)) {
         try {

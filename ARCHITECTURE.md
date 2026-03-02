@@ -27,9 +27,9 @@ cli/
   - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap.
   - `config`: local config read/write/inspect.
   - `wallet`: wallet lookup via interface API.
-  - `farcaster`: Farcaster signup + signer registration orchestration (`signup`).
+  - `farcaster`: Farcaster signup + posting + x402 payer setup/status orchestration (`signup`, `post`, `x402 init`, `x402 status`).
   - `docs`: docs search query via docs search API.
-  - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `cobuild-ai-context`).
+  - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `get-treasury-stats`).
   - `send`: token transfer execution envelope.
   - `tx`: arbitrary transaction execution envelope.
 
@@ -81,6 +81,9 @@ cli/
 - `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
 - `wallet` always targets `/api/buildbot/wallet`.
 - `farcaster signup` targets `/api/buildbot/farcaster/signup`, generates Ed25519 signer keys locally, and stores the private signer key via secret provider refs (metadata-only signer file).
+- `farcaster x402 init` persists per-agent payer mode metadata (`hosted` or `local`) and payer key refs for local mode.
+- `farcaster post` signs cast bytes locally, submits directly to Neynar hub, and resolves `X-PAYMENT` from either hosted backend signing or local typed-data signing depending on payer mode.
+- `farcaster post` verification mode defaults to `none`; `--verify` maps to one delayed check (`once`) and `--verify=poll` performs bounded repeated checks.
 - `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via interface base.
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
@@ -127,6 +130,26 @@ cli/
 3. Generate an Ed25519 signer keypair locally in the CLI process.
 4. POST signup payload (`signerPublicKey`, optional recovery/storage options) to `/api/buildbot/farcaster/signup`.
 5. On successful completion, persist signer secret locally to a private file and print JSON result.
+
+### Farcaster x402 setup/status flow
+
+1. Parse `farcaster x402 init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+2. Resolve payer mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
+3. Persist per-agent payer config at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+4. In local mode, persist payer private key via SecretRef (file-backed by default).
+5. `farcaster x402 status` reads payer config and reports payer address, network, token, and per-call micro-USDC cost.
+
+### Farcaster post flow
+
+1. Parse `farcaster post` options (`--agent`, `--text`, `--fid`, `--signer-file`, `--idempotency-key`, `--verify` mode).
+2. Resolve signer key + fid from local signer file (or explicit `--fid` override).
+3. Resolve agent payer config; fail closed when missing in non-interactive mode.
+4. Build `X-PAYMENT` header:
+   - `hosted`: POST `/api/buildbot/farcaster/x402-payment` for backend-signed payload.
+   - `local`: sign USDC `TransferWithAuthorization` typed data locally and base64-encode x402 payload.
+5. Submit cast bytes to `https://hub-api.neynar.com/v1/submitMessage`, retrying once on 402 with fresh payment.
+6. Optionally verify inclusion (`once` or bounded `poll`) against `https://hub-api.neynar.com/v1/castById`.
+7. Persist idempotency receipts under `~/.cobuild-cli/agents/<agent>/farcaster/posts/<uuid>.json`.
 
 ### Token send flow
 

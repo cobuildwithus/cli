@@ -929,7 +929,7 @@ describe("cli", () => {
     });
   });
 
-  it("tools cobuild-ai-context posts empty payload and rejects unexpected args", async () => {
+  it("tools get-treasury-stats posts empty payload and rejects unexpected args", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -938,18 +938,18 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, data: { asOf: "2026-02-25T00:00:00.000Z" } }),
     });
 
-    await expect(runCli(["tools", "cobuild-ai-context", "extra"], harness.deps)).rejects.toThrow(
+    await expect(runCli(["tools", "get-treasury-stats", "extra"], harness.deps)).rejects.toThrow(
       "Usage:"
     );
 
-    await runCli(["tools", "cobuild-ai-context"], harness.deps);
+    await runCli(["tools", "get-treasury-stats"], harness.deps);
     const [input, init] = findFetchCallByUrl(
       harness.fetchMock.mock.calls,
       "https://interface.example/v1/tool-executions"
     );
     expect(String(input)).toBe("https://interface.example/v1/tool-executions");
     expect(JSON.parse(String(init?.body))).toEqual({
-      name: "getCobuildAiContext",
+      name: "get-treasury-stats",
       input: {},
     });
   });
@@ -1077,7 +1077,7 @@ describe("cli", () => {
     });
   });
 
-  it("tools cobuild-ai-context normalizes canonical responses that omit ok", async () => {
+  it("tools get-treasury-stats normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1089,12 +1089,12 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "getCobuildAiContext" }] }),
+            text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
           expect(JSON.parse(String(init?.body))).toEqual({
-            name: "getCobuildAiContext",
+            name: "get-treasury-stats",
             input: {},
           });
           return {
@@ -1111,7 +1111,7 @@ describe("cli", () => {
       },
     });
 
-    await runCli(["tools", "cobuild-ai-context"], harness.deps);
+    await runCli(["tools", "get-treasury-stats"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       data: { asOf: "2026-02-25T00:00:00.000Z" },
@@ -1187,7 +1187,7 @@ describe("cli", () => {
   it("farcaster command requires a subcommand", async () => {
     const harness = createHarness();
     await expect(runCli(["farcaster"], harness.deps)).rejects.toThrow(
-      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify]"
+      "Usage:\n  cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]\n  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]\n  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli farcaster x402 status [--agent <key>]"
     );
   });
 

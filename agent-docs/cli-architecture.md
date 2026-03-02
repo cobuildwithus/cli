@@ -37,6 +37,18 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `wallet [--network <network>] [--agent <key>]`
 - Calls `/api/buildbot/wallet` with agent + network context.
 
+### `farcaster`
+
+- `farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]`
+- `farcaster post --text <text> [--agent <key>] [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]`
+- `farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
+- `farcaster x402 status [--agent <key>]`
+- `signup` calls `/api/buildbot/farcaster/signup` and persists Ed25519 signer key material via SecretRef.
+- `x402 init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+- `post` submits directly to Neynar hub and selects x402 payment source per agent:
+  - `hosted` mode calls `/api/buildbot/farcaster/x402-payment`.
+  - `local` mode signs USDC typed data locally and emits `X-PAYMENT` without backend signing.
+
 ### `docs`
 
 - `docs <query> [--limit <n>]`
@@ -48,7 +60,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `tools get-user <fname>`
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
-- `tools cobuild-ai-context`
+- `tools get-treasury-stats`
 - Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) via interface API base URL.
 - Intended for read-only access to interface tool routes.
 

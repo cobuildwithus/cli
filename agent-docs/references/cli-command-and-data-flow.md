@@ -7,6 +7,7 @@
   - `setup` -> `handleSetupCommand`
   - `config` -> `handleConfigCommand`
   - `wallet` -> `handleWalletCommand`
+  - `farcaster` -> `handleFarcasterCommand`
   - `docs` -> `handleDocsCommand`
   - `tools` -> `handleToolsCommand`
   - `send` -> `handleSendCommand`
@@ -60,6 +61,28 @@
 3. Optionally GET `/v1/tools` to resolve canonical docs tool naming.
 4. POST `/v1/tool-executions` with canonical tool envelope + `{ query, limit? }` input.
 5. Normalize output to stable `{ query, count, results }` shape and print JSON.
+
+## Farcaster x402 Init/Status Flow
+
+1. Parse `farcaster x402 init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+2. Resolve agent key from `--agent` or config default.
+3. Resolve mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
+4. Persist per-agent payer metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+5. In local mode, persist payer private key via SecretRef file provider by default.
+6. `farcaster x402 status` reads payer metadata and reports payer address/network/token/cost.
+
+## Farcaster Post Flow
+
+1. Parse `farcaster post` options (`--agent`, `--text`, `--fid`, `--signer-file`, `--idempotency-key`, `--verify` mode).
+2. Resolve signer secret + fid from local signer file (or explicit `--fid`).
+3. Resolve payer mode from per-agent `x402-payer.json` (prompted setup in interactive mode when missing).
+4. Build x402 header:
+   - hosted mode: POST `/api/buildbot/farcaster/x402-payment`
+   - local mode: sign USDC `TransferWithAuthorization` typed data locally and base64-encode payload
+5. Submit cast bytes to `https://hub-api.neynar.com/v1/submitMessage`.
+6. On 402 submit response, mint fresh payment and retry once.
+7. Optional verification (`none|once|poll`) queries `https://hub-api.neynar.com/v1/castById`.
+8. Persist/replay idempotency receipts under `~/.cobuild-cli/agents/<agent>/farcaster/posts/<uuid>.json`.
 
 ## Tools Flow
 

@@ -8,12 +8,14 @@ Usage:
   cli config show
   cli wallet [--network <network>] [--agent <key>]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
-  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify]
+  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
+  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+  cli farcaster x402 status [--agent <key>]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
   cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
-  cli tools cobuild-ai-context
+  cli tools get-treasury-stats
   cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]
   cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]
 
@@ -29,14 +31,16 @@ Examples:
   cli wallet --network base-sepolia
   cli farcaster signup --agent default
   cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
+  cli farcaster x402 init --agent default --mode local-generate
+  cli farcaster x402 status --agent default
   cli farcaster post --text "Ship update"
-  cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324
+  cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will
   cli tools get-cast https://warpcast.com/user/0x123 --type url
   cli tools cast-preview --text "Ship update" --embed https://image.example/pic.png
-  cli tools cobuild-ai-context
+  cli tools get-treasury-stats
   cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia
   cli tx --to 0x1234... --data 0xabcdef --value 0 --network base`;
 

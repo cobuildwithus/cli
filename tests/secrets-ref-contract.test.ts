@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { CliConfig, SecretRef } from "../src/types.js";
 import {
   DEFAULT_SECRET_PROVIDER_ALIAS,
+  buildFarcasterX402PayerRef,
+  buildFarcasterX402PayerSecretKey,
   SINGLE_VALUE_FILE_REF_ID,
   buildFarcasterSignerRef,
   buildFarcasterSignerSecretKey,
@@ -104,6 +106,12 @@ describe("secrets ref-contract", () => {
       provider: "vault",
       id: "/farcaster:ed25519:agent-one:signer",
     });
+    expect(buildFarcasterX402PayerSecretKey("agent-one")).toBe("farcaster:x402:agent-one:payer");
+    expect(buildFarcasterX402PayerRef(config, "agent-one")).toEqual({
+      source: "file",
+      provider: "vault",
+      id: "/farcaster:x402:agent-one:payer",
+    });
   });
 
   it("falls back to default JSON provider when selected file default is singleValue", () => {
@@ -137,6 +145,11 @@ describe("secrets ref-contract", () => {
       provider: "default",
       id: "/farcaster:ed25519:agent-one:signer",
     });
+    expect(buildFarcasterX402PayerRef(config, "agent-one")).toEqual({
+      source: "file",
+      provider: "default",
+      id: "/farcaster:x402:agent-one:payer",
+    });
   });
 
   it("rejects structured refs when only singleValue file providers are configured", () => {
@@ -159,6 +172,9 @@ describe("secrets ref-contract", () => {
       'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
     );
     expect(() => buildFarcasterSignerRef(config, "agent-one")).toThrow(
+      'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
+    );
+    expect(() => buildFarcasterX402PayerRef(config, "agent-one")).toThrow(
       'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
     );
   });
