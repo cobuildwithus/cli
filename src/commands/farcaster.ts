@@ -1,4 +1,7 @@
 import path from "node:path";
+import { randomBytes } from "node:crypto";
+import { createInterface } from "node:readline/promises";
+import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import * as ed from "@noble/ed25519";
 import {
@@ -9,14 +12,18 @@ import {
   makeCastAdd,
 } from "@farcaster/hub-nodejs";
 import { bytesToHex, hexToBytes } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readConfig } from "../config.js";
 import { printJson } from "../output.js";
-import { ApiRequestError, asRecord, apiPost } from "../transport.js";
+import { ApiRequestError, asRecord, apiGet, apiPost } from "../transport.js";
 import type { CliConfig, CliDeps, SecretRef } from "../types.js";
-import { buildFarcasterSignerRef, isSecretRef } from "../secrets/ref-contract.js";
+import {
+  buildFarcasterSignerRef,
+  buildFarcasterX402PayerRef,
+  isSecretRef,
+} from "../secrets/ref-contract.js";
 import { resolveSecretRefString, setSecretRefString, withDefaultSecretProviders } from "../secrets/runtime.js";
 import {
-  buildIdempotencyHeaders,
   resolveAgentKey,
   resolveExecIdempotencyKey,
   throwWithIdempotencyKey,
@@ -25,18 +32,41 @@ import {
 
 const FARCASTER_USAGE = `Usage:
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
-  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify]`;
+  cli farcaster post --text <text> [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
+  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+  cli farcaster x402 status [--agent <key>]`;
 const SIGNER_FILE_NAME = "ed25519-signer.json";
+const X402_PAYER_FILE_NAME = "x402-payer.json";
 const NEYNAR_HUB_SUBMIT_URL = "https://hub-api.neynar.com/v1/submitMessage";
 const NEYNAR_HUB_CAST_BY_ID_URL = "https://hub-api.neynar.com/v1/castById";
 const HUB_PAYMENT_RETRYABLE_STATUS = 402;
 const HUB_SUBMIT_MAX_ATTEMPTS = 2;
 const HUB_SUBMIT_TIMEOUT_MS = 30_000;
 const HUB_VERIFY_TIMEOUT_MS = 10_000;
-const VERIFY_POLL_ATTEMPTS = 5;
-const VERIFY_POLL_INTERVAL_MS = 1_200;
+const VERIFY_DELAY_MS = 1_200;
+const VERIFY_POLL_MAX_ATTEMPTS = 5;
 const FARCASTER_MAX_CAST_TEXT_BYTES = 320;
 const POST_RECEIPT_VERSION = 1;
+const X402_VERSION = 1;
+const X402_SCHEME = "exact";
+const X402_NETWORK = "base";
+const X402_TOKEN_SYMBOL = "usdc";
+const X402_USDC_CONTRACT = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+const X402_PAY_TO_ADDRESS = "0xa6a8736f18f383f1cc2d938576933ee5cd359f24";
+const X402_VALUE_MICRO_USDC = "1000";
+const BASE_CHAIN_ID = 8453;
+const USDC_EIP712_DOMAIN_NAME = "USD Coin";
+const USDC_EIP712_DOMAIN_VERSION = "2";
+const X402_AUTH_VALID_AFTER = "0";
+const X402_AUTH_TTL_SECONDS = 300;
+
+type X402VerifyMode = "none" | "once" | "poll";
+type X402PayerMode = "hosted" | "local";
+type X402InitMode = "hosted" | "local-generate" | "local-key";
+
+interface MaskingWriter extends Writable {
+  setMuted(value: boolean): void;
+}
 
 type HexString = `0x${string}`;
 
@@ -72,6 +102,7 @@ type FarcasterPostReceipt = {
     fid: number;
     text: string;
     verify: boolean;
+    verifyMode?: "once" | "poll";
   };
   castHashHex: HexString;
   messageBytesBase64: string;
@@ -107,6 +138,32 @@ type X402PaymentHeader = {
   x402Amount: string | null;
   x402Network: string | null;
 };
+
+type StoredX402PayerConfig = {
+  version: 1;
+  mode: X402PayerMode;
+  payerAddress: string | null;
+  payerRef?: SecretRef;
+  network: "base";
+  token: "usdc";
+  createdAt: string;
+};
+
+type X402PayerSetupResult = {
+  mode: X402PayerMode;
+  payerAddress: string | null;
+};
+
+type ResolvedPostPayer =
+  | {
+      mode: "hosted";
+      payerAddress: string | null;
+    }
+  | {
+      mode: "local";
+      payerAddress: string;
+      privateKeyHex: HexString;
+    };
 
 function normalizeTextOption(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
@@ -188,6 +245,182 @@ function resolveSignerFilePath(params: {
     outDir: undefined,
   });
   return path.join(signerDirectory, SIGNER_FILE_NAME);
+}
+
+function resolveX402PayerFilePath(params: {
+  deps: Pick<CliDeps, "homedir">;
+  agentKey: string;
+}): string {
+  return path.join(
+    params.deps.homedir(),
+    ".cobuild-cli",
+    "agents",
+    params.agentKey,
+    "farcaster",
+    X402_PAYER_FILE_NAME
+  );
+}
+
+function normalizePostArgs(args: string[]): string[] {
+  const normalized: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    const next = args[index + 1];
+    if (current === "--verify" && (next === undefined || next.startsWith("-"))) {
+      normalized.push("--verify=once");
+      continue;
+    }
+    normalized.push(current);
+  }
+  return normalized;
+}
+
+function resolveVerifyMode(input: string | undefined): X402VerifyMode {
+  if (input === undefined) return "none";
+  const normalized = input.trim().toLowerCase();
+  if (normalized === "none" || normalized === "false") return "none";
+  if (normalized === "once" || normalized === "true") return "once";
+  if (normalized === "poll") return "poll";
+  throw new Error("--verify must be one of: none, once, poll");
+}
+
+function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
+  if (deps.isInteractive) {
+    return deps.isInteractive();
+  }
+  return Boolean(process.stdin.isTTY && process.stderr.isTTY);
+}
+
+function readTrimmedTextFromFile(
+  deps: Pick<CliDeps, "fs">,
+  filePath: string,
+  label: string
+): string {
+  let raw: string;
+  try {
+    raw = deps.fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    throw new Error(
+      `Could not read ${label} file: ${filePath} (${error instanceof Error ? error.message : String(error)})`
+    );
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error(`${label} file is empty: ${filePath}`);
+  }
+  return trimmed;
+}
+
+async function readTrimmedTextFromStdin(
+  deps: Pick<CliDeps, "readStdin">,
+  label: string
+): Promise<string> {
+  if (deps.readStdin) {
+    const value = (await deps.readStdin()).trim();
+    if (!value) {
+      throw new Error(`${label} stdin input is empty.`);
+    }
+    return value;
+  }
+
+  /* c8 ignore start */
+  if (process.stdin.isTTY) {
+    throw new Error(`Refusing --${label.toLowerCase().replace(/\s+/g, "-")}-stdin from interactive TTY.`);
+  }
+  process.stdin.setEncoding("utf8");
+  const raw = await new Promise<string>((resolve, reject) => {
+    let buffer = "";
+    process.stdin.on("data", (chunk: string) => {
+      buffer += chunk;
+    });
+    process.stdin.once("end", () => resolve(buffer));
+    process.stdin.once("error", reject);
+  });
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error(`${label} stdin input is empty.`);
+  }
+  return trimmed;
+  /* c8 ignore stop */
+}
+
+/* c8 ignore start */
+function createMaskingWriter(onWrite: (chunk: string) => void): MaskingWriter {
+  let muted = false;
+  const writer = new Writable({
+    write(chunk, _encoding, callback) {
+      const text = chunk.toString("utf8");
+      if (muted && text && text !== "\n" && text !== "\r\n") {
+        onWrite("*".repeat(text.length));
+      } else {
+        onWrite(text);
+      }
+      callback();
+    },
+    final(callback) {
+      callback();
+    },
+    destroy(error, callback) {
+      callback(error);
+    },
+  });
+  return Object.assign(writer, {
+    setMuted(value: boolean) {
+      muted = value;
+    },
+  });
+}
+/* c8 ignore stop */
+
+/* c8 ignore start */
+async function promptSelectX402Mode(
+  deps: Pick<CliDeps, "stderr">
+): Promise<X402InitMode> {
+  deps.stderr("How should this agent pay Farcaster x402 fees?");
+  deps.stderr("  1) hosted (recommended)");
+  deps.stderr("  2) local-generate");
+  deps.stderr("  3) local-key");
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const answer = (await rl.question("Select mode [1-3]: ")).trim();
+    if (answer === "1" || answer.toLowerCase() === "hosted") return "hosted";
+    if (answer === "2" || answer.toLowerCase() === "local-generate") return "local-generate";
+    if (answer === "3" || answer.toLowerCase() === "local-key") return "local-key";
+    throw new Error("Invalid selection. Choose hosted, local-generate, or local-key.");
+  } finally {
+    rl.close();
+  }
+}
+/* c8 ignore stop */
+
+async function promptMaskedPrivateKey(deps: Pick<CliDeps, "stderr">): Promise<string> {
+  /* c8 ignore start */
+  const maskingWriter = createMaskingWriter((chunk) => {
+    deps.stderr(chunk);
+  });
+  const rl = createInterface({
+    input: process.stdin,
+    output: maskingWriter,
+    terminal: true,
+  });
+  try {
+    deps.stderr("Enter private key (input hidden):");
+    maskingWriter.setMuted(true);
+    const answer = (await rl.question("> ")).trim();
+    maskingWriter.setMuted(false);
+    deps.stderr("");
+    if (!answer) {
+      throw new Error("Private key input cannot be empty.");
+    }
+    return answer;
+  } finally {
+    rl.close();
+  }
+  /* c8 ignore stop */
 }
 
 function generateEd25519PrivateKey(): Uint8Array {
@@ -372,6 +605,356 @@ function readStoredSigner(params: {
   };
 }
 
+function normalizePrivateKeyHex(value: string): HexString {
+  const trimmed = value.trim();
+  const withPrefix = trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+  if (!isHex32BytePrivateKey(withPrefix)) {
+    throw new Error("Private key must be 32 bytes hex (0x + 64 hex chars).");
+  }
+  return withPrefix.toLowerCase() as HexString;
+}
+
+function isEvmAddress(value: unknown): value is string {
+  return typeof value === "string" && /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
+function isStoredX402PayerConfig(value: unknown): value is StoredX402PayerConfig {
+  const record = asRecord(value);
+  const modeValid = record.mode === "hosted" || record.mode === "local";
+  const refValid = record.payerRef === undefined || isSecretRef(record.payerRef);
+  return (
+    record.version === 1 &&
+    modeValid &&
+    (record.payerAddress === null || isEvmAddress(record.payerAddress)) &&
+    record.network === "base" &&
+    record.token === "usdc" &&
+    typeof record.createdAt === "string" &&
+    refValid
+  );
+}
+
+function readStoredX402PayerConfig(params: {
+  deps: Pick<CliDeps, "fs" | "homedir">;
+  agentKey: string;
+}): StoredX402PayerConfig | null {
+  const payerPath = resolveX402PayerFilePath(params);
+  if (!params.deps.fs.existsSync(payerPath)) {
+    return null;
+  }
+
+  let raw: string;
+  try {
+    raw = params.deps.fs.readFileSync(payerPath, "utf8");
+  } catch {
+    throw new Error("Failed to read x402 payer config.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("x402 payer config is invalid JSON.");
+  }
+
+  if (!isStoredX402PayerConfig(parsed)) {
+    throw new Error("x402 payer config has invalid shape.");
+  }
+
+  return parsed;
+}
+
+function writeStoredX402PayerConfig(params: {
+  deps: Pick<CliDeps, "fs" | "homedir">;
+  agentKey: string;
+  config: StoredX402PayerConfig;
+}): string {
+  const payerPath = resolveX402PayerFilePath(params);
+  const payerDir = path.dirname(payerPath);
+  params.deps.fs.mkdirSync(payerDir, { recursive: true, mode: 0o700 });
+  params.deps.fs.writeFileSync(payerPath, JSON.stringify(params.config, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  params.deps.fs.chmodSync?.(payerPath, 0o600);
+  return payerPath;
+}
+
+function resolveWalletAddressFromPayload(payload: unknown): string | null {
+  const root = asRecord(payload);
+  const result = asRecord(root.result);
+  const ownerAccountAddress =
+    typeof result.ownerAccountAddress === "string" ? result.ownerAccountAddress : null;
+  if (ownerAccountAddress) {
+    return ownerAccountAddress;
+  }
+  const wallet = asRecord(result.wallet);
+  if (typeof wallet.address === "string") {
+    return wallet.address;
+  }
+  if (typeof root.ownerAccountAddress === "string") {
+    return root.ownerAccountAddress;
+  }
+  return null;
+}
+
+async function fetchHostedPayerAddress(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  agentKey: string;
+}): Promise<string | null> {
+  const payload = await apiGet(params.deps, `/api/buildbot/wallet?agentKey=${encodeURIComponent(params.agentKey)}`);
+  return resolveWalletAddressFromPayload(payload);
+}
+
+function saveLocalX402Payer(params: {
+  deps: Pick<CliDeps, "fs" | "homedir">;
+  currentConfig: CliConfig;
+  agentKey: string;
+  privateKeyHex: HexString;
+}): X402PayerSetupResult {
+  const configWithProviders = withDefaultSecretProviders(params.currentConfig, params.deps);
+  const payerRef = buildFarcasterX402PayerRef(configWithProviders, params.agentKey);
+  setSecretRefString({
+    deps: params.deps,
+    config: configWithProviders,
+    ref: payerRef,
+    value: params.privateKeyHex,
+  });
+
+  const payerAddress = privateKeyToAccount(params.privateKeyHex).address;
+  writeStoredX402PayerConfig({
+    deps: params.deps,
+    agentKey: params.agentKey,
+    config: {
+      version: 1,
+      mode: "local",
+      payerAddress,
+      payerRef,
+      network: "base",
+      token: "usdc",
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return {
+    mode: "local",
+    payerAddress,
+  };
+}
+
+async function saveHostedX402Payer(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  agentKey: string;
+}): Promise<X402PayerSetupResult> {
+  let payerAddress: string | null;
+  try {
+    payerAddress = await fetchHostedPayerAddress({
+      deps: params.deps,
+      agentKey: params.agentKey,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Hosted x402 setup requires backend wallet access: ${message}`);
+  }
+  writeStoredX402PayerConfig({
+    deps: params.deps,
+    agentKey: params.agentKey,
+    config: {
+      version: 1,
+      mode: "hosted",
+      payerAddress,
+      network: "base",
+      token: "usdc",
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return {
+    mode: "hosted",
+    payerAddress,
+  };
+}
+
+function resolveLocalPayerPrivateKey(params: {
+  deps: Pick<CliDeps, "fs" | "homedir" | "env">;
+  currentConfig: CliConfig;
+  payerConfig: StoredX402PayerConfig;
+}): HexString {
+  if (params.payerConfig.mode !== "local" || !isSecretRef(params.payerConfig.payerRef)) {
+    throw new Error("Local x402 payer config is missing payerRef.");
+  }
+  const configWithProviders = withDefaultSecretProviders(params.currentConfig, params.deps);
+  const privateKey = resolveSecretRefString({
+    deps: params.deps,
+    config: configWithProviders,
+    ref: params.payerConfig.payerRef,
+  });
+  return normalizePrivateKeyHex(privateKey);
+}
+
+async function resolvePayerSetupMode(params: {
+  deps: Pick<CliDeps, "isInteractive" | "stderr">;
+  modeArg: string | undefined;
+  noPrompt: boolean;
+}): Promise<X402InitMode> {
+  if (params.modeArg) {
+    const mode = params.modeArg.trim().toLowerCase();
+    if (mode === "hosted" || mode === "local-generate" || mode === "local-key") {
+      return mode;
+    }
+    throw new Error("--mode must be one of: hosted, local-generate, local-key");
+  }
+
+  if (params.noPrompt || !isInteractive(params.deps)) {
+    throw new Error(
+      "Missing --mode in non-interactive mode. Run: cli farcaster x402 init --mode hosted|local-generate|local-key"
+    );
+  }
+
+  return promptSelectX402Mode(params.deps);
+}
+
+async function runX402InitWorkflow(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir" | "env" | "readStdin" | "isInteractive" | "stderr">;
+  currentConfig: CliConfig;
+  agentKey: string;
+  modeArg: string | undefined;
+  noPrompt: boolean;
+  privateKeyStdin: boolean;
+  privateKeyFile: string | undefined;
+}): Promise<X402PayerSetupResult> {
+  if (params.privateKeyStdin && params.privateKeyFile) {
+    throw new Error("Provide only one of --private-key-stdin or --private-key-file.");
+  }
+
+  const mode = await resolvePayerSetupMode({
+    deps: params.deps,
+    modeArg: params.modeArg,
+    noPrompt: params.noPrompt,
+  });
+
+  if (mode !== "local-key" && (params.privateKeyStdin || params.privateKeyFile)) {
+    throw new Error("--private-key-stdin/--private-key-file require --mode local-key.");
+  }
+
+  if (mode === "hosted") {
+    return saveHostedX402Payer({
+      deps: params.deps,
+      agentKey: params.agentKey,
+    });
+  }
+
+  if (mode === "local-generate") {
+    const privateKeyHex = generatePrivateKey();
+    return saveLocalX402Payer({
+      deps: params.deps,
+      currentConfig: params.currentConfig,
+      agentKey: params.agentKey,
+      privateKeyHex,
+    });
+  }
+
+  let privateKeyInput: string;
+  if (params.privateKeyStdin) {
+    privateKeyInput = await readTrimmedTextFromStdin(params.deps, "Private key");
+  } else if (params.privateKeyFile) {
+    privateKeyInput = readTrimmedTextFromFile(params.deps, params.privateKeyFile, "private key");
+  } else if (params.noPrompt || !isInteractive(params.deps)) {
+    throw new Error("local-key mode requires --private-key-stdin or --private-key-file in non-interactive mode.");
+  } else {
+    privateKeyInput = await promptMaskedPrivateKey(params.deps);
+  }
+
+  return saveLocalX402Payer({
+    deps: params.deps,
+    currentConfig: params.currentConfig,
+    agentKey: params.agentKey,
+    privateKeyHex: normalizePrivateKeyHex(privateKeyInput),
+  });
+}
+
+function printX402FundingHints(
+  deps: Pick<CliDeps, "stderr">,
+  setup: X402PayerSetupResult
+): void {
+  deps.stderr("");
+  deps.stderr(`x402 payer mode: ${setup.mode}`);
+  if (setup.payerAddress) {
+    deps.stderr(`Payer address: ${setup.payerAddress}`);
+    deps.stderr("Fund with USDC on Base. Suggested buffer: 0.10 USDC (~100 paid calls).");
+  } else {
+    deps.stderr("Payer address is not available yet. Run `cli farcaster x402 status` after wallet bootstrap.");
+  }
+  if (setup.mode === "local") {
+    deps.stderr("Local payer keys are stored in local file-backed secrets. Keep this wallet as low-balance hot funds.");
+  } else {
+    deps.stderr("Hosted mode requires CLI auth and backend wallet access.");
+  }
+}
+
+async function ensurePayerConfigForPost(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir" | "env" | "readStdin" | "isInteractive" | "stderr">;
+  currentConfig: CliConfig;
+  agentKey: string;
+}): Promise<StoredX402PayerConfig> {
+  const existing = readStoredX402PayerConfig({
+    deps: params.deps,
+    agentKey: params.agentKey,
+  });
+  if (existing) {
+    return existing;
+  }
+
+  if (!isInteractive(params.deps)) {
+    throw new Error(
+      "Missing x402 payer config. Run `cli farcaster x402 init --agent <key> --mode hosted|local-generate|local-key`."
+    );
+  }
+
+  params.deps.stderr("No x402 payer configured for this agent. Starting setup...");
+  const setup = await runX402InitWorkflow({
+    deps: params.deps,
+    currentConfig: params.currentConfig,
+    agentKey: params.agentKey,
+    modeArg: undefined,
+    noPrompt: false,
+    privateKeyStdin: false,
+    privateKeyFile: undefined,
+  });
+  printX402FundingHints(params.deps, setup);
+
+  const created = readStoredX402PayerConfig({
+    deps: params.deps,
+    agentKey: params.agentKey,
+  });
+  if (!created) {
+    throw new Error("Failed to persist x402 payer config.");
+  }
+  return created;
+}
+
+function resolvePostPayer(params: {
+  deps: Pick<CliDeps, "fs" | "homedir" | "env">;
+  currentConfig: CliConfig;
+  agentKey: string;
+  payerConfig: StoredX402PayerConfig;
+}): ResolvedPostPayer {
+  if (params.payerConfig.mode === "hosted") {
+    return {
+      mode: "hosted",
+      payerAddress: params.payerConfig.payerAddress,
+    };
+  }
+
+  const privateKeyHex = resolveLocalPayerPrivateKey({
+    deps: params.deps,
+    currentConfig: params.currentConfig,
+    payerConfig: params.payerConfig,
+  });
+  return {
+    mode: "local",
+    payerAddress: privateKeyToAccount(privateKeyHex).address,
+    privateKeyHex,
+  };
+}
+
 function resolvePostFid(params: {
   inputFid: string | undefined;
   signerFid: number | null;
@@ -460,6 +1043,9 @@ function isCurrentFarcasterPostReceipt(value: unknown): value is FarcasterPostRe
     typeof request.fid === "number" &&
     typeof request.text === "string" &&
     typeof request.verify === "boolean" &&
+    (request.verifyMode === undefined ||
+      request.verifyMode === "once" ||
+      request.verifyMode === "poll") &&
     isHexLike(record.castHashHex) &&
     typeof record.messageBytesBase64 === "string" &&
     typeof record.savedAt === "string"
@@ -568,13 +1154,16 @@ function assertPostReceiptMatch(params: {
   fid: number;
   text: string;
   verify: boolean;
+  verifyMode: X402VerifyMode;
 }): void {
   const receiptVerify = params.receipt.request.verify ?? false;
+  const receiptVerifyMode = params.receipt.request.verifyMode ?? (receiptVerify ? "once" : "none");
   if (
     params.receipt.idempotencyKey !== params.idempotencyKey ||
     params.receipt.request.fid !== params.fid ||
     params.receipt.request.text !== params.text ||
-    receiptVerify !== params.verify
+    receiptVerify !== params.verify ||
+    receiptVerifyMode !== params.verifyMode
   ) {
     throw new Error(
       "Idempotency key was already used for a different Farcaster post request."
@@ -740,22 +1329,81 @@ async function buildCastMessage(params: {
   };
 }
 
-async function requestX402PaymentHeader(params: {
-  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
-  idempotencyKey: string;
-  expectedAgentKey: string;
-}): Promise<X402PaymentHeader> {
-  const response = await apiPost(
-    params.deps,
-    "/api/buildbot/farcaster/x402-payment",
-    {
-      idempotencyKey: params.idempotencyKey,
-    },
-    {
-      headers: buildIdempotencyHeaders(params.idempotencyKey),
-    }
-  );
+function buildAuthorizationNonce(): HexString {
+  return (`0x${randomBytes(32).toString("hex")}` as HexString);
+}
 
+async function buildLocalX402PaymentHeader(params: {
+  expectedAgentKey: string;
+  payerAddress: string;
+  privateKeyHex: HexString;
+}): Promise<X402PaymentHeader> {
+  const account = privateKeyToAccount(params.privateKeyHex);
+  const nonce = buildAuthorizationNonce();
+  const validBefore = Math.floor(Date.now() / 1000) + X402_AUTH_TTL_SECONDS;
+  const authorization = {
+    from: account.address,
+    to: X402_PAY_TO_ADDRESS as HexString,
+    value: X402_VALUE_MICRO_USDC,
+    validAfter: X402_AUTH_VALID_AFTER,
+    validBefore: String(validBefore),
+    nonce,
+  };
+
+  const signature = await account.signTypedData({
+    domain: {
+      name: USDC_EIP712_DOMAIN_NAME,
+      version: USDC_EIP712_DOMAIN_VERSION,
+      chainId: BASE_CHAIN_ID,
+      verifyingContract: X402_USDC_CONTRACT,
+    },
+    types: {
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" },
+      ],
+    },
+    primaryType: "TransferWithAuthorization",
+    message: {
+      from: authorization.from,
+      to: authorization.to,
+      value: BigInt(authorization.value),
+      validAfter: BigInt(authorization.validAfter),
+      validBefore: BigInt(authorization.validBefore),
+      nonce: authorization.nonce,
+    },
+  });
+
+  const xPaymentPayload = {
+    x402Version: X402_VERSION,
+    scheme: X402_SCHEME,
+    network: X402_NETWORK,
+    payload: {
+      signature,
+      authorization,
+    },
+  };
+
+  return {
+    xPayment: Buffer.from(JSON.stringify(xPaymentPayload)).toString("base64"),
+    payerAddress: params.payerAddress,
+    payerAgentKey: params.expectedAgentKey,
+    x402Token: X402_USDC_CONTRACT,
+    x402Amount: X402_VALUE_MICRO_USDC,
+    x402Network: X402_NETWORK,
+  };
+}
+
+async function requestHostedX402PaymentHeader(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  expectedAgentKey: string;
+  fallbackPayerAddress: string | null;
+}): Promise<X402PaymentHeader> {
+  const response = await apiPost(params.deps, "/api/buildbot/farcaster/x402-payment", {});
   const payload = asRecord(response);
   const result = asRecord(payload.result);
   const xPayment =
@@ -766,7 +1414,9 @@ async function requestX402PaymentHeader(params: {
     throw new Error("Build-bot x402 payment response did not include xPayment.");
   }
 
-  const payerAddress = typeof result.payerAddress === "string" ? result.payerAddress : null;
+  const payerAddress =
+    (typeof result.payerAddress === "string" ? result.payerAddress : null) ??
+    params.fallbackPayerAddress;
   const payerAgentKey = typeof result.agentKey === "string" ? result.agentKey.trim() : "";
   if (!payerAgentKey) {
     throw new Error("Build-bot x402 payment response did not include agentKey.");
@@ -787,10 +1437,29 @@ async function requestX402PaymentHeader(params: {
   };
 }
 
+async function requestX402PaymentHeader(params: {
+  deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
+  expectedAgentKey: string;
+  payer: ResolvedPostPayer;
+}): Promise<X402PaymentHeader> {
+  if (params.payer.mode === "local") {
+    return buildLocalX402PaymentHeader({
+      expectedAgentKey: params.expectedAgentKey,
+      payerAddress: params.payer.payerAddress,
+      privateKeyHex: params.payer.privateKeyHex,
+    });
+  }
+  return requestHostedX402PaymentHeader({
+    deps: params.deps,
+    expectedAgentKey: params.expectedAgentKey,
+    fallbackPayerAddress: params.payer.payerAddress,
+  });
+}
+
 async function fetchCastById(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
-  idempotencyKey: string;
   agentKey: string;
+  payer: ResolvedPostPayer;
   fid: number;
   castHashHex: HexString;
 }): Promise<{ status: number; body: string }> {
@@ -820,8 +1489,8 @@ async function fetchCastById(params: {
 
   const payment = await requestX402PaymentHeader({
     deps: params.deps,
-    idempotencyKey: params.idempotencyKey,
     expectedAgentKey: params.agentKey,
+    payer: params.payer,
   });
   const paidResponse = await fetchHubWithTimeout({
     deps: params.deps,
@@ -844,16 +1513,19 @@ async function fetchCastById(params: {
 
 async function verifyCastInclusion(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
-  idempotencyKey: string;
   agentKey: string;
+  payer: ResolvedPostPayer;
   fid: number;
   castHashHex: HexString;
+  mode: X402VerifyMode;
 }): Promise<FarcasterPostVerifyResult> {
-  for (let attempt = 1; attempt <= VERIFY_POLL_ATTEMPTS; attempt += 1) {
+  const maxAttempts = params.mode === "poll" ? VERIFY_POLL_MAX_ATTEMPTS : 1;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await waitForMs(VERIFY_DELAY_MS);
     const verification = await fetchCastById({
       deps: params.deps,
-      idempotencyKey: params.idempotencyKey,
       agentKey: params.agentKey,
+      payer: params.payer,
       fid: params.fid,
       castHashHex: params.castHashHex,
     });
@@ -866,15 +1538,17 @@ async function verifyCastInclusion(params: {
       };
     }
 
-    if (verification.status === 404 && attempt < VERIFY_POLL_ATTEMPTS) {
-      await waitForMs(VERIFY_POLL_INTERVAL_MS);
+    if (verification.status === 404 && params.mode === "poll" && attempt < maxAttempts) {
       continue;
     }
 
     if (verification.status === 404) {
-      throw new Error(
-        `Cast was not observed in Neynar hub reads after ${VERIFY_POLL_ATTEMPTS} attempts`
-      );
+      if (params.mode === "poll") {
+        throw new Error(
+          `Cast was not observed in Neynar hub read after ${maxAttempts} verification checks`
+        );
+      }
+      throw new Error("Cast was not observed in Neynar hub read after one delayed verification check");
     }
 
     const detail = sanitizeHubErrorText(verification.body);
@@ -884,13 +1558,13 @@ async function verifyCastInclusion(params: {
     );
   }
 
-  throw new Error("Neynar hub cast verification failed.");
+  throw new Error("Cast verification failed unexpectedly.");
 }
 
 async function submitCastToHub(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
-  idempotencyKey: string;
   agentKey: string;
+  payer: ResolvedPostPayer;
   messageBytes: Uint8Array;
 }): Promise<{
   hubResponseStatus: number;
@@ -902,8 +1576,8 @@ async function submitCastToHub(params: {
   for (let attempt = 0; attempt < HUB_SUBMIT_MAX_ATTEMPTS; attempt += 1) {
     const payment = await requestX402PaymentHeader({
       deps: params.deps,
-      idempotencyKey: params.idempotencyKey,
       expectedAgentKey: params.agentKey,
+      payer: params.payer,
     });
     x402Metadata = {
       payerAddress: payment.payerAddress,
@@ -947,10 +1621,6 @@ async function submitCastToHub(params: {
         x402Network: null,
       },
     };
-  }
-
-  if (x402Metadata) {
-    throw new Error("Failed to submit cast to Neynar hub.");
   }
 
   throw new Error("Failed to submit cast to Neynar hub.");
@@ -1030,23 +1700,167 @@ async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Prom
       signerPrivateKey,
       result,
     });
-    printJson(deps, withSignerInfo(payload, signerPublicKey, true));
+    const output = withSignerInfo(payload, signerPublicKey, true) as Record<string, unknown>;
+    const payerConfig = readStoredX402PayerConfig({
+      deps,
+      agentKey,
+    });
+    if (!payerConfig) {
+      if (isInteractive(deps)) {
+        try {
+          const setup = await runX402InitWorkflow({
+            deps,
+            currentConfig: current,
+            agentKey,
+            modeArg: undefined,
+            noPrompt: false,
+            privateKeyStdin: false,
+            privateKeyFile: undefined,
+          });
+          printX402FundingHints(deps, setup);
+          output.x402 = {
+            mode: setup.mode,
+            payerAddress: setup.payerAddress,
+            network: X402_NETWORK,
+            token: X402_TOKEN_SYMBOL,
+            costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
+          };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          deps.stderr(`x402 payer setup skipped: ${message}`);
+          output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
+        }
+      } else {
+        output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
+      }
+    }
+    printJson(deps, output);
     return;
   }
 
   printJson(deps, withSignerInfo(payload, signerPublicKey, false));
 }
 
-async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promise<void> {
+async function handleFarcasterX402InitCommand(args: string[], deps: CliDeps): Promise<void> {
   const parsed = parseArgs({
     options: {
+      agent: { type: "string" },
+      mode: { type: "string" },
+      "private-key-stdin": { type: "boolean", default: false },
+      "private-key-file": { type: "string" },
+      "no-prompt": { type: "boolean", default: false },
+    },
+    args,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
+  const setup = await runX402InitWorkflow({
+    deps,
+    currentConfig: current,
+    agentKey,
+    modeArg: parsed.values.mode,
+    noPrompt: parsed.values["no-prompt"] ?? false,
+    privateKeyStdin: parsed.values["private-key-stdin"] ?? false,
+    privateKeyFile: parsed.values["private-key-file"],
+  });
+  printX402FundingHints(deps, setup);
+
+  printJson(deps, {
+    ok: true,
+    agentKey,
+    x402: {
+      mode: setup.mode,
+      payerAddress: setup.payerAddress,
+      network: X402_NETWORK,
+      token: X402_TOKEN_SYMBOL,
+      costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
+    },
+  });
+}
+
+async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): Promise<void> {
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
+    },
+    args,
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
+  const stored = readStoredX402PayerConfig({
+    deps,
+    agentKey,
+  });
+  if (!stored) {
+    throw new Error(
+      "No x402 payer is configured for this agent. Run `cli farcaster x402 init --mode hosted|local-generate|local-key`."
+    );
+  }
+
+  let payerAddress = stored.payerAddress;
+  if (stored.mode === "local") {
+    const privateKeyHex = resolveLocalPayerPrivateKey({
+      deps,
+      currentConfig: current,
+      payerConfig: stored,
+    });
+    payerAddress = privateKeyToAccount(privateKeyHex).address;
+  } else if (!payerAddress) {
+    try {
+      payerAddress = await fetchHostedPayerAddress({
+        deps,
+        agentKey,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Hosted x402 payer address is unknown and could not be fetched from backend wallet endpoint: ${message}`
+      );
+    }
+  }
+
+  if (payerAddress !== stored.payerAddress) {
+    writeStoredX402PayerConfig({
+      deps,
+      agentKey,
+      config: {
+        ...stored,
+        payerAddress,
+      },
+    });
+  }
+
+  printJson(deps, {
+    ok: true,
+    agentKey,
+    x402: {
+      mode: stored.mode,
+      payerAddress,
+      network: stored.network,
+      token: stored.token,
+      costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
+    },
+  });
+}
+
+async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promise<void> {
+  const normalizedArgs = normalizePostArgs(args);
+  const parsed = parseArgs({
+    options: {
+      agent: { type: "string" },
       text: { type: "string" },
       fid: { type: "string" },
       "signer-file": { type: "string" },
       "idempotency-key": { type: "string" },
-      verify: { type: "boolean", default: false },
+      verify: { type: "string" },
     },
-    args,
+    args: normalizedArgs,
     allowPositionals: false,
     strict: true,
   });
@@ -1057,9 +1871,10 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
   }
 
   const current = readConfig(deps);
-  const agentKey = resolveAgentKey(undefined, current.agent);
+  const agentKey = resolveAgentKey(parsed.values.agent, current.agent);
   const idempotencyKey = resolveExecIdempotencyKey(parsed.values["idempotency-key"], deps);
-  const verify = parsed.values.verify ?? false;
+  const verifyMode = resolveVerifyMode(parsed.values.verify);
+  const verify = verifyMode !== "none";
   const signerFile = normalizeSignerFileOption(parsed.values["signer-file"]);
   const signerFilePath = resolveSignerFilePath({
     deps,
@@ -1093,6 +1908,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       fid,
       text,
       verify,
+      verifyMode,
     });
     if (existingReceipt.state === "succeeded" && existingReceipt.result) {
       printJson(deps, {
@@ -1111,6 +1927,18 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     }
   }
 
+  const payerConfig = await ensurePayerConfigForPost({
+    deps,
+    currentConfig: current,
+    agentKey,
+  });
+  const payer = resolvePostPayer({
+    deps,
+    currentConfig: current,
+    agentKey,
+    payerConfig,
+  });
+
   const resumePending = existingReceipt?.state === "pending" ? existingReceipt : null;
   let castHashHex: HexString;
   let messageBytes: Uint8Array;
@@ -1122,6 +1950,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     messageBytes = decodeMessageBytesBase64(messageBytesBase64);
   } else {
     let cast: { messageBytes: Uint8Array; castHashHex: HexString };
+    /* c8 ignore start */
     try {
       cast = await buildCastMessage({
         fid,
@@ -1131,6 +1960,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
     } catch (error) {
       throwWithIdempotencyKey(error, idempotencyKey);
     }
+    /* c8 ignore stop */
     castHashHex = cast.castHashHex;
     messageBytes = cast.messageBytes;
     messageBytesBase64 = encodeMessageBytesBase64(messageBytes);
@@ -1146,6 +1976,7 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
           fid,
           text,
           verify,
+          ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
         },
         castHashHex,
         messageBytesBase64,
@@ -1163,8 +1994,8 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
   try {
     submitResult = await submitCastToHub({
       deps,
-      idempotencyKey,
       agentKey,
+      payer,
       messageBytes,
     });
 
@@ -1172,17 +2003,18 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
       const detail = sanitizeHubErrorText(submitResult.hubResponseText);
       const suffix = detail ? `: ${detail}` : "";
       throw new Error(
-        `Neynar hub rejected Farcaster cast submit (status ${submitResult.hubResponseStatus})${suffix}`
+        `Neynar hub rejected Farcaster cast submit (status ${submitResult.hubResponseStatus}, cast ${castHashHex})${suffix}`
       );
     }
 
     if (verify) {
       verification = await verifyCastInclusion({
         deps,
-        idempotencyKey,
         agentKey,
+        payer,
         fid,
         castHashHex,
+        mode: verifyMode,
       });
     }
   } catch (error) {
@@ -1211,9 +2043,10 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
         fid,
         text,
         verify,
+        ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
       },
       castHashHex,
-      messageBytesBase64,
+      messageBytesBase64: "",
       result,
       savedAt: new Date().toISOString(),
     },
@@ -1234,6 +2067,22 @@ async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promis
   });
 }
 
+async function handleFarcasterX402Command(args: string[], deps: CliDeps): Promise<void> {
+  const [subcommand, ...rest] = args;
+  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+    throw new Error(FARCASTER_USAGE);
+  }
+  if (subcommand === "init") {
+    await handleFarcasterX402InitCommand(rest, deps);
+    return;
+  }
+  if (subcommand === "status") {
+    await handleFarcasterX402StatusCommand(rest, deps);
+    return;
+  }
+  throw new Error(`Unknown farcaster x402 subcommand: ${subcommand}`);
+}
+
 export async function handleFarcasterCommand(args: string[], deps: CliDeps): Promise<void> {
   const [subcommand, ...rest] = args;
   if (!subcommand || subcommand === "--help" || subcommand === "-h") {
@@ -1247,6 +2096,11 @@ export async function handleFarcasterCommand(args: string[], deps: CliDeps): Pro
 
   if (subcommand === "post") {
     await handleFarcasterPostCommand(rest, deps);
+    return;
+  }
+
+  if (subcommand === "x402") {
+    await handleFarcasterX402Command(rest, deps);
     return;
   }
 
