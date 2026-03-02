@@ -42,8 +42,7 @@ describe("farcaster command", () => {
           recoveryAddress: "0x0000000000000000000000000000000000000001",
           fid: "123",
           idGatewayPriceWei: "7000000000000000",
-          registerTxHash: "0xregister",
-          addKeyTxHash: "0xadd",
+          txHash: "0xsignup",
         },
       }),
     });
