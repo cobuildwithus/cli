@@ -54,11 +54,13 @@ describe("config", () => {
         token: "bbt_123",
         agent: "alpha",
         chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
       } as unknown as ReturnType<typeof readConfig>
     );
 
     const raw = files.get(configFile) ?? "{}";
     expect(raw).toContain('"chatApiUrl": "https://chat.example"');
+    expect(raw).toContain('"chatApiUrlEnabled": true');
   });
 
   it("writes config atomically without leaving temp files", () => {
@@ -245,6 +247,7 @@ describe("config", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_legacy_secret",
       },
     });
@@ -260,6 +263,7 @@ describe("config", () => {
     expect(migratedConfig).toMatchObject({
       url: "https://interface.example",
       chatApiUrl: "https://chat.example",
+      chatApiUrlEnabled: true,
       auth: {
         tokenRef: {
           source: "file",
@@ -530,6 +534,7 @@ describe("config", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_abc",
       },
     });
@@ -537,6 +542,23 @@ describe("config", () => {
     expect(requireConfig(deps)).toEqual({
       url: "https://interface.example",
       chatApiUrl: "https://chat.example",
+      token: "bbt_abc",
+      agent: undefined,
+    });
+  });
+
+  it("ignores chatApiUrl values that are not explicitly enabled", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(requireConfig(deps)).toEqual({
+      url: "https://interface.example",
+      chatApiUrl: "https://interface.example",
       token: "bbt_abc",
       agent: undefined,
     });

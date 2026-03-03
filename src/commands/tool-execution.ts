@@ -5,7 +5,7 @@ const CANONICAL_TOOLS_DISCOVERY_PATH = "/v1/tools";
 const CANONICAL_TOOL_EXECUTIONS_PATH = "/v1/tool-executions";
 const RETRYABLE_CANONICAL_STATUS_CODES = new Set([400, 404, 405, 422]);
 const CANONICAL_ROUTE_CUTOVER_GUIDANCE =
-  "Canonical /v1 tool routes are unavailable. Ensure /v1/tools and /v1/tool-executions are routed to Chat API (for example, edge rewrite /v1/* -> Chat API).";
+  "Canonical /v1 tool routes are unavailable. Configure Chat API routing with --chat-api-url (setup/config set) or ensure /v1/* is rewritten to Chat API.";
 
 interface ExecuteCanonicalToolOptions {
   canonicalToolNames: string[];

@@ -37,13 +37,13 @@ cli mcp add
 Run:
 
 ```bash
-cli setup --url <interface-url> --network <network> --agent <agent>
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent>
 ```
 
 For deterministic agent automation, run setup in machine mode:
 
 ```bash
-cli setup --url <interface-url> --network <network> --agent <agent> --json
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --json
 ```
 
 `--json` can also be placed before the command (`cli --json setup ...`) and is remapped to setup machine mode.
@@ -52,7 +52,7 @@ cli setup --url <interface-url> --network <network> --agent <agent> --json
 For local developer installs, add `--link` to setup to run `pnpm link --global` and make `cli` available on PATH:
 
 ```bash
-cli setup --url <interface-url> --network <network> --agent <agent> --link
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --link
 ```
 
 ## Resolution Rules
@@ -60,6 +60,7 @@ cli setup --url <interface-url> --network <network> --agent <agent> --link
 `setup` value precedence:
 
 - URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
+- Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` -> fallback to interface URL.
 - Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
 - Token: exactly one of `--token|--token-file|--token-stdin` -> saved config token -> interactive browser/manual flow.
 
@@ -88,10 +89,11 @@ Group command notes:
 
 ## Command Routing
 
-- `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
-- `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
+- `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
+- `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
 - `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
-- Hosted `https://co.build` routes `/v1/*` to Chat API at the edge; self-hosted installs must configure `/v1/*` routing to Chat API explicitly.
+- `config set --chat-api-url` (or `setup --chat-api-url`) is the preferred way to point canonical `/v1/*` calls at a separate Chat API origin.
+- Hosted `https://co.build` may still route `/v1/*` to Chat API at the edge; self-hosted installs can use either edge rewrites or explicit `chatApiUrl` config.
 
 ## Output Contract
 
@@ -120,4 +122,4 @@ Group command notes:
 - `cli: command not found`: in this repo use `pnpm start -- <command>`, or run `cli setup --link` once to add the binary to `PATH`.
 - `CLI database tables are missing`: apply SQL migrations from the interface repo.
 - `Missing CDP credentials`: set `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET` on the interface server.
-- `Canonical /v1 tool routes are unavailable`: route `/v1/tools` and `/v1/tool-executions` from your configured CLI base URL to Chat API.
+- `Canonical /v1 tool routes are unavailable`: set `--chat-api-url` (via `setup` or `config set`) to your Chat API origin, or route `/v1/tools` and `/v1/tool-executions` from your CLI base URL to Chat API.

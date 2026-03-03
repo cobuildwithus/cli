@@ -118,6 +118,7 @@ describe("transport", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
       fetchResponder: async () => ({
@@ -162,6 +163,7 @@ describe("transport", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
       fetchResponder: async () => ({
@@ -182,6 +184,7 @@ describe("transport", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "http://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
     });
@@ -195,6 +198,7 @@ describe("transport", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "http://chat.example",
+        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
       fetchResponder: async () => ({

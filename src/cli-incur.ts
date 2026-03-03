@@ -266,6 +266,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       description: "Persist config values",
       options: z.object({
         url: z.string().optional(),
+        chatApiUrl: z.string().optional(),
         token: z.string().optional(),
         tokenFile: z.string().optional(),
         tokenStdin: z.boolean().optional(),
@@ -275,6 +276,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         return executeConfigSetCommand(
           {
             url: context.options.url,
+            chatApiUrl: context.options.chatApiUrl,
             token: context.options.token,
             tokenFile: context.options.tokenFile,
             tokenStdin: context.options.tokenStdin,
@@ -465,6 +467,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       description: "Run setup wizard and bootstrap wallet",
       options: z.object({
         url: z.string().optional(),
+        chatApiUrl: z.string().optional(),
         dev: z.boolean().optional(),
         token: z.string().optional(),
         tokenFile: z.string().optional(),
@@ -482,6 +485,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         return executeSetupCommand(
           {
             url: context.options.url,
+            chatApiUrl: context.options.chatApiUrl,
             dev: context.options.dev,
             token: context.options.token,
             tokenFile: context.options.tokenFile,

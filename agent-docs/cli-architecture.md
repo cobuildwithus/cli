@@ -18,13 +18,13 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 ### `config`
 
-- `config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]`
+- `config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]`
 - `config show`
 - Owns config persistence and masked display.
 
 ### `setup`
 
-- `setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
+- `setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
 - Persists config and performs wallet bootstrap call.
 - If token is absent and a TTY is available, opens interface `/home` and waits for secure browser approval over a one-time localhost callback session.
 - Setup approval URL keeps callback/state in the URL fragment and redacts fragment values in terminal display output.
@@ -53,8 +53,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `docs`
 
 - `docs <query> [--limit <n>]`
-- Calls canonical chat-api tool surfaces through the configured CLI base URL (`GET /v1/tools` when needed, `POST /v1/tool-executions` primary).
-- If canonical `/v1/*` routes are unavailable, returns actionable cutover guidance to route `/v1/*` to Chat API.
+- Calls canonical chat-api tool surfaces through configured chat-api routing (`chatApiUrl` when set, otherwise `url`) with `GET /v1/tools` (when needed) and `POST /v1/tool-executions` (primary).
+- If canonical `/v1/*` routes are unavailable, returns actionable guidance to configure `--chat-api-url` (or edge `/v1/*` rewrites) to Chat API.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
 ### `tools`
@@ -63,7 +63,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
 - `tools get-treasury-stats`
-- Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through the configured CLI base URL.
+- Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through configured chat-api routing (`chatApiUrl` when set, otherwise `url`).
 - Intended for read-only access to canonical tool routes.
 
 ### `send`
@@ -93,7 +93,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 2. Local config boundary
 
 - Only config helpers should touch `~/.cobuild-cli/config.json`.
-- Config stores interface/auth metadata (`url`, `agent`, `auth.tokenRef`, `secrets` providers/defaults).
+- Config stores interface/chat-api/auth metadata (`url`, optional `chatApiUrl`, `agent`, `auth.tokenRef`, `secrets` providers/defaults).
 - Secret values live outside config and resolve via SecretRef providers (`env`, `file`, `exec`), with default file storage at `~/.cobuild-cli/secrets.json`.
 - Config structure changes require migration strategy + docs updates.
 
@@ -101,6 +101,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 - `apiPost` handles all command POSTs and `apiGet` handles canonical tool discovery.
 - Endpoint composition goes through `toEndpoint` (never raw string concat in handlers).
+- Transport routes `/v1/*` through `chatApiUrl` when configured; all non-`/v1/*` paths stay on `url`.
 - Transport enforces secure base URL policy (`https`, except loopback `http`) and rejects embedded credentials.
 - Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
 - `send`/`tx` include both `X-Idempotency-Key` and `Idempotency-Key`.

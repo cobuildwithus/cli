@@ -28,7 +28,7 @@
 
 ## Setup Flow
 
-1. Parse `setup` options (`--url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
+1. Parse `setup` options (`--url`, `--chat-api-url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
 2. Resolve defaults from config + environment (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
 3. In non-interactive first-time setup, fail closed when URL comes only from `COBUILD_CLI_URL` (require explicit `--url`).
 4. Prompt for missing URL when interactive, using resolved default value.
@@ -46,13 +46,15 @@
 ## Config and Agent Resolution Flow
 
 1. `readConfig()` loads `~/.cobuild-cli/config.json` if present.
-2. `requireConfig()` enforces presence of interface `url` and resolves PAT from `auth.tokenRef` (or migrates legacy plaintext `token` into a SecretRef).
+2. `requireConfig()` enforces presence of interface `url`, resolves chat-api base (`chatApiUrl` with `url` fallback), and resolves PAT from `auth.tokenRef` (or migrates legacy plaintext `token` into a SecretRef).
 3. `resolveAgentKey()` prioritizes command `--agent`, then config `agent`, then `default`.
 
 ## Network Execution Flow
 
 1. Build payload in handler.
-2. `apiPost(pathname, body, options)` / `apiGet(pathname, options)` resolve endpoints from interface base URL via `toEndpoint`.
+2. `apiPost(pathname, body, options)` / `apiGet(pathname, options)` resolve endpoints via `toEndpoint` from:
+- chat-api base for `/v1/*` (`chatApiUrl` when configured, otherwise `url`)
+- interface base for non-`/v1/*` paths (`url`)
 3. `toEndpoint` enforces secure base URL policy (`https`, loopback-only `http`) and rejects URL credentials.
 4. Transport validates caller-provided headers cannot override reserved auth/content headers.
 5. Send authenticated JSON request with bearer token and default timeout+abort semantics.
@@ -66,7 +68,7 @@
 2. Validate query is non-empty and `--limit` is an integer in range.
 3. Optionally GET `/v1/tools` to resolve canonical docs tool naming.
 4. POST `/v1/tool-executions` with canonical tool envelope + `{ query, limit? }` input.
-5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to route `/v1/*` to Chat API.
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
 6. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
 ## Farcaster x402 Init/Status Flow
@@ -97,7 +99,7 @@
 2. Validate command-specific argument shape.
 3. Optionally GET `/v1/tools` to resolve canonical tool naming.
 4. POST `/v1/tool-executions` with command-specific canonical tool input.
-5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to route `/v1/*` to Chat API.
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
 6. Normalize output envelopes for stable command JSON shape and print JSON response.
 
 ## Idempotency Flow (`send` / `tx`)

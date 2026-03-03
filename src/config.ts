@@ -8,15 +8,6 @@ import {
   withDefaultSecretProviders,
 } from "./secrets/runtime.js";
 
-function stripDeprecatedChatApiUrl(config: CliConfig): CliConfig {
-  if (!Object.prototype.hasOwnProperty.call(config, "chatApiUrl")) {
-    return config;
-  }
-  const record = config as CliConfig & { chatApiUrl?: unknown };
-  const { chatApiUrl: _chatApiUrl, ...rest } = record;
-  return rest as CliConfig;
-}
-
 function stripLegacyPlaintextToken(config: CliConfig): CliConfig {
   if (!Object.prototype.hasOwnProperty.call(config, "token")) {
     return config;
@@ -34,7 +25,7 @@ function stripLegacyPlaintextTokenIfRefExists(config: CliConfig): CliConfig {
 }
 
 function normalizeConfigForWrite(config: CliConfig): CliConfig {
-  return stripLegacyPlaintextTokenIfRefExists(stripDeprecatedChatApiUrl(config));
+  return stripLegacyPlaintextTokenIfRefExists(config);
 }
 
 export function configPath(deps: Pick<CliDeps, "homedir">): string {
@@ -68,7 +59,7 @@ export function readConfig(deps: Pick<CliDeps, "fs" | "homedir">): CliConfig {
   try {
     const parsed = JSON.parse(raw) as CliConfig;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return stripDeprecatedChatApiUrl(parsed);
+      return parsed;
     }
     return {};
   } catch {
@@ -106,8 +97,19 @@ export function writeConfig(deps: Pick<CliDeps, "fs" | "homedir">, next: CliConf
 
 export interface RequiredConfig {
   url: string;
+  chatApiUrl: string;
   token: string;
   agent?: string;
+}
+
+function resolveChatApiBaseUrl(config: CliConfig, interfaceUrl: string): string {
+  if (config.chatApiUrlEnabled !== true) {
+    return interfaceUrl;
+  }
+  if (typeof config.chatApiUrl !== "string" || config.chatApiUrl.trim().length === 0) {
+    return interfaceUrl;
+  }
+  return config.chatApiUrl.trim();
 }
 
 export function persistPatToken(params: {
@@ -226,13 +228,15 @@ function resolveRequiredToken(deps: Pick<CliDeps, "fs" | "homedir" | "env">, cfg
 
 export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir" | "env">): RequiredConfig {
   const cfg = readConfig(deps);
-  if (!cfg.url) {
+  const interfaceUrl = typeof cfg.url === "string" ? cfg.url.trim() : "";
+  if (!interfaceUrl) {
     throw new Error(
       "Missing interface API base URL. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
     );
   }
   return {
-    url: cfg.url,
+    url: interfaceUrl,
+    chatApiUrl: resolveChatApiBaseUrl(cfg, interfaceUrl),
     token: resolveRequiredToken(deps, cfg),
     agent: cfg.agent,
   };

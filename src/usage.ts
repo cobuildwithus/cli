@@ -3,8 +3,8 @@ import type { CliDeps } from "./types.js";
 export const USAGE_TEXT = `cli
 
 Usage:
-  cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
-  cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
+  cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+  cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
   cli config show
   cli wallet [--network <network>] [--agent <key>]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
@@ -20,13 +20,13 @@ Usage:
   cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]
 
 Examples:
-  cli setup --url http://localhost:3000 --agent default --network base-sepolia
+  cli setup --url http://localhost:3000 --chat-api-url http://localhost:4000 --agent default --network base-sepolia
   cli setup --url https://co.build --agent default
   cli setup --dev --agent default --network base-sepolia
   echo "bbt_xxx" | cli setup --url http://localhost:3000 --token-stdin --network base-sepolia
   cli setup --url http://localhost:3000 --network base-sepolia --json
   cli setup --url http://localhost:3000 --network base-sepolia --link
-  cli config set --url http://localhost:3000 --token bbt_xxx --agent default
+  cli config set --url http://localhost:3000 --chat-api-url http://localhost:4000 --token bbt_xxx --agent default
   cli config set --token-file ./cli.token
   cli wallet --network base-sepolia
   cli farcaster signup --agent default

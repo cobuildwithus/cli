@@ -8,10 +8,10 @@
 
 ## Endpoint Routing Expectations
 
-- Command transport must always resolve against configured CLI API base URL (`url`).
+- Command transport must resolve `/v1/*` against configured Chat API base (`chatApiUrl` when set, fallback `url`) and non-`/v1/*` paths against interface base (`url`).
 - `docs` and `tools` must execute canonical chat-api tool routes (`GET /v1/tools` as needed, `POST /v1/tool-executions`).
-- When canonical `/v1/*` routes are unavailable, `docs`/`tools` must fail with explicit routing guidance (route `/v1/*` to Chat API) instead of generic 404-only errors.
-- Configuration output must only expose interface routing state.
+- When canonical `/v1/*` routes are unavailable, `docs`/`tools` must fail with explicit routing guidance (`--chat-api-url` or edge route `/v1/*` to Chat API) instead of generic 404-only errors.
+- Configuration output must expose both interface and chat-api routing state.
 
 ## Configuration Expectations
 

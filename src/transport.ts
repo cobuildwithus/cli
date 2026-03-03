@@ -105,6 +105,13 @@ export function toEndpoint(baseUrl: string, pathname: string): URL {
   return new URL(normalizedPath, normalizedBase);
 }
 
+function resolveApiBaseUrl(pathname: string, config: { url: string; chatApiUrl: string }): string {
+  if (pathname.startsWith("/v1/")) {
+    return config.chatApiUrl;
+  }
+  return config.url;
+}
+
 interface ApiRequestArgs {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
   pathname: string;
@@ -116,7 +123,7 @@ interface ApiRequestArgs {
 async function apiRequest(args: ApiRequestArgs): Promise<unknown> {
   const { deps, pathname, method, body, options = {} } = args;
   const cfg = requireConfig(deps);
-  const endpoint = toEndpoint(cfg.url, pathname);
+  const endpoint = toEndpoint(resolveApiBaseUrl(pathname, cfg), pathname);
   const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
   validateCustomHeaders(options.headers);
 

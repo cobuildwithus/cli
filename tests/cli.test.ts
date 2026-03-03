@@ -124,6 +124,7 @@ describe("cli", () => {
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
+      chatApiUrl: null,
       token: "abcdefgh...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "ops",
@@ -150,6 +151,7 @@ describe("cli", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
+      chatApiUrl: null,
       token: "abcdefgh...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "-ops",
@@ -157,12 +159,40 @@ describe("cli", () => {
     });
   });
 
-  it("config set rejects removed --chat-api-url flag", async () => {
+  it("config set accepts --chat-api-url", async () => {
+    const harness = createHarness();
+
+    await runCli(
+      [
+        "config",
+        "set",
+        "--url",
+        "https://interface.example",
+        "--chat-api-url",
+        "https://chat.example",
+        "--token",
+        "bbt_secret",
+      ],
+      harness.deps
+    );
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      token: "bbt_secr...",
+      tokenRef: expectedPatTokenRef("https://interface.example"),
+      agent: null,
+      path: harness.configFile,
+    });
+  });
+
+  it("config set requires interface url before accepting --chat-api-url", async () => {
     const harness = createHarness();
 
     await expect(
       runCli(["config", "set", "--chat-api-url", "https://chat.example"], harness.deps)
-    ).rejects.toThrow(/chat-api-url/);
+    ).rejects.toThrow("Set --url before configuring --chat-api-url.");
   });
 
   it("config without subcommand prints usage", async () => {
@@ -174,7 +204,7 @@ describe("cli", () => {
   it("config set requires at least one value", async () => {
     const harness = createHarness();
     await expect(runCli(["config", "set"], harness.deps)).rejects.toThrow(
-      "Usage: cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]"
+      "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]"
     );
   });
 
@@ -190,6 +220,7 @@ describe("cli", () => {
     await runCli(["config", "show"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
+      chatApiUrl: null,
       token: null,
       tokenRef: null,
       agent: null,
@@ -211,8 +242,31 @@ describe("cli", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
+      chatApiUrl: null,
       token: "next-tok...",
       tokenRef: expectedPatTokenRef("https://api.example"),
+      agent: "agent-a",
+      path: harness.configFile,
+    });
+  });
+
+  it("config set supports chat-api-url-only updates when interface url already exists", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "first-token",
+        agent: "agent-a",
+      },
+    });
+
+    await runCli(["config", "set", "--chat-api-url", "https://chat.example"], harness.deps);
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      token: "first-to...",
+      tokenRef: null,
       agent: "agent-a",
       path: harness.configFile,
     });
@@ -330,15 +384,34 @@ describe("cli", () => {
     });
   });
 
-  it("setup rejects removed --chat-api-url flag", async () => {
+  it("setup accepts --chat-api-url and persists it", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await expect(
-      runCli(["setup", "--url", "https://interface.example", "--chat-api-url", "https://chat.example"], harness.deps)
-    ).rejects.toThrow(/chat-api-url/);
-    expect(harness.fetchMock).not.toHaveBeenCalled();
+    await runCli(
+      [
+        "setup",
+        "--url",
+        "https://interface.example",
+        "--chat-api-url",
+        "https://chat.example",
+        "--token",
+        "bbt_secret",
+      ],
+      harness.deps
+    );
+    expect(harness.fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      chatApiUrlEnabled: true,
+      agent: "default",
+      auth: {
+        tokenRef: expectedPatTokenRef("https://interface.example"),
+      },
+      secrets: expectedDefaultSecretsConfig(),
+    });
   });
 
   it("setup clears saved token and gives guidance when wallet bootstrap is unauthorized", async () => {
@@ -548,6 +621,23 @@ describe("cli", () => {
     });
   });
 
+  it("wallet keeps interface routing when chatApiUrl is configured", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["wallet"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://interface.example/api/buildbot/wallet");
+  });
+
   it("docs requires a query", async () => {
     const harness = createHarness();
     await expect(runCli(["docs"], harness.deps)).rejects.toThrow(
@@ -607,6 +697,33 @@ describe("cli", () => {
       count: 1,
       results: [{ filename: "self-hosted/chat-api.mdx" }],
     });
+  });
+
+  it("docs routes canonical /v1 requests to chatApiUrl when configured", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        chatApiUrlEnabled: true,
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        query: "setup approval",
+        count: 1,
+        results: [{ filename: "self-hosted/chat-api.mdx" }],
+      }),
+    });
+
+    await runCli(["docs", "setup", "approval"], harness.deps);
+
+    const [discoveryInput] = harness.fetchMock.mock.calls[0];
+    expect(String(discoveryInput)).toBe("https://chat.example/v1/tools");
+
+    const [executionInput] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://chat.example/v1/tool-executions"
+    );
+    expect(String(executionInput)).toBe("https://chat.example/v1/tool-executions");
   });
 
   it("docs omits limit from payload when --limit is not provided", async () => {
@@ -1284,6 +1401,56 @@ describe("cli", () => {
         String(input).endsWith("/api/buildbot/tools/get-user")
       )
     ).toBe(false);
+  });
+
+  it("other tools subcommands error when canonical routes are unavailable and never call legacy proxy endpoints", async () => {
+    const scenarios: Array<{ args: string[]; legacyPath: string }> = [
+      {
+        args: ["tools", "get-cast", "0xabc"],
+        legacyPath: "/api/buildbot/tools/get-cast",
+      },
+      {
+        args: ["tools", "cast-preview", "--text", "hello"],
+        legacyPath: "/api/buildbot/tools/cast-preview",
+      },
+      {
+        args: ["tools", "get-treasury-stats"],
+        legacyPath: "/api/buildbot/tools/get-treasury-stats",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const harness = createHarness({
+        config: {
+          url: "https://interface.example",
+          token: "bbt_secret",
+        },
+        fetchResponder: async (input) => {
+          const url = String(input);
+          if (url.endsWith("/v1/tools") || url.endsWith("/v1/tool-executions")) {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            };
+          }
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+          };
+        },
+      });
+
+      await expect(runCli(scenario.args, harness.deps)).rejects.toThrow(
+        "Canonical /v1 tool routes are unavailable."
+      );
+      expect(
+        harness.fetchMock.mock.calls.some(([input]) =>
+          String(input).endsWith(scenario.legacyPath)
+        )
+      ).toBe(false);
+    }
   });
 
   it("farcaster command requires a subcommand", async () => {

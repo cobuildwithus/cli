@@ -387,6 +387,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
+      chatApiUrl: null,
       token: "bbt_from...",
       tokenRef: expectedPatTokenRef(null),
       agent: null,
@@ -403,6 +404,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: null,
+      chatApiUrl: null,
       token: "bbt_from...",
       tokenRef: expectedPatTokenRef(null),
       agent: null,

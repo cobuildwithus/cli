@@ -1,16 +1,14 @@
-import { parseArgs } from "node:util";
 import { configPath, persistPatToken, readConfig, resolveMaskedToken, writeConfig } from "../config.js";
-import { printJson } from "../output.js";
-import { printUsage } from "../usage.js";
 import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
 
 const CONFIG_SET_USAGE =
-  "Usage: cli config set --url <interface-url> --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
+  "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
 
 export interface ConfigSetCommandInput {
   url?: string;
+  chatApiUrl?: string;
   token?: string;
   tokenFile?: string;
   tokenStdin?: boolean;
@@ -24,10 +22,15 @@ export interface ConfigSetCommandOutput {
 
 export interface ConfigShowCommandOutput {
   interfaceUrl: string | null;
+  chatApiUrl: string | null;
   token: string | null;
   tokenRef: unknown;
   agent: string | null;
   path: string;
+}
+
+function hasConfiguredInterfaceUrl(value: string | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export async function executeConfigSetCommand(
@@ -59,6 +62,7 @@ export async function executeConfigSetCommand(
 
   const hasUpdate =
     typeof input.url === "string" ||
+    typeof input.chatApiUrl === "string" ||
     tokenFromOption !== undefined ||
     typeof input.agent === "string";
   if (!hasUpdate) {
@@ -66,9 +70,18 @@ export async function executeConfigSetCommand(
   }
 
   const current = readConfig(deps);
+  if (typeof input.chatApiUrl === "string" && !hasConfiguredInterfaceUrl(input.url) && !hasConfiguredInterfaceUrl(current.url)) {
+    throw new Error(
+      `${CONFIG_SET_USAGE}\nSet --url before configuring --chat-api-url.`
+    );
+  }
   let next = { ...current };
   if (typeof input.url === "string") {
     next.url = input.url;
+  }
+  if (typeof input.chatApiUrl === "string") {
+    next.chatApiUrl = input.chatApiUrl;
+    next.chatApiUrlEnabled = true;
   }
   if (tokenFromOption !== undefined) {
     next = persistPatToken({
@@ -91,56 +104,16 @@ export async function executeConfigSetCommand(
 
 export function executeConfigShowCommand(deps: CliDeps): ConfigShowCommandOutput {
   const current = readConfig(deps);
+  const chatApiUrl =
+    current.chatApiUrlEnabled === true && typeof current.chatApiUrl === "string"
+      ? current.chatApiUrl
+      : null;
   return {
     interfaceUrl: current.url ?? null,
+    chatApiUrl,
     token: resolveMaskedToken(deps, current),
     tokenRef: isSecretRef(current.auth?.tokenRef) ? current.auth.tokenRef : null,
     agent: current.agent ?? null,
     path: configPath(deps),
   };
 }
-
-/* c8 ignore start */
-export async function handleConfigCommand(args: string[], deps: CliDeps): Promise<void> {
-  const subcommand = args[0];
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    printUsage(deps);
-    return;
-  }
-
-  if (subcommand === "set") {
-    const parsed = parseArgs({
-      options: {
-        url: { type: "string" },
-        token: { type: "string" },
-        "token-file": { type: "string" },
-        "token-stdin": { type: "boolean" },
-        agent: { type: "string" },
-      },
-      args: args.slice(1),
-      allowPositionals: false,
-      strict: true,
-    });
-
-    const output = await executeConfigSetCommand(
-      {
-        url: parsed.values.url,
-        token: parsed.values.token,
-        tokenFile: parsed.values["token-file"],
-        tokenStdin: parsed.values["token-stdin"],
-        agent: parsed.values.agent,
-      },
-      deps
-    );
-    deps.stdout(`Saved config: ${output.path}`);
-    return;
-  }
-
-  if (subcommand === "show") {
-    printJson(deps, executeConfigShowCommand(deps));
-    return;
-  }
-
-  throw new Error(`Unknown config subcommand: ${subcommand}`);
-}
-/* c8 ignore stop */

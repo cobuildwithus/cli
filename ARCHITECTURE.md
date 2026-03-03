@@ -59,7 +59,7 @@ cli/
 
 - Runtime composition and command tree: `src/cli-incur.ts` (`createCobuildIncurCli`, argv compatibility preprocessors)
 - Process/test lifecycle adapters: `src/cli.ts` (`runCli`, `runCliFromProcess`)
-- Command executors + legacy wrappers: `src/commands/*.ts`
+- Command executors (Incur-native parsing/dispatch): `src/commands/*.ts`
 - Local config boundary: `src/config.ts` (`configPath`, `readConfig`, `writeConfig`, `requireConfig`)
 - Remote transport boundary: `src/transport.ts` (`toEndpoint`, `apiPost`, `apiGet`)
 - Shared output behavior: `src/output.ts`, `src/usage.ts`
@@ -73,8 +73,7 @@ cli/
 
 2. Config compatibility invariant
 
-- Config file shape stores interface routing + auth metadata (`url`, `agent`, `auth.tokenRef`, `secrets` provider/default metadata).
-- Legacy `chatApiUrl` values are ignored and are not persisted on writes.
+- Config file shape stores interface + chat-api routing and auth metadata (`url`, optional `chatApiUrl`, `agent`, `auth.tokenRef`, `secrets` provider/default metadata).
 - Missing required config fields fail with clear remediation guidance.
 
 3. Command envelope invariant
@@ -86,7 +85,7 @@ cli/
 - `farcaster x402 init` persists per-agent payer mode metadata (`hosted` or `local`) and payer key refs for local mode.
 - `farcaster post` signs cast bytes locally, submits directly to Neynar hub, and resolves `X-PAYMENT` from either hosted backend signing or local typed-data signing depending on payer mode.
 - `farcaster post` verification mode defaults to `none`; `--verify` maps to one delayed check (`once`) and `--verify=poll` performs bounded repeated checks.
-- `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via interface base.
+- `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via configured chat-api base (`chatApiUrl`, fallback `url`).
 - `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
@@ -107,8 +106,8 @@ cli/
 
 ### Setup flow
 
-1. Parse `setup` options (`--url`, `--token`, `--agent`, `--network`).
-2. Resolve defaults from config and environment fallbacks (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`).
+1. Parse `setup` options (`--url`, `--chat-api-url`, `--token`, `--agent`, `--network`).
+2. Resolve defaults from config and environment fallbacks (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`), including optional chat-api URL from config or flag.
 3. Apply interface URL fallback when still missing: `https://co.build` (or `http://localhost:3000` with `--dev`).
 4. If first-time setup is non-interactive and URL comes only from `COBUILD_CLI_URL`, fail closed and require explicit `--url`.
 5. Normalize/validate interface URL (auto-add scheme; reject non-loopback `http`).
@@ -171,13 +170,13 @@ cli/
 
 1. Parse positional query text and optional `--limit`.
 2. Validate non-empty query and `--limit` integer range.
-3. Resolve docs tool execution against canonical surfaces (`GET /v1/tools` optional, `POST /v1/tool-executions` primary).
+3. Resolve docs tool execution against canonical surfaces (`GET /v1/tools` optional, `POST /v1/tool-executions` primary) using chat-api base routing.
 4. Normalize to stable `{ query, count, results }` JSON output.
 
 ### Buildbot tools flow
 
 1. Parse `tools` subcommand and validate command-specific flags/arguments.
-2. Resolve canonical tool name (`GET /v1/tools` optional) and execute `POST /v1/tool-executions`.
+2. Resolve canonical tool name (`GET /v1/tools` optional) and execute `POST /v1/tool-executions` using chat-api base routing.
 3. Normalize output envelopes to preserve command JSON shape.
 
 ## Documentation Map

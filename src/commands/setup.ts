@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
 import { clearPersistedPatToken, configPath, persistPatToken, readConfig, writeConfig } from "../config.js";
 import { printJson } from "../output.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
@@ -12,7 +11,7 @@ import type { CliDeps } from "../types.js";
 import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
 
 const SETUP_USAGE =
-  "Usage: cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
+  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -36,6 +35,7 @@ const LOOPBACK_INTERFACE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1
 
 export interface SetupCommandInput {
   url?: string;
+  chatApiUrl?: string;
   dev?: boolean;
   token?: string;
   tokenFile?: string;
@@ -50,6 +50,7 @@ export interface SetupCommandOutput {
   ok: true;
   config: {
     interfaceUrl: string;
+    chatApiUrl?: string;
     agent: string;
     path: string;
   };
@@ -82,7 +83,7 @@ function isLoopbackInterfaceHost(hostname: string): boolean {
   return LOOPBACK_INTERFACE_HOSTS.has(hostname.toLowerCase());
 }
 
-function normalizeApiUrl(rawValue: string, label: "Interface URL"): string {
+function normalizeApiUrl(rawValue: string, label: "Interface URL" | "Chat API URL"): string {
   const trimmed = rawValue.trim();
   if (!trimmed) {
     throw new Error(`${label} cannot be empty.`);
@@ -579,6 +580,10 @@ async function runSetupCommand(
   const interactive = isInteractive(deps) && !jsonMode;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
+  const storedChatApiUrl =
+    current.chatApiUrlEnabled === true && typeof current.chatApiUrl === "string"
+      ? current.chatApiUrl.trim()
+      : "";
   const envUrl = getNonEmptyEnvValue(deps, "COBUILD_CLI_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "COBUILD_CLI_NETWORK");
   const defaultInterfaceUrl =
@@ -595,6 +600,12 @@ async function runSetupCommand(
   } else if (envUrl) {
     url = envUrl;
     urlSource = "env";
+  }
+  let chatApiUrl: string | undefined;
+  if (typeof input.chatApiUrl === "string") {
+    chatApiUrl = input.chatApiUrl;
+  } else if (storedChatApiUrl) {
+    chatApiUrl = storedChatApiUrl;
   }
 
   let tokenFromOption: string | undefined;
@@ -674,6 +685,9 @@ async function runSetupCommand(
   }
 
   url = normalizeApiUrl(url, "Interface URL");
+  if (chatApiUrl) {
+    chatApiUrl = normalizeApiUrl(chatApiUrl, "Chat API URL");
+  }
 
   /* c8 ignore start */
   if (interactive) {
@@ -731,11 +745,13 @@ async function runSetupCommand(
   /* c8 ignore stop */
 
   const path = configPath(deps);
+  const { chatApiUrl: _existingChatApiUrl, chatApiUrlEnabled: _existingChatApiUrlEnabled, ...configWithoutChatApi } = current;
   const nextConfig = persistPatToken({
     deps,
     config: {
-      ...current,
+      ...configWithoutChatApi,
       url,
+      ...(chatApiUrl ? { chatApiUrl, chatApiUrlEnabled: true } : {}),
       agent,
     },
     token,
@@ -771,7 +787,12 @@ async function runSetupCommand(
 
   const successPayload: SetupCommandOutput = {
     ok: true,
-    config: { interfaceUrl: url, agent, path },
+    config: {
+      interfaceUrl: url,
+      ...(chatApiUrl ? { chatApiUrl } : {}),
+      agent,
+      path,
+    },
     defaultNetwork,
     wallet: walletResponse,
     next: [
@@ -808,40 +829,3 @@ export async function executeSetupCommand(
 ): Promise<SetupCommandOutput> {
   return await runSetupCommand(input, deps, "structured");
 }
-
-/* c8 ignore start */
-export async function handleSetupCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      url: { type: "string" },
-      dev: { type: "boolean" },
-      token: { type: "string" },
-      "token-file": { type: "string" },
-      "token-stdin": { type: "boolean" },
-      agent: { type: "string" },
-      network: { type: "string" },
-      json: { type: "boolean" },
-      link: { type: "boolean" },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  await runSetupCommand(
-    {
-      url: parsed.values.url,
-      dev: parsed.values.dev,
-      token: parsed.values.token,
-      tokenFile: parsed.values["token-file"],
-      tokenStdin: parsed.values["token-stdin"],
-      agent: parsed.values.agent,
-      network: parsed.values.network,
-      json: parsed.values.json,
-      link: parsed.values.link,
-    },
-    deps,
-    "legacy"
-  );
-}
-/* c8 ignore stop */
