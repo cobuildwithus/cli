@@ -32,6 +32,7 @@
     "docs:drift": "bash scripts/check-agent-docs-drift.sh",
     "docs:gardening": "bash scripts/doc-gardening.sh --fail-on-issues",
     "review:gpt": "scripts/chatgpt-oracle-review.sh",
+    "zip:src": "bash scripts/package-audit-context.sh --zip",
     "verify": "pnpm typecheck && pnpm test:coverage",
     "changelog:update": "bash scripts/update-changelog.sh",
     "release:notes": "bash scripts/generate-release-notes.sh",
