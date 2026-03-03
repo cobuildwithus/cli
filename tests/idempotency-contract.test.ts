@@ -29,6 +29,7 @@ describe("idempotency-contract", () => {
 
   it("validates UUID v4 idempotency keys", () => {
     expect(isIdempotencyKey("8e03978e-40d5-43e8-bc93-6894a57f9324")).toBe(true);
+    expect(isIdempotencyKey("8E03978E-40D5-43E8-BC93-6894A57F9324")).toBe(true);
     expect(isIdempotencyKey("f47ac10b-58cc-11cf-a447-001122334455")).toBe(false);
     expect(isIdempotencyKey("not-a-uuid")).toBe(false);
   });

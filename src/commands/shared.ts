@@ -1,8 +1,12 @@
 import type { CliDeps } from "../types.js";
 import { asRecord } from "../transport.js";
 import { getAddress, isAddress, isHex, type Address } from "viem";
-import { isUuidV4 } from "../uuid.js";
 import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
+import {
+  buildIdempotencyRequestHeaders,
+  IDEMPOTENCY_KEY_VALIDATION_ERROR,
+  isIdempotencyKey,
+} from "../idempotency-contract.js";
 
 export type CliApiUrlLabel = "Interface URL" | "Chat API URL";
 
@@ -93,8 +97,8 @@ const NON_NEGATIVE_DECIMAL_REGEX = /^(0|[1-9]\d*)(\.\d+)?$/;
 
 export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pick<CliDeps, "randomUUID">): string {
   const key = inputKey ?? deps.randomUUID();
-  if (!isUuidV4(key)) {
-    throw new Error("Idempotency key must be a UUID v4 (e.g. 8e03978e-40d5-43e8-bc93-6894a57f9324)");
+  if (!isIdempotencyKey(key)) {
+    throw new Error(IDEMPOTENCY_KEY_VALIDATION_ERROR);
   }
   return key;
 }
@@ -115,10 +119,7 @@ export function parseIntegerOption(value: string | undefined, optionName: string
 }
 
 export function buildIdempotencyHeaders(idempotencyKey: string): Record<string, string> {
-  return {
-    "X-Idempotency-Key": idempotencyKey,
-    "Idempotency-Key": idempotencyKey,
-  };
+  return buildIdempotencyRequestHeaders(idempotencyKey);
 }
 
 export function withIdempotencyKey(idempotencyKey: string, response: unknown): Record<string, unknown> {

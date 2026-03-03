@@ -160,7 +160,7 @@ cli tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --net
 
 If your query starts with a dash (for example, `--token-stdin`), insert `--` before the query so the CLI treats it as text, not flags.
 
-`send` and `tx` always include both `X-Idempotency-Key` and `Idempotency-Key` headers.
+`send` and `tx` send canonical `Idempotency-Key` and keep `X-Idempotency-Key` as a deprecated compatibility fallback.
 
 ## Troubleshooting
 
