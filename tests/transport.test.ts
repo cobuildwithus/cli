@@ -113,10 +113,11 @@ describe("transport", () => {
     );
   });
 
-  it("routes canonical tool execution requests through the interface URL", async () => {
+  it("routes canonical tool execution requests through chatApiUrl when configured", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
         token: "bbt_secret",
       },
       fetchResponder: async () => ({
@@ -132,21 +133,16 @@ describe("transport", () => {
     });
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
+    expect(String(input)).toBe("https://chat.example/v1/tool-executions");
     expect(init).toMatchObject({ method: "POST" });
   });
 
-  it("ignores deprecated chatApiUrl values and still routes canonical discovery through interface URL", async () => {
+  it("routes canonical discovery through interface URL when chatApiUrl is absent", async () => {
     const harness = createHarness({
-      rawConfig: JSON.stringify(
-        {
-          url: "https://interface.example",
-          chatApiUrl: "https://chat.example",
-          token: "bbt_secret",
-        },
-        null,
-        2
-      ),
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
       fetchResponder: async () => ({
         ok: true,
         status: 200,
@@ -159,6 +155,59 @@ describe("transport", () => {
     const [input, init] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://interface.example/v1/tools");
     expect(init).toMatchObject({ method: "GET" });
+  });
+
+  it("keeps interface routing for non-v1 paths even when chatApiUrl is configured", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+
+    await apiPost(harness.deps, "/api/buildbot/wallet", { agentKey: "default" });
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://interface.example/api/buildbot/wallet");
+  });
+
+  it("rejects insecure chatApiUrl for /v1 paths before sending bearer token", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "http://chat.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(apiGet(harness.deps, "/v1/tools")).rejects.toThrow("API base URL must use https");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps non-v1 routing on interface URL even when chatApiUrl is invalid", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "http://chat.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+
+    await apiPost(harness.deps, "/api/buildbot/wallet", { agentKey: "default" });
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://interface.example/api/buildbot/wallet");
   });
 
   it("rejects insecure transport before sending bearer token", async () => {

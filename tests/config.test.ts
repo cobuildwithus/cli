@@ -45,7 +45,7 @@ describe("config", () => {
     });
   });
 
-  it("strips deprecated chatApiUrl when writing config", () => {
+  it("persists chatApiUrl when writing config", () => {
     const { deps, configFile, files } = createHarness();
     writeConfig(
       deps,
@@ -58,7 +58,7 @@ describe("config", () => {
     );
 
     const raw = files.get(configFile) ?? "{}";
-    expect(raw).not.toContain("chatApiUrl");
+    expect(raw).toContain('"chatApiUrl": "https://chat.example"');
   });
 
   it("writes config atomically without leaving temp files", () => {
@@ -158,6 +158,7 @@ describe("config", () => {
 
     expect(requireConfig(deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_abc",
       agent: "ops",
     });
@@ -183,6 +184,7 @@ describe("config", () => {
 
     expect(requireConfig(deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_env_secret",
       agent: "ops",
     });
@@ -199,6 +201,7 @@ describe("config", () => {
 
     expect(requireConfig(harness.deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_legacy_secret",
       agent: "ops",
     });
@@ -237,6 +240,37 @@ describe("config", () => {
     });
   });
 
+  it("preserves chatApiUrl when migrating a legacy plaintext token", () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_legacy_secret",
+      },
+    });
+
+    expect(requireConfig(harness.deps)).toEqual({
+      url: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      token: "bbt_legacy_secret",
+      agent: undefined,
+    });
+
+    const migratedConfig = JSON.parse(harness.files.get(harness.configFile) ?? "{}") as Record<string, unknown>;
+    expect(migratedConfig).toMatchObject({
+      url: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      auth: {
+        tokenRef: {
+          source: "file",
+          provider: "default",
+          id: "/pat:https:~1~1interface.example",
+        },
+      },
+    });
+    expect(migratedConfig).not.toHaveProperty("token");
+  });
+
   it("uses legacy token even when migration persistence fails", () => {
     const harness = createHarness({
       config: {
@@ -259,6 +293,7 @@ describe("config", () => {
 
     expect(requireConfig(harness.deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_legacy_secret",
     });
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
@@ -416,6 +451,7 @@ describe("config", () => {
     };
     expect(requireConfig(harness.deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://api.example",
       token: "bbt_from_env",
     });
   });
@@ -451,7 +487,7 @@ describe("config", () => {
     expect(resolveMaskedToken(legacyOnlyHarness.deps, readConfig(legacyOnlyHarness.deps))).toBe("bbt_lega...");
   });
 
-  it("ignores deprecated chatApiUrl values in existing configs", () => {
+  it("uses configured chatApiUrl values in existing configs", () => {
     const { deps } = createHarness({
       rawConfig: JSON.stringify(
         {
@@ -467,8 +503,42 @@ describe("config", () => {
 
     expect(readConfig(deps)).toEqual({
       url: "https://api.example",
+      chatApiUrl: "https://chat.example",
       token: "bbt_abc",
       agent: "ops",
+    });
+  });
+
+  it("uses interface url for chat api when chatApiUrl is missing", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(requireConfig(deps)).toEqual({
+      url: "https://api.example",
+      chatApiUrl: "https://api.example",
+      token: "bbt_abc",
+      agent: undefined,
+    });
+  });
+
+  it("uses explicit chatApiUrl when provided", () => {
+    const { deps } = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_abc",
+      },
+    });
+
+    expect(requireConfig(deps)).toEqual({
+      url: "https://interface.example",
+      chatApiUrl: "https://chat.example",
+      token: "bbt_abc",
+      agent: undefined,
     });
   });
 
