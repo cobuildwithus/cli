@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
+import { DEFAULT_CHAT_API_URL, DEFAULT_INTERFACE_URL } from "../src/config.js";
 import { createHarness } from "./helpers.js";
 
 function expectedDefaultSecretsConfig() {
@@ -111,10 +112,10 @@ describe("setup/config trust-boundary hardening", () => {
     };
     harness.deps.isInteractive = () => true;
 
-    await runCli(["setup"], harness.deps);
+    await runCli(["setup", "--x402-mode", "skip"], harness.deps);
 
-    expect(harness.outputs).toContain("Using interface URL from COBUILD_CLI_URL: https://env.example");
-    expect(harness.outputs).toContain("Using default network from COBUILD_CLI_NETWORK: base");
+    expect(harness.errors).toContain("Using interface URL from COBUILD_CLI_URL: https://env.example");
+    expect(harness.errors).toContain("Using default network from COBUILD_CLI_NETWORK: base");
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
@@ -139,6 +140,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://interface.example",
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
         tokenRef: expectedPatTokenRef("https://interface.example"),
@@ -198,6 +200,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
         tokenRef: expectedPatTokenRef("https://api.example"),
@@ -221,6 +224,7 @@ describe("setup/config trust-boundary hardening", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
         tokenRef: expectedPatTokenRef("https://api.example"),
@@ -353,6 +357,39 @@ describe("setup/config trust-boundary hardening", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
+  it("setup rejects x402 private key sources without --x402-mode local-key", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(
+        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--x402-private-key-stdin"],
+        harness.deps
+      )
+    ).rejects.toThrow("--x402-private-key-stdin/--x402-private-key-file require --x402-mode local-key.");
+  });
+
+  it("setup rejects multiple x402 private key input sources", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--token",
+          "bbt_a",
+          "--x402-mode",
+          "local-key",
+          "--x402-private-key-stdin",
+          "--x402-private-key-file",
+          "/tmp/key.txt",
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow("Provide only one of --x402-private-key-stdin or --x402-private-key-file.");
+  });
+
   it("setup --link skips auto-link when npm_execpath is not a trusted pnpm entrypoint", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
@@ -372,7 +409,7 @@ describe("setup/config trust-boundary hardening", () => {
     );
 
     expect(linkCalls).toEqual([]);
-    expect(harness.outputs).toContain(
+    expect(harness.errors).toContain(
       "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global"
     );
   });
@@ -386,10 +423,10 @@ describe("setup/config trust-boundary hardening", () => {
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      interfaceUrl: null,
-      chatApiUrl: null,
+      interfaceUrl: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       token: "bbt_from...",
-      tokenRef: expectedPatTokenRef(null),
+      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,
       path: harness.configFile,
     });
@@ -403,10 +440,10 @@ describe("setup/config trust-boundary hardening", () => {
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      interfaceUrl: null,
-      chatApiUrl: null,
+      interfaceUrl: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       token: "bbt_from...",
-      tokenRef: expectedPatTokenRef(null),
+      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,
       path: harness.configFile,
     });

@@ -4,7 +4,10 @@ import { createHarness } from "./helpers.js";
 
 const GENERATED_UUID = "8e03978e-40d5-43e8-bc93-6894a57f9324";
 const EXPLICIT_UUID = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
-const VALID_TO = "0x000000000000000000000000000000000000dEaD";
+const VALID_TO = "0x000000000000000000000000000000000000dead";
+const DEFAULT_INTERFACE_URL = "https://co.build";
+const DEFAULT_CHAT_API_URL = "https://chat-api.co.build";
+const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
 
 function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
@@ -44,9 +47,10 @@ function expectedDefaultSecretsConfig() {
   };
 }
 
-function expectedPersistedSetupConfig(url: string) {
+function expectedPersistedSetupConfig(url: string, chatApiUrl: string = DEFAULT_CHAT_API_URL) {
   return {
     url,
+    chatApiUrl,
     agent: "default",
     auth: {
       tokenRef: expectedPatTokenRef(url),
@@ -124,7 +128,7 @@ describe("cli", () => {
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
-      chatApiUrl: null,
+      chatApiUrl: "https://api.example",
       token: "abcdefgh...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "ops",
@@ -151,7 +155,7 @@ describe("cli", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
-      chatApiUrl: null,
+      chatApiUrl: "https://api.example",
       token: "abcdefgh...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "-ops",
@@ -187,12 +191,76 @@ describe("cli", () => {
     });
   });
 
-  it("config set requires interface url before accepting --chat-api-url", async () => {
+  it("config set allows --chat-api-url without an existing interface url", async () => {
     const harness = createHarness();
 
-    await expect(
-      runCli(["config", "set", "--chat-api-url", "https://chat.example"], harness.deps)
-    ).rejects.toThrow("Set --url before configuring --chat-api-url.");
+    await runCli(
+      ["config", "set", "--chat-api-url", "https://chat.example", "--token", "bbt_secret"],
+      harness.deps
+    );
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: DEFAULT_INTERFACE_URL,
+      chatApiUrl: "https://chat.example",
+      token: "bbt_secr...",
+      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      agent: null,
+      path: harness.configFile,
+    });
+  });
+
+  it("config set normalizes interface and chat API urls", async () => {
+    const harness = createHarness();
+
+    await runCli(
+      [
+        "config",
+        "set",
+        "--url",
+        "co.build",
+        "--chat-api-url",
+        "chat.example",
+        "--token",
+        "bbt_secret",
+      ],
+      harness.deps
+    );
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: "https://co.build",
+      chatApiUrl: "https://chat.example",
+      token: "bbt_secr...",
+      tokenRef: expectedPatTokenRef("https://co.build"),
+      agent: null,
+      path: harness.configFile,
+    });
+  });
+
+  it("config set clears persisted auth when interface origin changes without a replacement token", async () => {
+    const harness = createHarness();
+    const secretsPath = "/tmp/cli-tests/.cobuild-cli/secrets.json";
+
+    await runCli(
+      ["config", "set", "--url", "https://api.example", "--token", "bbt_secret"],
+      harness.deps
+    );
+    expect(JSON.parse(harness.files.get(secretsPath) ?? "{}")).toEqual({
+      "pat:https://api.example": "bbt_secret",
+    });
+    await runCli(["config", "set", "--url", "https://other.example"], harness.deps);
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: "https://other.example",
+      chatApiUrl: "https://other.example",
+      token: null,
+      tokenRef: null,
+      agent: null,
+      path: harness.configFile,
+    });
+    expect(JSON.parse(harness.files.get(secretsPath) ?? "{}")).toEqual({});
   });
 
   it("config without subcommand prints usage", async () => {
@@ -215,12 +283,12 @@ describe("cli", () => {
     );
   });
 
-  it("config show emits nulls when values are absent", async () => {
+  it("config show emits hardcoded defaults when url values are absent", async () => {
     const harness = createHarness();
     await runCli(["config", "show"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      interfaceUrl: null,
-      chatApiUrl: null,
+      interfaceUrl: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       token: null,
       tokenRef: null,
       agent: null,
@@ -242,7 +310,7 @@ describe("cli", () => {
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: "https://api.example",
-      chatApiUrl: null,
+      chatApiUrl: "https://api.example",
       token: "next-tok...",
       tokenRef: expectedPatTokenRef("https://api.example"),
       agent: "agent-a",
@@ -301,6 +369,7 @@ describe("cli", () => {
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
         path: harness.configFile,
       },
@@ -311,6 +380,63 @@ describe("cli", () => {
         "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
       ],
     });
+  });
+
+  it("setup can configure hosted x402 payer in the same flow", async () => {
+    const harness = createHarness({
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url === "https://api.example/api/buildbot/wallet") {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
+          };
+        }
+        if (url === "https://api.example/api/buildbot/wallet?agentKey=default") {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                ok: true,
+                result: {
+                  ownerAccountAddress: "0x00000000000000000000000000000000000000aa",
+                },
+              }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+    harness.deps.isInteractive = () => false;
+
+    await runCli(
+      [
+        "setup",
+        "--url",
+        "https://api.example",
+        "--token",
+        "bbt_secret",
+        "--x402-mode",
+        "hosted",
+      ],
+      harness.deps
+    );
+
+    expect(harness.fetchMock).toHaveBeenCalledTimes(2);
+    const output = parseLastJsonOutput(harness.outputs) as {
+      x402?: { mode?: string; payerAddress?: string | null };
+      next?: string[];
+    };
+    expect(output.x402).toEqual({
+      mode: "hosted",
+      payerAddress: "0x00000000000000000000000000000000000000aa",
+      network: "base",
+      token: "usdc",
+      costPerPaidCallMicroUsdc: "1000",
+    });
+    expect(output.next).toContain("Run: cli farcaster x402 status --agent default");
   });
 
   it("setup supports machine-readable mode with --json", async () => {
@@ -337,6 +463,7 @@ describe("cli", () => {
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
         path: harness.configFile,
       },
@@ -372,6 +499,7 @@ describe("cli", () => {
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
         path: harness.configFile,
       },
@@ -405,13 +533,31 @@ describe("cli", () => {
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://interface.example",
       chatApiUrl: "https://chat.example",
-      chatApiUrlEnabled: true,
       agent: "default",
       auth: {
         tokenRef: expectedPatTokenRef("https://interface.example"),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
+  });
+
+  it("setup recomputes default chat API URL when interface origin changes without --chat-api-url", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        chatApiUrl: "https://chat.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    await runCli(["setup", "--url", "http://localhost:3000"], harness.deps);
+
+    const [input] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
+      expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
+    );
   });
 
   it("setup clears saved token and gives guidance when wallet bootstrap is unauthorized", async () => {
@@ -438,6 +584,7 @@ describe("cli", () => {
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -494,7 +641,7 @@ describe("cli", () => {
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
-      expectedPersistedSetupConfig("http://localhost:3000")
+      expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
     );
   });
 
@@ -508,7 +655,7 @@ describe("cli", () => {
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
-      expectedPersistedSetupConfig("http://localhost:3000")
+      expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
     );
   });
 
@@ -525,7 +672,7 @@ describe("cli", () => {
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
-      expectedPersistedSetupConfig("http://localhost:3000/co.build")
+      expectedPersistedSetupConfig("http://localhost:3000/co.build", DEFAULT_DEV_CHAT_API_URL)
     );
   });
 
@@ -626,7 +773,6 @@ describe("cli", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
-        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
@@ -641,24 +787,24 @@ describe("cli", () => {
   it("docs requires a query", async () => {
     const harness = createHarness();
     await expect(runCli(["docs"], harness.deps)).rejects.toThrow(
-      "Usage: cli docs <query> [--limit <n>]"
+      "Invalid input: expected string, received undefined"
     );
   });
 
   it("docs validates --limit bounds", async () => {
     const harness = createHarness();
     await expect(runCli(["docs", "setup", "--limit", "0"], harness.deps)).rejects.toThrow(
-      "--limit must be between 1 and 20"
+      "Too small: expected number to be >=1"
     );
     await expect(runCli(["docs", "setup", "--limit", "21"], harness.deps)).rejects.toThrow(
-      "--limit must be between 1 and 20"
+      "Too big: expected number to be <=20"
     );
   });
 
   it("docs validates --limit integer format", async () => {
     const harness = createHarness();
     await expect(runCli(["docs", "setup", "--limit", "1.5"], harness.deps)).rejects.toThrow(
-      "--limit must be an integer"
+      "Invalid input: expected int, received number"
     );
   });
 
@@ -704,7 +850,6 @@ describe("cli", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
-        chatApiUrlEnabled: true,
         token: "bbt_secret",
       },
       fetchResponder: createJsonResponder({
@@ -997,7 +1142,9 @@ describe("cli", () => {
 
   it("tools get-user requires a fname", async () => {
     const harness = createHarness();
-    await expect(runCli(["tools", "get-user"], harness.deps)).rejects.toThrow("Usage:");
+    await expect(runCli(["tools", "get-user"], harness.deps)).rejects.toThrow(
+      "Invalid input: expected string, received undefined"
+    );
   });
 
   it("tools get-cast infers URL type and allows explicit type", async () => {
@@ -1082,7 +1229,7 @@ describe("cli", () => {
   it("tools get-cast validates type", async () => {
     const harness = createHarness();
     await expect(runCli(["tools", "get-cast", "0xabc", "--type", "other"], harness.deps)).rejects.toThrow(
-      "--type must be either 'hash' or 'url'"
+      'Invalid option: expected one of "hash"|"url"'
     );
   });
 
@@ -1668,7 +1815,7 @@ describe("cli", () => {
   it("send validates required positionals", async () => {
     const harness = createHarness();
     await expect(runCli(["send", "usdc", "1.0"], harness.deps)).rejects.toThrow(
-      "Usage: cli send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]"
+      "Invalid input: expected string, received undefined"
     );
   });
 
@@ -1721,7 +1868,7 @@ describe("cli", () => {
         "send",
         "usdc",
         "0.50",
-        "0x000000000000000000000000000000000000dEaD",
+        "0x000000000000000000000000000000000000dead",
         "--network",
         "base",
         "--decimals",
@@ -1744,7 +1891,7 @@ describe("cli", () => {
       agentKey: "stored-agent",
       token: "usdc",
       amount: "0.50",
-      to: "0x000000000000000000000000000000000000dEaD",
+      to: "0x000000000000000000000000000000000000dead",
       decimals: 6,
     });
 
@@ -1759,7 +1906,7 @@ describe("cli", () => {
   it("tx requires --to and --data", async () => {
     const harness = createHarness();
     await expect(runCli(["tx", "--to", VALID_TO], harness.deps)).rejects.toThrow(
-      "Usage: cli tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]"
+      "Invalid input: expected string, received undefined"
     );
   });
 

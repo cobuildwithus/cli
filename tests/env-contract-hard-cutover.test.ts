@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
+import { DEFAULT_CHAT_API_URL } from "../src/config.js";
 import { createHarness } from "./helpers.js";
 
 const VALID_TO = "0x000000000000000000000000000000000000dEaD";
@@ -47,13 +48,17 @@ describe("env contract hard cutover", () => {
     };
     jsonHarness.deps.isInteractive = () => true;
 
-    await runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], jsonHarness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      jsonHarness.deps
+    );
 
-    expect(jsonHarness.outputs).not.toContain("CLI Setup Wizard");
+    expect(jsonHarness.errors).not.toContain("CLI Setup Wizard");
     expect(parseLastJsonOutput(jsonHarness.outputs)).toEqual({
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
         path: jsonHarness.configFile,
       },
@@ -73,13 +78,17 @@ describe("env contract hard cutover", () => {
     };
     legacyOnlyHarness.deps.isInteractive = () => true;
 
-    await runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], legacyOnlyHarness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      legacyOnlyHarness.deps
+    );
 
-    expect(legacyOnlyHarness.outputs).toContain("CLI Setup Wizard");
+    expect(legacyOnlyHarness.errors).toContain("CLI Setup Wizard");
     expect(parseLastJsonOutput(legacyOnlyHarness.outputs)).toEqual({
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
         path: legacyOnlyHarness.configFile,
       },

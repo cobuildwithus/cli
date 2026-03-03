@@ -3,6 +3,12 @@ import * as cliIncur from "../src/cli-incur.js";
 import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
 
+const POSITIONAL_ESCAPE_PREFIX = "__incur_positional_b64__";
+
+function encodeEscapedPositional(value: string): string {
+  return `${POSITIONAL_ESCAPE_PREFIX}${Buffer.from(value, "utf8").toString("base64url")}`;
+}
+
 describe("cli runtime coverage", () => {
   it("returns cleanly when the Incur runtime exits with code 0 and flushes output", async () => {
     const harness = createHarness();
@@ -26,25 +32,25 @@ describe("cli runtime coverage", () => {
   it("collapses docs and tools multi-word positionals during Incur preprocessing", () => {
     expect(
       cliIncur.preprocessIncurArgv(["docs", "--limit", "5", "how", "to", "send", "usdc"])
-    ).toEqual(["docs", "--limit", "5", "__incur_positional__how to send usdc"]);
+    ).toEqual(["docs", "--limit", "5", encodeEscapedPositional("how to send usdc")]);
 
     expect(
       cliIncur.preprocessIncurArgv(["docs", "--", "--token-stdin", "usage"])
-    ).toEqual(["docs", "__incur_positional__--token-stdin usage"]);
+    ).toEqual(["docs", encodeEscapedPositional("--token-stdin usage")]);
 
     expect(
       cliIncur.preprocessIncurArgv(["tools", "get-user", "alice", "builder"])
-    ).toEqual(["tools", "get-user", "__incur_positional__alice builder"]);
+    ).toEqual(["tools", "get-user", encodeEscapedPositional("alice builder")]);
 
     expect(
       cliIncur.preprocessIncurArgv(["tools", "get-cast", "hello", "world", "--type", "url"])
-    ).toEqual(["tools", "get-cast", "--type", "url", "__incur_positional__hello world"]);
+    ).toEqual(["tools", "get-cast", "--type", "url", encodeEscapedPositional("hello world")]);
   });
 
   it("normalizes preprocessing when global flags appear before the command", () => {
     expect(
       cliIncur.preprocessIncurArgv(["--verbose", "docs", "how", "to", "send", "usdc"])
-    ).toEqual(["--verbose", "docs", "__incur_positional__how to send usdc"]);
+    ).toEqual(["--verbose", "docs", encodeEscapedPositional("how to send usdc")]);
 
     expect(
       cliIncur.preprocessIncurArgv(["--json", "farcaster", "post", "--verify"])
@@ -135,7 +141,9 @@ describe("cli runtime coverage", () => {
     await runCli(["--mcp"], harness.deps);
 
     expect(preprocessSpy).toHaveBeenCalledWith(["--mcp"]);
-    expect(createSpy).toHaveBeenCalledWith(harness.deps, { mcpMode: true });
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining(harness.deps), { mcpMode: true });
+    const mcpDeps = createSpy.mock.calls[0]?.[0] as { isInteractive?: () => boolean };
+    expect(mcpDeps.isInteractive?.()).toBe(false);
     expect(harness.outputs).toEqual([]);
 
     preprocessSpy.mockRestore();
@@ -178,9 +186,13 @@ describe("cli runtime coverage", () => {
     expect(preprocessSpy).toHaveBeenNthCalledWith(2, ["--format=json", "--mcp"]);
     expect(preprocessSpy).toHaveBeenNthCalledWith(3, ["--unknown-flag", "wallet"]);
 
-    expect(createSpy).toHaveBeenNthCalledWith(1, harness.deps, { mcpMode: true });
-    expect(createSpy).toHaveBeenNthCalledWith(2, harness.deps, { mcpMode: true });
+    expect(createSpy).toHaveBeenNthCalledWith(1, expect.objectContaining(harness.deps), { mcpMode: true });
+    expect(createSpy).toHaveBeenNthCalledWith(2, expect.objectContaining(harness.deps), { mcpMode: true });
     expect(createSpy).toHaveBeenNthCalledWith(3, harness.deps, { mcpMode: false });
+    const firstMcpDeps = createSpy.mock.calls[0]?.[0] as { isInteractive?: () => boolean };
+    const secondMcpDeps = createSpy.mock.calls[1]?.[0] as { isInteractive?: () => boolean };
+    expect(firstMcpDeps.isInteractive?.()).toBe(false);
+    expect(secondMcpDeps.isInteractive?.()).toBe(false);
 
     preprocessSpy.mockRestore();
     createSpy.mockRestore();

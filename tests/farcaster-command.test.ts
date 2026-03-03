@@ -1191,7 +1191,7 @@ describe("farcaster command", () => {
   it("rejects invalid verify mode values", async () => {
     const harness = createHarness();
     await expect(runCli(["farcaster", "post", "--text", "Ship update", "--verify=maybe"], harness.deps)).rejects.toThrow(
-      "--verify must be one of: none, once, poll"
+      'Invalid option: expected one of "none"|"once"|"poll"'
     );
   });
 
@@ -1529,7 +1529,7 @@ describe("farcaster command", () => {
       "--text cannot be empty"
     );
     await expect(runCli(["farcaster", "post", "--text", "ok", "--fid", "abc"], harness.deps)).rejects.toThrow(
-      "--fid must be a positive integer"
+      "Invalid input: expected number, received NaN"
     );
     await expect(
       runCli(["farcaster", "post", "--text", "ok", "--reply-to", "not-a-reply-target"], harness.deps)
@@ -1569,7 +1569,7 @@ describe("farcaster command", () => {
 
     await expect(
       runCli(["farcaster", "post", "--text", "ok", "--fid", "9007199254740992"], harness.deps)
-    ).rejects.toThrow("--fid must be a positive integer");
+    ).rejects.toThrow("Too big: expected int to be <=9007199254740991");
   });
 
   it("supports --fid override and --signer-file for post", async () => {
@@ -2415,16 +2415,12 @@ describe("farcaster command", () => {
 
     const output = parseLastJsonOutput(harness.outputs) as {
       signer?: { publicKey?: string; saved?: boolean; file?: string };
-      next?: string;
     };
     expect(output.signer).toEqual({
       publicKey: body.signerPublicKey,
       saved: true,
       file: "ed25519-signer.json",
     });
-    expect(output.next).toBe(
-      "cli farcaster x402 init --agent stored-agent --mode hosted|local-generate|local-key"
-    );
 
     const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/stored-agent/farcaster/ed25519-signer.json";
     const secretsPath = "/tmp/cli-tests/.cobuild-cli/secrets.json";
@@ -2447,7 +2443,7 @@ describe("farcaster command", () => {
     });
   });
 
-  it("keeps signup successful when existing x402 payer config is unreadable", async () => {
+  it("keeps signup successful without reading x402 payer config", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -2477,13 +2473,9 @@ describe("farcaster command", () => {
 
     const output = parseLastJsonOutput(harness.outputs) as {
       signer?: { saved?: boolean };
-      next?: string;
     };
     expect(output.signer?.saved).toBe(true);
-    expect(output.next).toBe(
-      "cli farcaster x402 init --agent stored-agent --mode hosted|local-generate|local-key"
-    );
-    expect(harness.errors.join("\n")).toContain("x402 payer setup skipped: x402 payer config is invalid JSON.");
+    expect(harness.errors.join("\n")).not.toContain("x402 payer setup skipped:");
   });
 
   it("supports recovery and does not persist signer on needs_funding", async () => {
@@ -2631,6 +2623,8 @@ describe("farcaster command", () => {
 
   it("keeps tools get-user validation coverage", async () => {
     const harness = createHarness();
-    await expect(runCli(["tools", "get-user"], harness.deps)).rejects.toThrow("Usage:");
+    await expect(runCli(["tools", "get-user"], harness.deps)).rejects.toThrow(
+      "Invalid input: expected string, received undefined"
+    );
   });
 });
