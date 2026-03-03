@@ -2,6 +2,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { parseCliWalletAddressCandidates } from "../api-response-schemas.js";
 import { buildWalletPayerRef, isSecretRef } from "../secrets/ref-contract.js";
 import { resolveSecretRefString, setSecretRefString, withDefaultSecretProviders } from "../secrets/runtime.js";
 import { apiGet, asRecord } from "../transport.js";
@@ -259,28 +260,36 @@ export function writeStoredX402PayerConfig(params: {
 }
 
 function resolveWalletAddressFromPayload(payload: unknown): string | null {
-  const root = asRecord(payload);
-  const result = asRecord(root.result);
-  const ownerAccountAddress = result.ownerAccountAddress;
-  if (typeof ownerAccountAddress === "string") {
-    if (!isEvmAddress(ownerAccountAddress)) {
+  const candidates = parseCliWalletAddressCandidates(payload);
+  if (!candidates) {
+    return null;
+  }
+
+  if (candidates.resultOwnerAccountAddress !== null) {
+    if (!isEvmAddress(candidates.resultOwnerAccountAddress)) {
       throw new Error("Backend wallet response returned invalid EVM address at result.ownerAccountAddress.");
     }
-    return ownerAccountAddress;
+    return candidates.resultOwnerAccountAddress;
   }
-  const wallet = asRecord(result.wallet);
-  if (typeof wallet.address === "string") {
-    if (!isEvmAddress(wallet.address)) {
+  if (candidates.resultWalletAddress !== null) {
+    if (!isEvmAddress(candidates.resultWalletAddress)) {
       throw new Error("Backend wallet response returned invalid EVM address at result.wallet.address.");
     }
-    return wallet.address;
+    return candidates.resultWalletAddress;
   }
-  if (typeof root.ownerAccountAddress === "string") {
-    if (!isEvmAddress(root.ownerAccountAddress)) {
+  if (candidates.ownerAccountAddress !== null) {
+    if (!isEvmAddress(candidates.ownerAccountAddress)) {
       throw new Error("Backend wallet response returned invalid EVM address at ownerAccountAddress.");
     }
-    return root.ownerAccountAddress;
+    return candidates.ownerAccountAddress;
   }
+  if (candidates.walletAddress !== null) {
+    if (!isEvmAddress(candidates.walletAddress)) {
+      throw new Error("Backend wallet response returned invalid EVM address at wallet.address.");
+    }
+    return candidates.walletAddress;
+  }
+
   return null;
 }
 

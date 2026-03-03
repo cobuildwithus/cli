@@ -1,19 +1,20 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hostname } from "node:os";
+import {
+  OAUTH_CLIENT_ID as OAUTH_CLIENT_ID_FROM_WIRE,
+  OAUTH_DEFAULT_SCOPE as OAUTH_DEFAULT_SCOPE_FROM_WIRE,
+  OAUTH_REDIRECT_PATH as OAUTH_REDIRECT_PATH_FROM_WIRE,
+  OAUTH_WRITE_SCOPE as OAUTH_WRITE_SCOPE_FROM_WIRE,
+  validatePkceCodeVerifier,
+} from "@cobuild/wire";
+import { parseOAuthErrorPayload, parseOAuthTokenPayload } from "./api-response-schemas.js";
 import type { CliDeps, FetchResponseLike } from "./types.js";
 import { parseAndValidateApiBaseUrl } from "./url.js";
 
-export const OAUTH_CLIENT_ID = "buildbot_cli";
-export const OAUTH_REDIRECT_PATH = "/auth/callback";
-export const OAUTH_DEFAULT_SCOPE = [
-  "tools:read",
-  "tools:write",
-  "wallet:read",
-  "wallet:execute",
-  "offline_access",
-].join(" ");
-
-const PKCE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
+export const OAUTH_CLIENT_ID = OAUTH_CLIENT_ID_FROM_WIRE;
+export const OAUTH_REDIRECT_PATH = OAUTH_REDIRECT_PATH_FROM_WIRE;
+export const OAUTH_DEFAULT_SCOPE = OAUTH_DEFAULT_SCOPE_FROM_WIRE;
+export const OAUTH_WRITE_SCOPE = OAUTH_WRITE_SCOPE_FROM_WIRE;
 export type CliSetupPayerModeHint = "hosted" | "local-generate" | "local-key" | "skip";
 
 export type OAuthTokenResponse = {
@@ -22,11 +23,6 @@ export type OAuthTokenResponse = {
   expiresIn: number;
   scope: string;
   sessionId: string | null;
-};
-
-type OAuthTokenErrorPayload = {
-  error?: unknown;
-  error_description?: unknown;
 };
 
 export class OAuthTokenRequestError extends Error {
@@ -76,60 +72,6 @@ function readOAuthErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-function parseOAuthErrorPayload(payload: unknown): {
-  oauthError: string | null;
-  oauthDescription: string | null;
-} {
-  if (!payload || typeof payload !== "object") {
-    return {
-      oauthError: null,
-      oauthDescription: null,
-    };
-  }
-  const errorPayload = payload as OAuthTokenErrorPayload;
-  return {
-    oauthError:
-      typeof errorPayload.error === "string" && errorPayload.error.trim()
-        ? errorPayload.error
-        : null,
-    oauthDescription:
-      typeof errorPayload.error_description === "string" && errorPayload.error_description.trim()
-        ? errorPayload.error_description
-        : null,
-  };
-}
-
-function parseOAuthTokenResponse(payload: unknown): OAuthTokenResponse {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("OAuth token response was not valid JSON.");
-  }
-  const record = payload as {
-    access_token?: unknown;
-    refresh_token?: unknown;
-    expires_in?: unknown;
-    scope?: unknown;
-    session_id?: unknown;
-  };
-
-  if (typeof record.access_token !== "string" || !record.access_token.trim()) {
-    throw new Error("OAuth token response did not include access_token.");
-  }
-  if (typeof record.refresh_token !== "string" || !record.refresh_token.trim()) {
-    throw new Error("OAuth token response did not include refresh_token.");
-  }
-  if (typeof record.expires_in !== "number" || !Number.isFinite(record.expires_in) || record.expires_in <= 0) {
-    throw new Error("OAuth token response did not include a valid expires_in.");
-  }
-
-  return {
-    accessToken: record.access_token,
-    refreshToken: record.refresh_token,
-    expiresIn: Math.floor(record.expires_in),
-    scope: typeof record.scope === "string" ? record.scope : "",
-    sessionId: typeof record.session_id === "string" ? record.session_id : null,
-  };
-}
-
 async function postOauthToken(
   deps: Pick<CliDeps, "fetch">,
   chatApiUrl: string,
@@ -162,14 +104,12 @@ async function postOauthToken(
       oauthDescription: parsedError.oauthDescription,
     });
   }
-  return parseOAuthTokenResponse(payload);
+  return parseOAuthTokenPayload(payload);
 }
 
 export function createPkcePair(): { codeVerifier: string; codeChallenge: string } {
   const codeVerifier = randomBytes(32).toString("base64url");
-  if (!PKCE_VERIFIER_PATTERN.test(codeVerifier)) {
-    throw new Error("Failed to generate a valid PKCE code_verifier.");
-  }
+  validatePkceCodeVerifier(codeVerifier);
   const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
   return {
     codeVerifier,

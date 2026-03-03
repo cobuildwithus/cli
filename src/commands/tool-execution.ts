@@ -1,4 +1,9 @@
-import { ApiRequestError, apiGet, apiPost, asRecord, isRecord } from "../transport.js";
+import {
+  parseToolCatalogEntryName,
+  parseToolExecutionResult,
+  parseToolsCatalogEntries,
+} from "../api-response-schemas.js";
+import { ApiRequestError, apiGet, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 
 const CANONICAL_TOOLS_DISCOVERY_PATH = "/v1/tools";
@@ -22,21 +27,11 @@ function normalizeToolName(value: string): string {
 }
 
 function extractCatalogToolName(value: unknown): string | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.name === "string" && value.name.trim().length > 0) return value.name;
-  if (typeof value.toolName === "string" && value.toolName.trim().length > 0) return value.toolName;
-  if (typeof value.id === "string" && value.id.trim().length > 0) return value.id;
-  return null;
+  return parseToolCatalogEntryName(value);
 }
 
 function extractToolCatalogEntries(payload: unknown): unknown[] {
-  if (Array.isArray(payload)) return payload;
-
-  const record = asRecord(payload);
-  if (Array.isArray(record.tools)) return record.tools;
-  if (Array.isArray(record.data)) return record.data;
-  if (Array.isArray(record.results)) return record.results;
-  return [];
+  return parseToolsCatalogEntries(payload);
 }
 
 function prioritizedCanonicalToolNames(
@@ -80,34 +75,8 @@ function prioritizedCanonicalToolNames(
   return deduped;
 }
 
-function extractExecutionValue(record: Record<string, unknown>): unknown | undefined {
-  for (const key of ["result", "output", "data", "value", "toolResult"]) {
-    if (Object.prototype.hasOwnProperty.call(record, key)) {
-      return record[key];
-    }
-  }
-  return undefined;
-}
-
 function extractCanonicalExecutionResult(payload: unknown): unknown {
-  if (Array.isArray(payload)) return payload;
-
-  const record = asRecord(payload);
-  const direct = extractExecutionValue(record);
-  if (direct !== undefined) {
-    return direct;
-  }
-
-  for (const nestedKey of ["execution", "toolExecution"]) {
-    const nested = record[nestedKey];
-    if (!isRecord(nested)) continue;
-    const nestedValue = extractExecutionValue(nested);
-    if (nestedValue !== undefined) {
-      return nestedValue;
-    }
-  }
-
-  return payload;
+  return parseToolExecutionResult(payload);
 }
 
 function shouldRetryCanonicalToolCandidate(error: unknown): error is ApiRequestError {

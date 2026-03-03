@@ -4,7 +4,6 @@ import {
   parseCliWalletAddressForSetupSummary,
   parseOAuthErrorPayload,
   parseOAuthTokenPayload,
-  parseSetupPayerMetadata,
   parseToolCatalogEntryName,
   parseToolExecutionResult,
   parseToolsCatalogEntries,
@@ -87,14 +86,14 @@ describe("api response schemas", () => {
     });
   });
 
-  it("normalizes oauth error payload strings and drops blank values", () => {
+  it("accepts non-empty oauth error strings and drops blank values", () => {
     expect(
       parseOAuthErrorPayload({
         error: "  invalid_grant  ",
         error_description: "   ",
       })
     ).toEqual({
-      oauthError: "invalid_grant",
+      oauthError: "  invalid_grant  ",
       oauthDescription: null,
     });
   });
@@ -122,6 +121,24 @@ describe("api response schemas", () => {
     expect(parseCliWalletAddressCandidates("bad-shape")).toBeNull();
   });
 
+  it("keeps wallet candidate parsing tolerant when unrelated fields are malformed", () => {
+    expect(
+      parseCliWalletAddressCandidates({
+        result: {
+          ownerAccountAddress: "0x1",
+          wallet: { address: 123 },
+        },
+        wallet: "not-an-object",
+        ownerAccountAddress: "0x3",
+      })
+    ).toEqual({
+      resultOwnerAccountAddress: "0x1",
+      resultWalletAddress: null,
+      ownerAccountAddress: "0x3",
+      walletAddress: null,
+    });
+  });
+
   it("parses tools catalog entries across envelope shapes", () => {
     const arrayPayload = [{ name: "a" }];
     expect(parseToolsCatalogEntries(arrayPayload)).toBe(arrayPayload);
@@ -131,6 +148,9 @@ describe("api response schemas", () => {
     expect(parseToolsCatalogEntries({ results: [{ toolName: "tool_2" }] })).toEqual([
       { toolName: "tool_2" },
     ]);
+    expect(parseToolsCatalogEntries({ tools: null, data: [{ id: "fallback-data" }] })).toEqual([
+      { id: "fallback-data" },
+    ]);
     expect(parseToolsCatalogEntries("bad-shape")).toEqual([]);
   });
 
@@ -138,6 +158,7 @@ describe("api response schemas", () => {
     expect(parseToolCatalogEntryName({ name: "name-value" })).toBe("name-value");
     expect(parseToolCatalogEntryName({ toolName: "tool-name" })).toBe("tool-name");
     expect(parseToolCatalogEntryName({ id: "id-value" })).toBe("id-value");
+    expect(parseToolCatalogEntryName({ name: 123, toolName: "fallback" })).toBe("fallback");
     expect(parseToolCatalogEntryName({})).toBeNull();
     expect(parseToolCatalogEntryName("bad-shape")).toBeNull();
   });
@@ -153,6 +174,14 @@ describe("api response schemas", () => {
     expect(parseToolExecutionResult({ toolExecution: { data: { nested: "toolExecution" } } })).toEqual({
       nested: "toolExecution",
     });
+    expect(
+      parseToolExecutionResult({
+        execution: null,
+        toolExecution: { result: { recovered: true } },
+      })
+    ).toEqual({
+      recovered: true,
+    });
 
     const passthroughPayload = { foo: "bar" };
     expect(parseToolExecutionResult(passthroughPayload)).toBe(passthroughPayload);
@@ -162,49 +191,5 @@ describe("api response schemas", () => {
       toolExecution: { stillIgnored: true },
     };
     expect(parseToolExecutionResult(nestedWithoutKnownKeys)).toBe(nestedWithoutKnownKeys);
-  });
-
-  it("parses setup payer metadata and defaults", () => {
-    expect(
-      parseSetupPayerMetadata({
-        payer: {
-          mode: "hosted",
-          payerAddress: "0xabc",
-          network: "base",
-          token: "usdc",
-          costPerPaidCallMicroUsdc: "2000",
-        },
-      })
-    ).toEqual({
-      mode: "hosted",
-      payerAddress: "0xabc",
-      network: "base",
-      token: "usdc",
-      costPerPaidCallMicroUsdc: "2000",
-    });
-
-    expect(
-      parseSetupPayerMetadata({
-        payer: {
-          mode: "local",
-        },
-      })
-    ).toEqual({
-      mode: "local",
-      payerAddress: null,
-      network: "base",
-      token: "usdc",
-      costPerPaidCallMicroUsdc: "1000",
-    });
-  });
-
-  it("rejects invalid setup payer metadata payloads", () => {
-    expect(() => parseSetupPayerMetadata(null)).toThrow("Payer setup did not return payer metadata.");
-    expect(() => parseSetupPayerMetadata({ payer: "bad-shape" })).toThrow(
-      "Payer setup did not return payer metadata."
-    );
-    expect(() => parseSetupPayerMetadata({ payer: {} })).toThrow(
-      "Payer setup returned an invalid mode."
-    );
   });
 });

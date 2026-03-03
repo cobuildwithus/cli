@@ -1,4 +1,5 @@
 /* v8 ignore file */
+import { parseCliWalletAddressForSetupSummary } from "../api-response-schemas.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
 import { resolveSecretRefString } from "../secrets/runtime.js";
 import type { CliConfig, CliDeps } from "../types.js";
@@ -70,16 +71,7 @@ export function resolveStoredSetupToken(
 }
 
 export function getSetupWalletAddress(walletResponse: unknown): string | null {
-  if (!walletResponse || typeof walletResponse !== "object") {
-    return null;
-  }
-  const responseRecord = walletResponse as Record<string, unknown>;
-  const wallet = responseRecord.wallet;
-  if (!wallet || typeof wallet !== "object") {
-    return null;
-  }
-  const walletRecord = wallet as Record<string, unknown>;
-  return typeof walletRecord.address === "string" ? walletRecord.address : null;
+  return parseCliWalletAddressForSetupSummary(walletResponse);
 }
 
 export function resolveInterfaceSetupCompleteUrl(params: {
