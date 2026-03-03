@@ -91,6 +91,7 @@ Group command notes:
 - `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
 - `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery).
 - `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
+- Hosted `https://co.build` routes `/v1/*` to Chat API at the edge; self-hosted installs must configure `/v1/*` routing to Chat API explicitly.
 
 ## Output Contract
 
@@ -119,3 +120,4 @@ Group command notes:
 - `cli: command not found`: in this repo use `pnpm start -- <command>`, or run `cli setup --link` once to add the binary to `PATH`.
 - `CLI database tables are missing`: apply SQL migrations from the interface repo.
 - `Missing CDP credentials`: set `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET` on the interface server.
+- `Canonical /v1 tool routes are unavailable`: route `/v1/tools` and `/v1/tool-executions` from your configured CLI base URL to Chat API.

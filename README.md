@@ -17,6 +17,7 @@ TypeScript CLI + agent skill for running wallet actions through the interface ap
 - Node.js 20+
 - pnpm
 - Running interface app URL (for example `http://localhost:3000`)
+- `/v1/*` routing from that URL to Chat API (`/v1/tools` and `/v1/tool-executions`) when self-hosted
 
 ## Install CLI
 
@@ -110,6 +111,13 @@ For runtime commands:
 - Agent key: `--agent` -> saved config `agent` -> `default`.
 - Exec network (`send`/`tx`): `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
 
+## `/v1` Route Ownership
+
+- `docs` and `tools` use canonical tool routes: `GET /v1/tools` and `POST /v1/tool-executions`.
+- CLI still uses one configured base URL (`url` in config).
+- For hosted `https://co.build`, edge routing handles `/v1/*` to Chat API.
+- For self-hosting, configure your gateway/reverse-proxy to route `/v1/*` to Chat API.
+
 ## Output Contract
 
 - `wallet`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
@@ -151,6 +159,8 @@ If your query starts with a dash (for example, `--token-stdin`), insert `--` bef
   - Run via `pnpm start -- <command>` from this repo, or run setup with `--link`.
 - Setup succeeds but wallet bootstrap fails
   - Check interface logs, apply CLI SQL migrations, and verify `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, and `CDP_WALLET_SECRET`.
+- `Canonical /v1 tool routes are unavailable`
+  - Configure routing so `/v1/tools` and `/v1/tool-executions` resolve to Chat API from your configured CLI base URL.
 - Wrong URL/network
   - Re-run setup with explicit `--url` and `--network`.
 

@@ -15,7 +15,6 @@ interface ExecuteCanonicalToolOptions {
 interface CanonicalDiscoveryResult {
   catalog: unknown | null;
   routeUnavailable: boolean;
-  routeUnavailableDetail: string | null;
 }
 
 function normalizeToolName(value: string): string {
@@ -122,6 +121,29 @@ function isCanonicalRouteNotFound(error: unknown): error is ApiRequestError {
   return error instanceof ApiRequestError && error.status === 404;
 }
 
+function isLikelyToolNameMismatchNotFoundDetail(detail: string | null): boolean {
+  if (!detail) return false;
+  const normalized = detail.toLowerCase();
+  if (
+    normalized.includes("/v1/tool-executions") ||
+    normalized.includes("/v1/tools") ||
+    normalized.includes("cannot post") ||
+    normalized.includes("cannot get") ||
+    normalized.includes("route")
+  ) {
+    return false;
+  }
+  return (
+    normalized === "tool not found" ||
+    normalized.startsWith("tool not found:") ||
+    normalized.includes("unknown tool") ||
+    normalized.includes("tool name") ||
+    normalized.includes("invalid tool name") ||
+    /tool\s+['"`][^'"`]+['"`]\s+not found/.test(normalized) ||
+    /tool\s+[a-z0-9_.-]+\s+not found/.test(normalized)
+  );
+}
+
 function buildCanonicalExecutionBody(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
   return {
     name: toolName,
@@ -136,16 +158,12 @@ async function discoverCanonicalToolCatalog(
     return {
       catalog: await apiGet(deps, CANONICAL_TOOLS_DISCOVERY_PATH),
       routeUnavailable: false,
-      routeUnavailableDetail: null,
     };
   } catch (error) {
     if (shouldRetryCanonicalToolCandidate(error)) {
-      const routeUnavailable = isCanonicalRouteNotFound(error);
       return {
         catalog: null,
-        routeUnavailable,
-        routeUnavailableDetail:
-          routeUnavailable && error instanceof ApiRequestError ? error.detail : null,
+        routeUnavailable: isCanonicalRouteNotFound(error),
       };
     }
     throw error;
@@ -178,7 +196,7 @@ export async function executeCanonicalToolOnly(
   const candidates = prioritizedCanonicalToolNames(configured, discovery.catalog);
   let lastRetryableError: unknown = null;
   let allExecutionErrorsWereNotFound = true;
-  const executionNotFoundDetails = new Set<string>();
+  let foundLikelyToolNameMismatchNotFound = false;
 
   for (const candidate of candidates) {
     try {
@@ -190,22 +208,19 @@ export async function executeCanonicalToolOnly(
       if (!isCanonicalRouteNotFound(error)) {
         allExecutionErrorsWereNotFound = false;
       } else {
-        executionNotFoundDetails.add(error.detail ?? "");
+        if (isLikelyToolNameMismatchNotFoundDetail(error.detail)) {
+          foundLikelyToolNameMismatchNotFound = true;
+        }
       }
       lastRetryableError = error;
     }
   }
 
   if (lastRetryableError) {
-    const discoveryNotFoundDetail = discovery.routeUnavailableDetail ?? "";
-    const matchesDiscoveryNotFoundDetail =
-      executionNotFoundDetails.size > 0 &&
-      [...executionNotFoundDetails].every((detail) => detail === discoveryNotFoundDetail);
-
     if (
       allExecutionErrorsWereNotFound &&
       discovery.routeUnavailable &&
-      matchesDiscoveryNotFoundDetail
+      !foundLikelyToolNameMismatchNotFound
     ) {
       throw new Error(CANONICAL_ROUTE_CUTOVER_GUIDANCE, {
         cause: lastRetryableError instanceof Error ? lastRetryableError : undefined,

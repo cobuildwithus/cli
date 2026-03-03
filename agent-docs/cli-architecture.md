@@ -53,7 +53,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `docs`
 
 - `docs <query> [--limit <n>]`
-- Calls canonical chat-api tool surfaces via interface API base URL (`GET /v1/tools` when needed, `POST /v1/tool-executions` primary).
+- Calls canonical chat-api tool surfaces through the configured CLI base URL (`GET /v1/tools` when needed, `POST /v1/tool-executions` primary).
+- If canonical `/v1/*` routes are unavailable, returns actionable cutover guidance to route `/v1/*` to Chat API.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
 ### `tools`
@@ -62,8 +63,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
 - `tools get-treasury-stats`
-- Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) via interface API base URL.
-- Intended for read-only access to interface tool routes.
+- Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through the configured CLI base URL.
+- Intended for read-only access to canonical tool routes.
 
 ### `send`
 

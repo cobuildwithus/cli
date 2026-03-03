@@ -1244,7 +1244,7 @@ describe("cli", () => {
     });
 
     await expect(runCli(["docs", "setup", "approval"], harness.deps)).rejects.toThrow(
-      "Request failed (status 404): Not found"
+      "Canonical /v1 tool routes are unavailable."
     );
 
     expect(
@@ -1276,7 +1276,7 @@ describe("cli", () => {
     });
 
     await expect(runCli(["tools", "get-user", "alice"], harness.deps)).rejects.toThrow(
-      "Request failed (status 404): Not found"
+      "Canonical /v1 tool routes are unavailable."
     );
 
     expect(

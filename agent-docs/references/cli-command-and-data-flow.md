@@ -24,7 +24,7 @@
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.
 4. Incur resolves command path, parses args/options, and routes directly to structured command executors.
-5. Legacy `handle*Command` wrappers remain for compatibility/tests and call the same executors after `parseArgs`.
+5. Command modules execute directly from Incur inputs via `execute*Command` APIs (no argv reparse shim for docs/tools/wallet/config/send/tx/setup).
 
 ## Setup Flow
 
@@ -66,7 +66,8 @@
 2. Validate query is non-empty and `--limit` is an integer in range.
 3. Optionally GET `/v1/tools` to resolve canonical docs tool naming.
 4. POST `/v1/tool-executions` with canonical tool envelope + `{ query, limit? }` input.
-5. Normalize output to stable `{ query, count, results }` shape and print JSON.
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to route `/v1/*` to Chat API.
+6. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
 ## Farcaster x402 Init/Status Flow
 
@@ -96,7 +97,8 @@
 2. Validate command-specific argument shape.
 3. Optionally GET `/v1/tools` to resolve canonical tool naming.
 4. POST `/v1/tool-executions` with command-specific canonical tool input.
-5. Normalize output envelopes for stable command JSON shape and print JSON response.
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to route `/v1/*` to Chat API.
+6. Normalize output envelopes for stable command JSON shape and print JSON response.
 
 ## Idempotency Flow (`send` / `tx`)
 
