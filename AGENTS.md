@@ -74,6 +74,7 @@ If instructions still conflict after applying this order, ask the user before ac
 ## Required Checks
 
 - Always run:
+  - `pnpm build`
   - `pnpm typecheck`
   - `pnpm test`
   - `pnpm test:coverage`

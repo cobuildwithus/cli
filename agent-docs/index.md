@@ -1,6 +1,6 @@
 # CLI Agent Docs Index
 
-Last verified: 2026-02-25
+Last verified: 2026-03-02
 
 ## Purpose
 
