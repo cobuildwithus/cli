@@ -122,7 +122,13 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
   }
 
   const mcpRequested = isMcpRequested(normalizedArgv);
-  const cli = createCobuildIncurCli(deps, { mcpMode: mcpRequested });
+  const cliDeps = mcpRequested
+    ? {
+        ...deps,
+        isInteractive: () => false,
+      }
+    : deps;
+  const cli = createCobuildIncurCli(cliDeps, { mcpMode: mcpRequested });
   const outputBuffer: string[] = [];
   const serveArgv = preprocessIncurArgv(normalizedArgv);
   const outputWriter = mcpRequested

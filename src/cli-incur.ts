@@ -22,7 +22,7 @@ import { executeTxCommand } from "./commands/tx.js";
 import { executeWalletCommand } from "./commands/wallet.js";
 import type { CliDeps } from "./types.js";
 
-const POSITIONAL_ESCAPE_PREFIX = "__incur_positional__";
+const POSITIONAL_ESCAPE_PREFIX = "__incur_positional_b64__";
 const LEADING_GLOBAL_BOOLEAN_FLAGS = new Set([
   "--verbose",
   "--json",
@@ -39,12 +39,24 @@ export interface CobuildIncurCliOptions {
 }
 
 function encodeEscapedPositional(value: string): string {
-  return `${POSITIONAL_ESCAPE_PREFIX}${value}`;
+  return `${POSITIONAL_ESCAPE_PREFIX}${Buffer.from(value, "utf8").toString("base64url")}`;
 }
 
 function decodeEscapedPositional(value: string): string {
   if (!value.startsWith(POSITIONAL_ESCAPE_PREFIX)) return value;
-  return value.slice(POSITIONAL_ESCAPE_PREFIX.length);
+  const encoded = value.slice(POSITIONAL_ESCAPE_PREFIX.length);
+  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) {
+    return value;
+  }
+  try {
+    const decoded = Buffer.from(encoded, "base64url");
+    if (decoded.toString("base64url") !== encoded) {
+      return value;
+    }
+    return decoded.toString("utf8");
+  } catch {
+    return value;
+  }
 }
 
 function normalizeFarcasterSignupArgv(argv: string[]): string[] {
@@ -253,11 +265,71 @@ export function preprocessIncurArgv(argv: string[]): string[] {
 
 export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOptions = {}): Cli.Cli {
   const docsArgs = z.object({
-    query: z.string().optional(),
+    query: z.string().min(1),
+  });
+  const docsOptions = z.object({
+    limit: z.coerce.number().int().min(1).max(20).optional(),
   });
   const toolNameArgs = z.object({
-    value: z.string().optional(),
+    value: z.string().min(1),
   });
+  const configSetOutput = z.object({
+    ok: z.literal(true),
+    path: z.string(),
+  });
+  const configShowOutput = z.object({
+    interfaceUrl: z.string(),
+    chatApiUrl: z.string(),
+    token: z.string().nullable(),
+    tokenRef: z.unknown().nullable(),
+    agent: z.string().nullable(),
+    path: z.string(),
+  });
+  const setupOutput = z.object({
+    ok: z.literal(true),
+    config: z.object({
+      interfaceUrl: z.string(),
+      chatApiUrl: z.string(),
+      agent: z.string(),
+      path: z.string(),
+    }),
+    defaultNetwork: z.string(),
+    wallet: z.unknown(),
+    x402: z
+      .object({
+        mode: z.enum(["hosted", "local"]),
+        payerAddress: z.string().nullable(),
+        network: z.string(),
+        token: z.string(),
+        costPerPaidCallMicroUsdc: z.string(),
+      })
+      .optional(),
+    next: z.array(z.string()),
+  });
+  const docsOutput = z.object({
+    query: z.string(),
+    count: z.number(),
+    results: z.array(z.unknown()),
+  });
+  const getUserOutput = z.object({
+    result: z.unknown(),
+    ok: z.boolean().optional(),
+  }).passthrough();
+  const getCastOutput = z.object({
+    cast: z.unknown(),
+    ok: z.boolean().optional(),
+  }).passthrough();
+  const castPreviewOutput = z.object({
+    cast: z.unknown(),
+    ok: z.boolean().optional(),
+  }).passthrough();
+  const treasuryStatsOutput = z.object({
+    data: z.unknown(),
+    ok: z.boolean().optional(),
+  }).passthrough();
+  const sendOrTxOutput = z.object({
+    idempotencyKey: z.string(),
+  }).passthrough();
 
   const config = Cli.create("config", {
     description: "Read and write local CLI config",
@@ -272,6 +344,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         tokenStdin: z.boolean().optional(),
         agent: z.string().optional(),
       }),
+      output: configSetOutput,
       run(context) {
         return executeConfigSetCommand(
           {
@@ -288,6 +361,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     })
     .command("show", {
       description: "Print effective config and auth metadata",
+      output: configShowOutput,
       run() {
         return executeConfigShowCommand(deps);
       },
@@ -299,13 +373,11 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     .command("get-user", {
       description: "Lookup user profile by name",
       args: toolNameArgs,
+      output: getUserOutput,
       run(context) {
         return executeToolsGetUserCommand(
           {
-            fname:
-              typeof context.args.value === "string"
-                ? decodeEscapedPositional(context.args.value)
-                : undefined,
+            fname: decodeEscapedPositional(context.args.value),
           },
           deps
         );
@@ -315,15 +387,13 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       description: "Lookup cast by hash or URL",
       args: toolNameArgs,
       options: z.object({
-        type: z.string().optional(),
+        type: z.enum(["hash", "url"]).optional(),
       }),
+      output: getCastOutput,
       run(context) {
         return executeToolsGetCastCommand(
           {
-            identifier:
-              typeof context.args.value === "string"
-                ? decodeEscapedPositional(context.args.value)
-                : undefined,
+            identifier: decodeEscapedPositional(context.args.value),
             type: context.options.type,
           },
           deps
@@ -337,6 +407,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         embed: z.array(z.string()).optional(),
         parent: z.string().optional(),
       }),
+      output: castPreviewOutput,
       run(context) {
         return executeToolsCastPreviewCommand(
           {
@@ -353,6 +424,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       args: z.object({
         extra: z.never().optional(),
       }),
+      output: treasuryStatsOutput,
       run() {
         return executeToolsTreasuryStatsCommand(deps);
       },
@@ -426,18 +498,18 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       options: z.object({
         agent: z.string().optional(),
         text: z.string().optional(),
-        fid: z.string().optional(),
+        fid: z.coerce.number().int().positive().optional(),
         replyTo: z.string().optional(),
         signerFile: z.string().optional(),
         idempotencyKey: z.string().optional(),
-        verify: z.string().optional(),
+        verify: z.enum(["none", "once", "poll"]).optional(),
       }),
       run(context) {
         return executeFarcasterPostCommand(
           {
             agent: context.options.agent,
             text: context.options.text,
-            fid: context.options.fid,
+            fid: context.options.fid !== undefined ? String(context.options.fid) : undefined,
             replyTo: context.options.replyTo,
             signerFile: context.options.signerFile,
             idempotencyKey: context.options.idempotencyKey,
@@ -449,7 +521,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     })
     .command(farcasterX402);
 
-  return Cli.create("cli", {
+  const root = Cli.create("cli", {
     description: "Cobuild CLI",
     format: "json",
     mcp: {
@@ -463,42 +535,6 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       ],
     },
   })
-    .command("setup", {
-      description: "Run setup wizard and bootstrap wallet",
-      options: z.object({
-        url: z.string().optional(),
-        chatApiUrl: z.string().optional(),
-        dev: z.boolean().optional(),
-        token: z.string().optional(),
-        tokenFile: z.string().optional(),
-        tokenStdin: z.boolean().optional(),
-        agent: z.string().optional(),
-        network: z.string().optional(),
-        setupJson: z.boolean().optional(),
-        link: z.boolean().optional(),
-      }),
-      run(context) {
-        if (options.mcpMode) {
-          throw new Error("setup is not available in MCP mode");
-        }
-
-        return executeSetupCommand(
-          {
-            url: context.options.url,
-            chatApiUrl: context.options.chatApiUrl,
-            dev: context.options.dev,
-            token: context.options.token,
-            tokenFile: context.options.tokenFile,
-            tokenStdin: context.options.tokenStdin,
-            agent: context.options.agent,
-            network: context.options.network,
-            json: context.options.setupJson,
-            link: context.options.link,
-          },
-          deps
-        );
-      },
-    })
     .command(config)
     .command("wallet", {
       description: "Fetch wallet details",
@@ -506,6 +542,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         network: z.string().optional(),
         agent: z.string().optional(),
       }),
+      output: z.unknown(),
       run(context) {
         return executeWalletCommand(
           {
@@ -519,17 +556,13 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     .command("docs", {
       description: "Search Cobuild docs",
       args: docsArgs,
-      options: z.object({
-        limit: z.string().optional(),
-      }),
+      options: docsOptions,
+      output: docsOutput,
       run(context) {
         return executeDocsCommand(
           {
-            query:
-              typeof context.args.query === "string"
-                ? decodeEscapedPositional(context.args.query)
-                : undefined,
-            limit: context.options.limit,
+            query: decodeEscapedPositional(context.args.query),
+            limit: context.options.limit !== undefined ? String(context.options.limit) : undefined,
           },
           deps
         );
@@ -540,9 +573,9 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     .command("send", {
       description: "Execute token transfer",
       args: z.object({
-        token: z.string().optional(),
-        amount: z.string().optional(),
-        to: z.string().optional(),
+        token: z.string().min(1),
+        amount: z.string().min(1),
+        to: z.string().min(1),
       }),
       options: z.object({
         network: z.string().optional(),
@@ -550,6 +583,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         agent: z.string().optional(),
         idempotencyKey: z.string().optional(),
       }),
+      output: sendOrTxOutput,
       run(context) {
         return executeSendCommand(
           {
@@ -568,13 +602,14 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     .command("tx", {
       description: "Execute raw transaction",
       options: z.object({
-        to: z.string().optional(),
-        data: z.string().optional(),
+        to: z.string().min(1),
+        data: z.string().min(1),
         value: z.string().optional(),
         network: z.string().optional(),
         agent: z.string().optional(),
         idempotencyKey: z.string().optional(),
       }),
+      output: sendOrTxOutput,
       run(context) {
         return executeTxCommand(
           {
@@ -589,4 +624,48 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         );
       },
     });
+
+  if (!options.mcpMode) {
+    root.command("setup", {
+      description: "Run setup wizard and bootstrap wallet",
+      options: z.object({
+        url: z.string().optional(),
+        chatApiUrl: z.string().optional(),
+        dev: z.boolean().optional(),
+        token: z.string().optional(),
+        tokenFile: z.string().optional(),
+        tokenStdin: z.boolean().optional(),
+        agent: z.string().optional(),
+        network: z.string().optional(),
+        x402Mode: z.string().optional(),
+        x402PrivateKeyStdin: z.boolean().optional(),
+        x402PrivateKeyFile: z.string().optional(),
+        setupJson: z.boolean().optional(),
+        link: z.boolean().optional(),
+      }),
+      output: setupOutput,
+      run(context) {
+        return executeSetupCommand(
+          {
+            url: context.options.url,
+            chatApiUrl: context.options.chatApiUrl,
+            dev: context.options.dev,
+            token: context.options.token,
+            tokenFile: context.options.tokenFile,
+            tokenStdin: context.options.tokenStdin,
+            agent: context.options.agent,
+            network: context.options.network,
+            x402Mode: context.options.x402Mode,
+            x402PrivateKeyStdin: context.options.x402PrivateKeyStdin,
+            x402PrivateKeyFile: context.options.x402PrivateKeyFile,
+            json: context.options.setupJson,
+            link: context.options.link,
+          },
+          deps
+        );
+      },
+    });
+  }
+
+  return root;
 }

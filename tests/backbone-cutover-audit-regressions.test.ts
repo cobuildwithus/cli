@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
+import { createCobuildIncurCli } from "../src/cli-incur.js";
 import { DEFAULT_CHAT_API_URL } from "../src/config.js";
 import { createHarness } from "./helpers.js";
 
@@ -22,10 +23,13 @@ describe("backbone cutover audit regressions", () => {
     });
     harness.deps.isInteractive = () => true;
 
-    await runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      harness.deps
+    );
 
     expect(harness.errors).toContain("CLI Setup Wizard");
-    expect(harness.errors).toContain("[1/3] Interface URL");
+    expect(harness.errors).toContain("[1/4] Interface URL");
     expect(harness.outputs).toHaveLength(1);
     expect(harness.outputs.join("\n")).not.toContain("CLI Setup Wizard");
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
@@ -74,5 +78,36 @@ describe("backbone cutover audit regressions", () => {
       count: 1,
       results: [{ filename: "setup.mdx" }],
     });
+  });
+
+  it("does not decode malformed escaped positional markers when passed directly to Incur", async () => {
+    const malformedEscapedQuery = "__incur_positional_b64__invalid!value";
+    let postedExecutionInput: Record<string, unknown> | undefined;
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return await createJsonResponder({ tools: [{ name: "docsSearch" }] })();
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          postedExecutionInput = JSON.parse(String(init?.body)).input as Record<string, unknown>;
+          return await createJsonResponder({ data: [] })();
+        }
+        return await createJsonResponder({ ok: false }, 500)();
+      },
+    });
+    const cli = createCobuildIncurCli(harness.deps);
+    await cli.serve(["docs", malformedEscapedQuery], {
+      env: harness.deps.env,
+      stdout: (chunk) => {
+        harness.outputs.push(chunk.trim());
+      },
+    });
+
+    expect(postedExecutionInput).toEqual({ query: malformedEscapedQuery });
   });
 });

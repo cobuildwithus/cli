@@ -1,5 +1,3 @@
-import { parseArgs } from "node:util";
-import { printJson } from "../output.js";
 import { asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import { parseIntegerOption } from "./shared.js";
@@ -10,7 +8,18 @@ const DOCS_LIMIT_MIN = 1;
 const DOCS_LIMIT_MAX = 20;
 const DOCS_CANONICAL_TOOL_NAMES = ["docsSearch", "docs_search", "file_search"];
 
-function normalizeDocsResponse(query: string, payload: unknown): Record<string, unknown> {
+export interface DocsCommandInput {
+  query?: string;
+  limit?: string;
+}
+
+export interface DocsCommandOutput {
+  query: string;
+  count: number;
+  results: unknown[];
+}
+
+function normalizeDocsResponse(query: string, payload: unknown): DocsCommandOutput {
   if (payload === null || payload === undefined) {
     return { query, count: 0, results: [] };
   }
@@ -21,7 +30,11 @@ function normalizeDocsResponse(query: string, payload: unknown): Record<string, 
 
   const record = asRecord(payload);
   if (typeof record.query === "string" && typeof record.count === "number" && Array.isArray(record.results)) {
-    return record;
+    return {
+      query: record.query,
+      count: record.count,
+      results: record.results,
+    };
   }
 
   if (Array.isArray(record.results)) {
@@ -43,12 +56,7 @@ function normalizeDocsResponse(query: string, payload: unknown): Record<string, 
   return { query, count: 1, results: [payload] };
 }
 
-export interface DocsCommandInput {
-  query?: string;
-  limit?: string;
-}
-
-export async function executeDocsCommand(input: DocsCommandInput, deps: CliDeps): Promise<Record<string, unknown>> {
+export async function executeDocsCommand(input: DocsCommandInput, deps: CliDeps): Promise<DocsCommandOutput> {
   const query = input.query?.trim() ?? "";
   if (!query) {
     throw new Error(DOCS_USAGE);
@@ -71,25 +79,3 @@ export async function executeDocsCommand(input: DocsCommandInput, deps: CliDeps)
 
   return normalizeDocsResponse(query, response);
 }
-
-/* c8 ignore start */
-export async function handleDocsCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      limit: { type: "string" },
-    },
-    args,
-    allowPositionals: true,
-    strict: true,
-  });
-
-  const output = await executeDocsCommand(
-    {
-      query: parsed.positionals.join(" "),
-      limit: parsed.values.limit,
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-/* c8 ignore stop */

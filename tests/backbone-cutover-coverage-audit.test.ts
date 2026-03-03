@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createCobuildIncurCli, preprocessIncurArgv } from "../src/cli-incur.js";
-import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
+
+const POSITIONAL_ESCAPE_PREFIX = "__incur_positional_b64__";
+
+function encodeEscapedPositional(value: string): string {
+  return `${POSITIONAL_ESCAPE_PREFIX}${Buffer.from(value, "utf8").toString("base64url")}`;
+}
 
 describe("backbone cutover coverage audit", () => {
   it("preserves leading --format flags while preprocessing docs query positionals", () => {
@@ -9,13 +14,13 @@ describe("backbone cutover coverage audit", () => {
       "--format",
       "pretty",
       "docs",
-      "__incur_positional__how to send",
+      encodeEscapedPositional("how to send"),
     ]);
 
     expect(preprocessIncurArgv(["--format=json", "docs", "setup", "approval"])).toEqual([
       "--format=json",
       "docs",
-      "__incur_positional__setup approval",
+      encodeEscapedPositional("setup approval"),
     ]);
   });
 
@@ -29,7 +34,26 @@ describe("backbone cutover coverage audit", () => {
     ]);
   });
 
-  it("blocks setup execution when the runtime is already in mcp mode", async () => {
+  it("omits setup from MCP runtime command manifests", async () => {
+    const harness = createHarness();
+    const cli = createCobuildIncurCli(harness.deps, { mcpMode: true });
+    const llmsOutput: string[] = [];
+
+    await cli.serve(["--llms", "--format", "json"], {
+      env: harness.deps.env,
+      stdout: (chunk) => {
+        llmsOutput.push(chunk);
+      },
+    });
+
+    const manifest = JSON.parse(llmsOutput.join(""));
+    const commandNames = Array.isArray(manifest.commands)
+      ? manifest.commands.map((entry: { name?: string }) => entry.name)
+      : [];
+    expect(commandNames).not.toContain("setup");
+  });
+
+  it("rejects setup in MCP runtime because it is not registered", async () => {
     const harness = createHarness();
     const cli = createCobuildIncurCli(harness.deps, { mcpMode: true });
     const mcpOutput: string[] = [];
@@ -45,8 +69,7 @@ describe("backbone cutover coverage audit", () => {
         },
       })
     ).rejects.toThrow("exit:1");
-
     expect(harness.fetchMock).not.toHaveBeenCalled();
-    expect(mcpOutput.join("\n")).toContain("setup is not available in MCP mode");
+    expect(mcpOutput.join("\n")).toContain("not a command");
   });
 });

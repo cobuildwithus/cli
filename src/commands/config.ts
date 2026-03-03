@@ -1,6 +1,21 @@
-import { configPath, persistPatToken, readConfig, resolveMaskedToken, writeConfig } from "../config.js";
+import {
+  clearPersistedPatToken,
+  configPath,
+  DEFAULT_CHAT_API_URL,
+  DEFAULT_INTERFACE_URL,
+  persistPatToken,
+  readConfig,
+  resolveMaskedToken,
+  writeConfig,
+} from "../config.js";
 import type { CliDeps } from "../types.js";
-import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
+import {
+  countTokenSources,
+  normalizeApiUrl,
+  normalizeTokenInput,
+  readTokenFromFile,
+  readTokenFromStdin,
+} from "./shared.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
 
 const CONFIG_SET_USAGE =
@@ -21,16 +36,20 @@ export interface ConfigSetCommandOutput {
 }
 
 export interface ConfigShowCommandOutput {
-  interfaceUrl: string | null;
-  chatApiUrl: string | null;
+  interfaceUrl: string;
+  chatApiUrl: string;
   token: string | null;
   tokenRef: unknown;
   agent: string | null;
   path: string;
 }
 
-function hasConfiguredInterfaceUrl(value: string | undefined): boolean {
-  return typeof value === "string" && value.trim().length > 0;
+function safeOrigin(rawUrl: string): string | undefined {
+  try {
+    return new URL(rawUrl).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function executeConfigSetCommand(
@@ -70,25 +89,41 @@ export async function executeConfigSetCommand(
   }
 
   const current = readConfig(deps);
-  if (typeof input.chatApiUrl === "string" && !hasConfiguredInterfaceUrl(input.url) && !hasConfiguredInterfaceUrl(current.url)) {
-    throw new Error(
-      `${CONFIG_SET_USAGE}\nSet --url before configuring --chat-api-url.`
-    );
-  }
   let next = { ...current };
+  let shouldClearPersistedAuth = false;
+  let normalizedInterfaceUrl: string | undefined;
   if (typeof input.url === "string") {
-    next.url = input.url;
+    normalizedInterfaceUrl = normalizeApiUrl(input.url, "Interface URL");
+    next.url = normalizedInterfaceUrl;
   }
   if (typeof input.chatApiUrl === "string") {
-    next.chatApiUrl = input.chatApiUrl;
-    next.chatApiUrlEnabled = true;
+    next.chatApiUrl = normalizeApiUrl(input.chatApiUrl, "Chat API URL");
   }
+
+  if (normalizedInterfaceUrl !== undefined && tokenFromOption === undefined) {
+    const currentUrl =
+      typeof current.url === "string" && current.url.trim().length > 0 ? current.url : DEFAULT_INTERFACE_URL;
+    const nextOrigin = safeOrigin(normalizedInterfaceUrl);
+    const currentOrigin = safeOrigin(currentUrl);
+    if (nextOrigin !== undefined && nextOrigin !== currentOrigin) {
+      const { token: _legacyToken, auth: _authConfig, ...withoutTokenAuth } = next;
+      next = withoutTokenAuth;
+      shouldClearPersistedAuth = true;
+    }
+  }
+
+  if (shouldClearPersistedAuth) {
+    clearPersistedPatToken(deps);
+  }
+
   if (tokenFromOption !== undefined) {
+    const interfaceUrl =
+      typeof next.url === "string" && next.url.trim().length > 0 ? next.url : DEFAULT_INTERFACE_URL;
     next = persistPatToken({
       deps,
       config: next,
       token: tokenFromOption,
-      interfaceUrl: next.url,
+      interfaceUrl,
     });
   }
   if (typeof input.agent === "string") {
@@ -104,12 +139,16 @@ export async function executeConfigSetCommand(
 
 export function executeConfigShowCommand(deps: CliDeps): ConfigShowCommandOutput {
   const current = readConfig(deps);
+  const interfaceUrl =
+    typeof current.url === "string" && current.url.trim().length > 0 ? current.url : DEFAULT_INTERFACE_URL;
   const chatApiUrl =
-    current.chatApiUrlEnabled === true && typeof current.chatApiUrl === "string"
+    typeof current.chatApiUrl === "string" && current.chatApiUrl.trim().length > 0
       ? current.chatApiUrl
-      : null;
+      : typeof current.url === "string" && current.url.trim().length > 0
+        ? interfaceUrl
+        : DEFAULT_CHAT_API_URL;
   return {
-    interfaceUrl: current.url ?? null,
+    interfaceUrl,
     chatApiUrl,
     token: resolveMaskedToken(deps, current),
     tokenRef: isSecretRef(current.auth?.tokenRef) ? current.auth.tokenRef : null,

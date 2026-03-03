@@ -1,6 +1,22 @@
 import type { CliDeps } from "../types.js";
 import { asRecord } from "../transport.js";
-import { isAddress, isHex } from "viem";
+import { getAddress, isAddress, isHex, type Address } from "viem";
+import { isUuidV4 } from "../uuid.js";
+import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
+
+export type CliApiUrlLabel = "Interface URL" | "Chat API URL";
+
+function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
+  return deps.env ?? process.env;
+}
+
+export function isLoopbackInterfaceHost(hostname: string): boolean {
+  return isLoopbackHost(hostname);
+}
+
+export function normalizeApiUrl(rawValue: string, label: CliApiUrlLabel): string {
+  return normalizeApiUrlInput(rawValue, label);
+}
 
 export function normalizeTokenInput(token: string): string {
   return token.trim();
@@ -73,13 +89,7 @@ export function resolveAgentKey(inputAgent: string | undefined, configAgent: str
   return inputAgent || configAgent || "default";
 }
 
-const UUID_V4_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NON_NEGATIVE_DECIMAL_REGEX = /^(0|[1-9]\d*)(\.\d+)?$/;
-
-export function isUuidV4(value: string): boolean {
-  return UUID_V4_REGEX.test(value);
-}
 
 export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pick<CliDeps, "randomUUID">): string {
   const key = inputKey ?? deps.randomUUID();
@@ -89,8 +99,9 @@ export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pi
   return key;
 }
 
-export function resolveNetwork(inputNetwork: string | undefined): string {
-  return inputNetwork || process.env.COBUILD_CLI_NETWORK || "base-sepolia";
+export function resolveNetwork(inputNetwork: string | undefined, deps: Pick<CliDeps, "env">): string {
+  const envNetwork = getEnv(deps).COBUILD_CLI_NETWORK;
+  return inputNetwork || envNetwork || "base-sepolia";
 }
 
 export function parseIntegerOption(value: string | undefined, optionName: string): number | undefined {
@@ -122,10 +133,15 @@ export function throwWithIdempotencyKey(error: unknown, idempotencyKey: string):
   throw new Error(`${message} (idempotency key: ${idempotencyKey})`);
 }
 
-export function validateEvmAddress(value: string, label: string): void {
+export function normalizeEvmAddress(value: string, label: string): Address {
   if (!isAddress(value, { strict: false })) {
     throw new Error(`${label} must be a 20-byte hex address (0x + 40 hex chars)`);
   }
+  return getAddress(value).toLowerCase() as Address;
+}
+
+export function validateEvmAddress(value: string, label: string): void {
+  normalizeEvmAddress(value, label);
 }
 
 export function validateHexData(value: string, label: string): void {

@@ -1,15 +1,13 @@
-import { parseArgs } from "node:util";
 import { readConfig } from "../config.js";
-import { printJson } from "../output.js";
 import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import {
   buildIdempotencyHeaders,
+  normalizeEvmAddress,
   resolveAgentKey,
   resolveExecIdempotencyKey,
   resolveNetwork,
   throwWithIdempotencyKey,
-  validateEvmAddress,
   validateHexData,
   validateNonNegativeDecimal,
   withIdempotencyKey,
@@ -27,11 +25,15 @@ export interface TxCommandInput {
   idempotencyKey?: string;
 }
 
-export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Promise<Record<string, unknown>> {
+export interface TxCommandOutput extends Record<string, unknown> {
+  idempotencyKey: string;
+}
+
+export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Promise<TxCommandOutput> {
   if (!input.to || !input.data) {
     throw new Error(TX_USAGE);
   }
-  validateEvmAddress(input.to, "--to");
+  const normalizedTo = normalizeEvmAddress(input.to, "--to");
   validateHexData(input.data, "--data");
 
   const valueEth = input.value ?? "0";
@@ -39,7 +41,7 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
 
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
-  const network = resolveNetwork(input.network);
+  const network = resolveNetwork(input.network, deps);
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
   let response: unknown;
@@ -51,7 +53,7 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
         kind: "tx",
         network,
         agentKey,
-        to: input.to,
+        to: normalizedTo,
         data: input.data,
         valueEth,
       },
@@ -63,36 +65,5 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
     throwWithIdempotencyKey(error, idempotencyKey);
   }
 
-  return withIdempotencyKey(idempotencyKey, response);
+  return withIdempotencyKey(idempotencyKey, response) as TxCommandOutput;
 }
-
-/* c8 ignore start */
-export async function handleTxCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      to: { type: "string" },
-      data: { type: "string" },
-      value: { type: "string" },
-      network: { type: "string" },
-      agent: { type: "string" },
-      "idempotency-key": { type: "string" },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const output = await executeTxCommand(
-    {
-      to: parsed.values.to,
-      data: parsed.values.data,
-      value: parsed.values.value,
-      network: parsed.values.network,
-      agent: parsed.values.agent,
-      idempotencyKey: parsed.values["idempotency-key"],
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-/* c8 ignore stop */

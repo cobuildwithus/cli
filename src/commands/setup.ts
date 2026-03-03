@@ -1,17 +1,33 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { clearPersistedPatToken, configPath, persistPatToken, readConfig, writeConfig } from "../config.js";
+import {
+  clearPersistedPatToken,
+  configPath,
+  DEFAULT_CHAT_API_URL,
+  DEFAULT_INTERFACE_URL,
+  persistPatToken,
+  readConfig,
+  writeConfig,
+} from "../config.js";
 import { printJson } from "../output.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
 import { resolveSecretRefString } from "../secrets/runtime.js";
 import { buildSetupApprovalUrl, createSetupApprovalSession } from "../setup-approval.js";
-import { apiPost } from "../transport.js";
+import { apiPost, asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
-import { countTokenSources, normalizeTokenInput, readTokenFromFile, readTokenFromStdin } from "./shared.js";
+import {
+  countTokenSources,
+  isLoopbackInterfaceHost,
+  normalizeApiUrl,
+  normalizeTokenInput,
+  readTokenFromFile,
+  readTokenFromStdin,
+} from "./shared.js";
+import { executeFarcasterX402InitCommand } from "./farcaster.js";
 
 const SETUP_USAGE =
-  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]";
+  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -29,9 +45,13 @@ const SETUP_BACKEND_FAILURE_MESSAGE = [
 const CLI_PACKAGE_NAME = "@cobuild/cli";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
-const DEFAULT_INTERFACE_URL = "https://co.build";
 const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
-const LOOPBACK_INTERFACE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
+type SetupX402Mode = "hosted" | "local-generate" | "local-key" | "skip";
+
+function isSetupX402Mode(value: string): value is SetupX402Mode {
+  return value === "hosted" || value === "local-generate" || value === "local-key" || value === "skip";
+}
 
 export interface SetupCommandInput {
   url?: string;
@@ -42,6 +62,9 @@ export interface SetupCommandInput {
   tokenStdin?: boolean;
   agent?: string;
   network?: string;
+  x402Mode?: string;
+  x402PrivateKeyStdin?: boolean;
+  x402PrivateKeyFile?: string;
   json?: boolean;
   link?: boolean;
 }
@@ -50,12 +73,19 @@ export interface SetupCommandOutput {
   ok: true;
   config: {
     interfaceUrl: string;
-    chatApiUrl?: string;
+    chatApiUrl: string;
     agent: string;
     path: string;
   };
   defaultNetwork: string;
   wallet: unknown;
+  x402?: {
+    mode: "hosted" | "local";
+    payerAddress: string | null;
+    network: string;
+    token: string;
+    costPerPaidCallMicroUsdc: string;
+  };
   next: string[];
 }
 
@@ -79,54 +109,6 @@ function getNonEmptyEnvValue(
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function isLoopbackInterfaceHost(hostname: string): boolean {
-  return LOOPBACK_INTERFACE_HOSTS.has(hostname.toLowerCase());
-}
-
-function normalizeApiUrl(rawValue: string, label: "Interface URL" | "Chat API URL"): string {
-  const trimmed = rawValue.trim();
-  if (!trimmed) {
-    throw new Error(`${label} cannot be empty.`);
-  }
-
-  let candidate = trimmed;
-  if (!/^https?:\/\//i.test(candidate)) {
-    let host = "";
-    try {
-      host = new URL(`http://${candidate}`).hostname;
-    } catch {
-      host = "";
-    }
-    const prefix = isLoopbackInterfaceHost(host) ? "http://" : "https://";
-    candidate = `${prefix}${candidate}`;
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new Error(
-      `${label} is invalid. Use a full URL like https://co.build or http://localhost:3000.`
-    );
-  }
-
-  if (parsed.username || parsed.password) {
-    throw new Error(`${label} must not include username or password.`);
-  }
-  if (parsed.protocol === "http:" && !isLoopbackInterfaceHost(parsed.hostname)) {
-    throw new Error(`${label} must use https (http is allowed only for localhost, 127.0.0.1, or [::1]).`);
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`${label} must use http or https.`);
-  }
-
-  if (parsed.pathname === "/" && !parsed.search && !parsed.hash) {
-    return parsed.origin;
-  }
-
-  return parsed.toString();
-}
-
 function isAuthFailure(error: unknown): boolean {
   return error instanceof Error && /unauthorized|forbidden/i.test(error.message);
 }
@@ -137,6 +119,14 @@ function isGenericInternalFailure(error: unknown): boolean {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
+}
+
+function safeOrigin(rawUrl: string): string | undefined {
+  try {
+    return new URL(rawUrl).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveStoredSetupToken(
@@ -158,17 +148,61 @@ function isJsonModeEnabled(value: unknown, deps: Pick<CliDeps, "env">): boolean 
   return getNonEmptyEnvValue(deps, "COBUILD_CLI_OUTPUT")?.toLowerCase() === "json";
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
-
 function getSetupWalletAddress(walletResponse: unknown): string | null {
   const responseRecord = asRecord(walletResponse);
-  const walletRecord = responseRecord ? asRecord(responseRecord.wallet) : null;
+  const walletRecord = asRecord(responseRecord.wallet);
   return walletRecord && typeof walletRecord.address === "string" ? walletRecord.address : null;
+}
+
+function normalizeSetupX402Mode(value: string | undefined): SetupX402Mode | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (isSetupX402Mode(normalized)) {
+    return normalized;
+  }
+  throw new Error("--x402-mode must be one of: hosted, local-generate, local-key, skip");
+}
+
+async function promptSetupX402Mode(deps: Pick<CliDeps, "stderr">): Promise<SetupX402Mode> {
+  while (true) {
+    const input = (await promptLine(
+      "Farcaster x402 mode (hosted/local-generate/local-key/skip)",
+      "skip"
+    ))
+      .trim()
+      .toLowerCase();
+    if (isSetupX402Mode(input)) {
+      return input;
+    }
+    deps.stderr("Invalid x402 mode. Choose: hosted, local-generate, local-key, or skip.");
+  }
+}
+
+function parseSetupX402Result(payload: unknown): SetupCommandOutput["x402"] {
+  const root = asRecord(payload);
+  const x402 = asRecord(root.x402);
+  if (!x402) {
+    throw new Error("x402 setup did not return x402 metadata.");
+  }
+
+  const mode = x402.mode;
+  if (mode !== "hosted" && mode !== "local") {
+    throw new Error("x402 setup returned an invalid mode.");
+  }
+
+  const payerAddress = typeof x402.payerAddress === "string" ? x402.payerAddress : null;
+  const network = typeof x402.network === "string" ? x402.network : "base";
+  const token = typeof x402.token === "string" ? x402.token : "usdc";
+  const costPerPaidCallMicroUsdc =
+    typeof x402.costPerPaidCallMicroUsdc === "string" ? x402.costPerPaidCallMicroUsdc : "1000";
+
+  return {
+    mode,
+    payerAddress,
+    network,
+    token,
+    costPerPaidCallMicroUsdc,
+  };
 }
 
 type GlobalLinkStatus = "not-requested" | "linked" | "failed" | "skipped";
@@ -282,32 +316,32 @@ async function runPnpmLinkGlobal(params: {
 }
 
 async function maybeLinkCliGlobalCommand(
-  deps: Pick<CliDeps, "env" | "runSetupLinkGlobal" | "stdout">,
+  deps: Pick<CliDeps, "env" | "runSetupLinkGlobal" | "stderr">,
   shouldLink: boolean
 ): Promise<GlobalLinkStatus> {
   if (!shouldLink) return "not-requested";
 
   const setupPackageRoot = resolveSetupPackageRoot();
   if (!setupPackageRoot) {
-    deps.stdout("Auto-link skipped: could not determine the cli package root.");
-    deps.stdout("Run manually: pnpm link --global");
+    deps.stderr("Auto-link skipped: could not determine the cli package root.");
+    deps.stderr("Run manually: pnpm link --global");
     return "skipped";
   }
 
   const pnpmExecPath = resolveTrustedPnpmExecPath(deps);
   if (!pnpmExecPath) {
-    deps.stdout(SETUP_PNPM_PATH_HINT);
+    deps.stderr(SETUP_PNPM_PATH_HINT);
     return "skipped";
   }
 
-  deps.stdout("Installing global `cli` command via pnpm link...");
+  deps.stderr("Installing global `cli` command via pnpm link...");
   const linkResult = await runPnpmLinkGlobal({
     deps,
     cwd: setupPackageRoot,
     pnpmExecPath,
   });
   if (linkResult.ok) {
-    deps.stdout("Global command installed. You can now run `cli ...` directly.");
+    deps.stderr("Global command installed. You can now run `cli ...` directly.");
     return "linked";
   }
 
@@ -316,16 +350,16 @@ async function maybeLinkCliGlobalCommand(
     normalizedOutput.includes("err_pnpm_no_global_bin_dir") ||
     normalizedOutput.includes("unable to find the global bin directory")
   ) {
-    deps.stdout("Auto-link failed: pnpm global bin directory is not configured.");
-    deps.stdout("Run once: pnpm setup");
-    deps.stdout("Then restart your shell and run: pnpm link --global");
-    deps.stdout("Until then, run commands via: pnpm start -- <command>");
+    deps.stderr("Auto-link failed: pnpm global bin directory is not configured.");
+    deps.stderr("Run once: pnpm setup");
+    deps.stderr("Then restart your shell and run: pnpm link --global");
+    deps.stderr("Until then, run commands via: pnpm start -- <command>");
     return "failed";
   }
 
   const firstLine = firstNonEmptyLine(linkResult.output);
-  if (firstLine) deps.stdout(`Auto-link failed: ${firstLine}`);
-  deps.stdout("Auto-link failed. Run manually: pnpm link --global");
+  if (firstLine) deps.stderr(`Auto-link failed: ${firstLine}`);
+  deps.stderr("Auto-link failed. Run manually: pnpm link --global");
   return "failed";
 }
 
@@ -367,39 +401,46 @@ async function maybeRefocusTerminalWindow(): Promise<void> {
   }
 }
 
-function printSetupWizardIntro(deps: Pick<CliDeps, "stdout">): void {
-  deps.stdout("");
-  deps.stdout("================================");
-  deps.stdout("CLI Setup Wizard");
-  deps.stdout("================================");
-  deps.stdout("This wizard will save your CLI config and verify wallet access.");
+function printSetupWizardIntro(deps: Pick<CliDeps, "stderr">): void {
+  deps.stderr("");
+  deps.stderr("================================");
+  deps.stderr("CLI Setup Wizard");
+  deps.stderr("================================");
+  deps.stderr("This wizard will save your CLI config and verify wallet access.");
 }
 
-function printSetupStep(deps: Pick<CliDeps, "stdout">, step: number, title: string): void {
-  deps.stdout("");
-  deps.stdout(`[${step}/3] ${title}`);
+function printSetupStep(deps: Pick<CliDeps, "stderr">, step: number, total: number, title: string): void {
+  deps.stderr("");
+  deps.stderr(`[${step}/${total}] ${title}`);
 }
 
 function printSetupSuccessSummary(params: {
-  deps: Pick<CliDeps, "stdout">;
+  deps: Pick<CliDeps, "stderr">;
   configPath: string;
   defaultNetwork: string;
   walletAddress: string | null;
+  x402?: SetupCommandOutput["x402"];
   linkStatus: GlobalLinkStatus;
 }): void {
-  params.deps.stdout("");
-  params.deps.stdout("Setup complete.");
-  params.deps.stdout(`Config saved: ${params.configPath}`);
+  params.deps.stderr("");
+  params.deps.stderr("Setup complete.");
+  params.deps.stderr(`Config saved: ${params.configPath}`);
   if (params.walletAddress) {
-    params.deps.stdout(`Wallet address: ${params.walletAddress}`);
+    params.deps.stderr(`Wallet address: ${params.walletAddress}`);
   }
-  params.deps.stdout(`Default network: ${params.defaultNetwork}`);
-  params.deps.stdout("");
-  params.deps.stdout("Next:");
-  params.deps.stdout("  cli wallet");
-  params.deps.stdout("  cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)");
+  params.deps.stderr(`Default network: ${params.defaultNetwork}`);
+  if (params.x402) {
+    params.deps.stderr(`x402 payer mode: ${params.x402.mode}`);
+    if (params.x402.payerAddress) {
+      params.deps.stderr(`x402 payer address: ${params.x402.payerAddress}`);
+    }
+  }
+  params.deps.stderr("");
+  params.deps.stderr("Next:");
+  params.deps.stderr("  cli wallet");
+  params.deps.stderr("  cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)");
   if (params.linkStatus === "not-requested") {
-    params.deps.stdout(
+    params.deps.stderr(
       "If cli is not on your PATH, run `pnpm link --global` once (or use: pnpm start -- <command>)."
     );
   }
@@ -421,7 +462,7 @@ async function maybeOpenInterface(
   displayUrl: string,
   deps: CliDeps
 ): Promise<boolean> {
-  deps.stdout(`Opening ${displayUrl} in your browser...`);
+  deps.stderr(`Opening ${displayUrl} in your browser...`);
 
   let opened = false;
   if (deps.openExternal) {
@@ -433,12 +474,12 @@ async function maybeOpenInterface(
   }
 
   if (!opened) {
-    deps.stdout("Could not open a browser automatically.");
-    deps.stdout(`Open this URL manually: ${openUrl}`);
+    deps.stderr("Could not open a browser automatically.");
+    deps.stderr(`Open this URL manually: ${openUrl}`);
     return false;
   }
 
-  deps.stdout("Browser opened.");
+  deps.stderr("Browser opened.");
   return true;
 }
 
@@ -459,7 +500,7 @@ async function requestTokenViaBrowser(params: {
   try {
     session = await createSetupApprovalSession({ expectedOrigin });
   } catch (error) {
-    deps.stdout(`Could not initialize secure setup channel (${getErrorMessage(error)}).`);
+    deps.stderr(`Could not initialize secure setup channel (${getErrorMessage(error)}).`);
     return null;
   }
 
@@ -473,19 +514,19 @@ async function requestTokenViaBrowser(params: {
     });
     const approvalUrlForDisplay = redactApprovalUrlForDisplay(approvalUrl);
 
-    deps.stdout("Approve token generation in the browser to continue.");
+    deps.stderr("Approve token generation in the browser to continue.");
     const opened = await maybeOpenInterface(approvalUrl, approvalUrlForDisplay, deps);
     if (!opened) {
-      deps.stdout(`If a browser did not open, visit: ${approvalUrl}`);
+      deps.stderr(`If a browser did not open, visit: ${approvalUrl}`);
     }
-    deps.stdout("Waiting for secure approval...");
+    deps.stderr("Waiting for secure approval...");
 
     const token = await session.waitForToken;
-    deps.stdout("Approval received from browser.");
+    deps.stderr("Approval received from browser.");
     await maybeRefocusTerminalWindow();
     return token;
   } catch (error) {
-    deps.stdout(`Browser approval did not complete (${getErrorMessage(error)}).`);
+    deps.stderr(`Browser approval did not complete (${getErrorMessage(error)}).`);
     return null;
   } finally {
     await session.close();
@@ -494,7 +535,7 @@ async function requestTokenViaBrowser(params: {
 
 async function promptLine(question: string, defaultValue?: string): Promise<string> {
   const { createInterface } = await import("node:readline/promises");
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     const suffix = defaultValue ? ` (${defaultValue})` : "";
     const answer = (await rl.question(`${question}${suffix}: `)).trim();
@@ -511,8 +552,8 @@ async function promptSecret(question: string): Promise<string> {
 
   return new Promise((resolve, reject) => {
     const stdin = process.stdin;
-    const stdout = process.stdout;
-    stdout.write(`${question}: `);
+    const stderr = process.stderr;
+    stderr.write(`${question}: `);
 
     let value = "";
 
@@ -531,13 +572,13 @@ async function promptSecret(question: string): Promise<string> {
       for (const ch of str) {
         if (ch === "\n" || ch === "\r") {
           cleanup();
-          stdout.write("\n");
+          stderr.write("\n");
           resolve(value.trim());
           return;
         }
         if (ch === "\u0003") {
           cleanup();
-          stdout.write("\n");
+          stderr.write("\n");
           reject(new Error("Setup cancelled"));
           return;
         }
@@ -574,16 +615,23 @@ async function runSetupCommand(
   if (tokenSourceCount > 1) {
     throw new Error(`${SETUP_USAGE}\nProvide only one of --token, --token-file, or --token-stdin.`);
   }
+  if (input.x402PrivateKeyStdin && input.x402PrivateKeyFile) {
+    throw new Error(`${SETUP_USAGE}\nProvide only one of --x402-private-key-stdin or --x402-private-key-file.`);
+  }
+
+  let requestedX402Mode = normalizeSetupX402Mode(input.x402Mode);
+  if (requestedX402Mode !== "local-key" && (input.x402PrivateKeyStdin || input.x402PrivateKeyFile)) {
+    throw new Error(
+      `${SETUP_USAGE}\n--x402-private-key-stdin/--x402-private-key-file require --x402-mode local-key.`
+    );
+  }
 
   const current = readConfig(deps);
   const jsonMode = isJsonModeEnabled(input.json, deps);
   const interactive = isInteractive(deps) && !jsonMode;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
-  const storedChatApiUrl =
-    current.chatApiUrlEnabled === true && typeof current.chatApiUrl === "string"
-      ? current.chatApiUrl.trim()
-      : "";
+  const storedChatApiUrl = typeof current.chatApiUrl === "string" ? current.chatApiUrl.trim() : "";
   const envUrl = getNonEmptyEnvValue(deps, "COBUILD_CLI_URL");
   const envNetwork = getNonEmptyEnvValue(deps, "COBUILD_CLI_NETWORK");
   const defaultInterfaceUrl =
@@ -601,12 +649,7 @@ async function runSetupCommand(
     url = envUrl;
     urlSource = "env";
   }
-  let chatApiUrl: string | undefined;
-  if (typeof input.chatApiUrl === "string") {
-    chatApiUrl = input.chatApiUrl;
-  } else if (storedChatApiUrl) {
-    chatApiUrl = storedChatApiUrl;
-  }
+  const explicitChatApiUrl = typeof input.chatApiUrl === "string" ? input.chatApiUrl : undefined;
 
   let tokenFromOption: string | undefined;
   if (typeof input.token === "string") {
@@ -652,7 +695,7 @@ async function runSetupCommand(
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 1, "Interface URL");
+    printSetupStep(deps, 1, 4, "Interface URL");
   }
   /* c8 ignore stop */
 
@@ -670,9 +713,9 @@ async function runSetupCommand(
     /* c8 ignore start */
     if (interactive) {
       if (urlSource === "env") {
-        deps.stdout(`Using interface URL from COBUILD_CLI_URL: ${url}`);
+        deps.stderr(`Using interface URL from COBUILD_CLI_URL: ${url}`);
       } else {
-        deps.stdout(`Using: ${url}`);
+        deps.stderr(`Using: ${url}`);
       }
     }
     /* c8 ignore stop */
@@ -685,19 +728,32 @@ async function runSetupCommand(
   }
 
   url = normalizeApiUrl(url, "Interface URL");
-  if (chatApiUrl) {
-    chatApiUrl = normalizeApiUrl(chatApiUrl, "Chat API URL");
+  const previousInterfaceOrigin = safeOrigin(storedUrl);
+  const currentInterfaceOrigin = safeOrigin(url);
+  const interfaceOriginChanged =
+    previousInterfaceOrigin !== undefined &&
+    currentInterfaceOrigin !== undefined &&
+    previousInterfaceOrigin !== currentInterfaceOrigin;
+
+  let chatApiUrl = explicitChatApiUrl;
+  if (!chatApiUrl && storedChatApiUrl && !interfaceOriginChanged) {
+    chatApiUrl = storedChatApiUrl;
   }
+  if (!chatApiUrl) {
+    const hostname = new URL(url).hostname;
+    chatApiUrl = isLoopbackInterfaceHost(hostname) ? DEFAULT_DEV_CHAT_API_URL : DEFAULT_CHAT_API_URL;
+  }
+  chatApiUrl = normalizeApiUrl(chatApiUrl, "Chat API URL");
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 2, "Personal Access Token");
+    printSetupStep(deps, 2, 4, "Personal Access Token");
   }
   /* c8 ignore stop */
 
   /* c8 ignore start */
   if (interactive && networkSource === "env") {
-    deps.stdout(`Using default network from COBUILD_CLI_NETWORK: ${defaultNetwork}`);
+    deps.stderr(`Using default network from COBUILD_CLI_NETWORK: ${defaultNetwork}`);
   }
   /* c8 ignore stop */
 
@@ -716,8 +772,8 @@ async function runSetupCommand(
       token = browserToken;
     }
     if (!token) {
-      deps.stdout("Falling back to manual token entry.");
-      deps.stdout("Tip: paste from clipboard instead of using --token in shell history.");
+      deps.stderr("Falling back to manual token entry.");
+      deps.stderr("Tip: paste from clipboard instead of using --token in shell history.");
       token = await promptSecret("CLI PAT token (input hidden)");
     }
     /* c8 ignore stop */
@@ -725,9 +781,9 @@ async function runSetupCommand(
     /* c8 ignore start */
     if (interactive) {
       if (tokenFromOption !== undefined) {
-        deps.stdout("Using a PAT provided on this command.");
+        deps.stderr("Using a PAT provided on this command.");
       } else {
-        deps.stdout("Using an existing PAT from your config.");
+        deps.stderr("Using an existing PAT from your config.");
       }
     }
     /* c8 ignore stop */
@@ -740,18 +796,17 @@ async function runSetupCommand(
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 3, "Save config + bootstrap wallet");
+    printSetupStep(deps, 3, 4, "Save config + bootstrap wallet");
   }
   /* c8 ignore stop */
 
   const path = configPath(deps);
-  const { chatApiUrl: _existingChatApiUrl, chatApiUrlEnabled: _existingChatApiUrlEnabled, ...configWithoutChatApi } = current;
   const nextConfig = persistPatToken({
     deps,
     config: {
-      ...configWithoutChatApi,
+      ...current,
       url,
-      ...(chatApiUrl ? { chatApiUrl, chatApiUrlEnabled: true } : {}),
+      chatApiUrl,
       agent,
     },
     token,
@@ -759,7 +814,7 @@ async function runSetupCommand(
   });
   writeConfig(deps, nextConfig);
   if (!jsonMode && outputMode === "legacy") {
-    deps.stdout(`Saved config: ${path}`);
+    deps.stderr(`Saved config: ${path}`);
   }
   let walletResponse: unknown;
   try {
@@ -785,19 +840,67 @@ async function runSetupCommand(
     throw error;
   }
 
+  let x402: SetupCommandOutput["x402"] | undefined;
+  let x402StepShown = false;
+  let x402ModeSelectedInteractively = false;
+  const canPromptForX402Selection = interactive && Boolean(process.stdin.isTTY && process.stderr.isTTY);
+  if (!requestedX402Mode && canPromptForX402Selection) {
+    /* c8 ignore start */
+    printSetupStep(deps, 4, 4, "Farcaster x402 payer (optional)");
+    x402StepShown = true;
+    requestedX402Mode = await promptSetupX402Mode(deps);
+    x402ModeSelectedInteractively = true;
+    /* c8 ignore stop */
+  }
+
+  if (requestedX402Mode && requestedX402Mode !== "skip") {
+    if (interactive && !x402StepShown) {
+      /* c8 ignore start */
+      printSetupStep(deps, 4, 4, "Farcaster x402 payer (optional)");
+      /* c8 ignore stop */
+    }
+    let x402Result: unknown;
+    try {
+      x402Result = await executeFarcasterX402InitCommand(
+        {
+          agent,
+          mode: requestedX402Mode,
+          privateKeyStdin: input.x402PrivateKeyStdin,
+          privateKeyFile: input.x402PrivateKeyFile,
+          noPrompt: !interactive,
+        },
+        deps
+      );
+    } catch (error) {
+      if (!x402ModeSelectedInteractively) {
+        throw error;
+      }
+      deps.stderr(`Skipped optional x402 setup (${getErrorMessage(error)}).`);
+      deps.stderr(
+        `Run later: cli farcaster x402 init --agent ${agent} --mode hosted|local-generate|local-key`
+      );
+    }
+
+    if (x402Result !== undefined) {
+      x402 = parseSetupX402Result(x402Result);
+    }
+  }
+
   const successPayload: SetupCommandOutput = {
     ok: true,
     config: {
       interfaceUrl: url,
-      ...(chatApiUrl ? { chatApiUrl } : {}),
+      chatApiUrl,
       agent,
       path,
     },
     defaultNetwork,
     wallet: walletResponse,
+    ...(x402 ? { x402 } : {}),
     next: [
       "Run: cli wallet",
       "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+      ...(x402 ? [`Run: cli farcaster x402 status --agent ${agent}`] : []),
     ],
   };
 
@@ -816,6 +919,7 @@ async function runSetupCommand(
       configPath: path,
       defaultNetwork,
       walletAddress: getSetupWalletAddress(walletResponse),
+      x402,
       linkStatus,
     });
   }

@@ -86,14 +86,20 @@ It defaults to:
 - interface URL: `https://co.build` (or `http://localhost:3000` with `--dev`)
 
 ```bash
-cli setup [--url <interface-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--json] [--link]
+cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] [--json] [--link]
 ```
 
 - Browser approval flow:
   - Opens `/home` in your interface app and waits for one-time localhost callback approval.
   - Falls back to hidden manual token prompt only if approval fails or times out.
+- Optional x402 payer setup (same setup command):
+  - `--x402-mode hosted` uses backend wallet access for Farcaster `X-PAYMENT`.
+  - `--x402-mode local-generate` creates and stores a local payer key.
+  - `--x402-mode local-key` uses `--x402-private-key-stdin` or `--x402-private-key-file`.
 - Machine output:
-  - Use `--json` or `COBUILD_CLI_OUTPUT=json`.
+  - Command result payloads are emitted on stdout as JSON.
+  - Setup wizard/progress/prompts are emitted on stderr so stdout remains parseable.
+  - `setup --json` or `COBUILD_CLI_OUTPUT=json` disables interactive wizard behavior.
 - Global command install:
   - Use `--link` during setup to run `pnpm link --global` automatically when possible.
 
@@ -103,7 +109,6 @@ For `setup`, values resolve in this order:
 
 1. Interface URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
 2. Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
-3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved config token -> interactive browser approval/manual prompt.
 3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved secret ref in config (`auth.tokenRef`) -> interactive browser approval/manual prompt.
 
 For runtime commands:
@@ -120,8 +125,8 @@ For runtime commands:
 
 ## Output Contract
 
-- `wallet`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
-- `setup` emits JSON in non-interactive mode or when `--json` is set.
+- `setup`, `wallet`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
+- `setup` keeps human wizard/progress text on stderr so stdout remains machine-readable.
 - Failures exit non-zero and print human-readable diagnostics.
 
 ## Command Auth Requirements

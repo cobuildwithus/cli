@@ -92,10 +92,30 @@ export interface ToolsCastPreviewInput {
   parent?: string;
 }
 
+export interface ToolsGetUserOutput extends Record<string, unknown> {
+  result: unknown;
+  ok?: boolean;
+}
+
+export interface ToolsGetCastOutput extends Record<string, unknown> {
+  cast: unknown;
+  ok?: boolean;
+}
+
+export interface ToolsCastPreviewOutput extends Record<string, unknown> {
+  cast: unknown;
+  ok?: boolean;
+}
+
+export interface ToolsTreasuryStatsOutput extends Record<string, unknown> {
+  data: unknown;
+  ok?: boolean;
+}
+
 export async function executeToolsGetUserCommand(
   input: ToolsGetUserInput,
   deps: CliDeps
-): Promise<Record<string, unknown>> {
+): Promise<ToolsGetUserOutput> {
   const fname = input.fname?.trim() ?? "";
   if (!fname) throw new Error(TOOLS_USAGE);
 
@@ -104,13 +124,13 @@ export async function executeToolsGetUserCommand(
     canonicalToolNames: GET_USER_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeGetUserResponse(response);
+  return normalizeGetUserResponse(response) as ToolsGetUserOutput;
 }
 
 export async function executeToolsGetCastCommand(
   input: ToolsGetCastInput,
   deps: CliDeps
-): Promise<Record<string, unknown>> {
+): Promise<ToolsGetCastOutput> {
   const identifier = input.identifier?.trim() ?? "";
   if (!identifier) throw new Error(TOOLS_USAGE);
 
@@ -123,13 +143,13 @@ export async function executeToolsGetCastCommand(
     canonicalToolNames: GET_CAST_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeGetCastResponse(response);
+  return normalizeGetCastResponse(response) as ToolsGetCastOutput;
 }
 
 export async function executeToolsCastPreviewCommand(
   input: ToolsCastPreviewInput,
   deps: CliDeps
-): Promise<Record<string, unknown>> {
+): Promise<ToolsCastPreviewOutput> {
   const text = input.text?.trim();
   if (!text) throw new Error(TOOLS_USAGE);
 
@@ -147,13 +167,15 @@ export async function executeToolsCastPreviewCommand(
     canonicalToolNames: CAST_PREVIEW_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeCastPreviewResponse(response);
+  return normalizeCastPreviewResponse(response) as ToolsCastPreviewOutput;
 }
 
-export async function executeToolsTreasuryStatsCommand(deps: CliDeps): Promise<Record<string, unknown>> {
+export async function executeToolsTreasuryStatsCommand(
+  deps: CliDeps
+): Promise<ToolsTreasuryStatsOutput> {
   const response = await executeCanonicalToolOnly(deps, {
     canonicalToolNames: TREASURY_STATS_CANONICAL_TOOL_NAMES,
     input: {},
   });
-  return normalizeTreasuryStatsResponse(response);
+  return normalizeTreasuryStatsResponse(response) as ToolsTreasuryStatsOutput;
 }

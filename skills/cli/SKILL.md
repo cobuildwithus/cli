@@ -37,13 +37,13 @@ cli mcp add
 Run:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent>
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>]
 ```
 
 For deterministic agent automation, run setup in machine mode:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --json
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] --json
 ```
 
 `--json` can also be placed before the command (`cli --json setup ...`) and is remapped to setup machine mode.
@@ -52,7 +52,7 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 For local developer installs, add `--link` to setup to run `pnpm link --global` and make `cli` available on PATH:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --link
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] --link
 ```
 
 ## Resolution Rules
@@ -62,7 +62,9 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 - URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
 - Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` -> fallback to interface URL.
 - Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
-- Token: exactly one of `--token|--token-file|--token-stdin` -> saved config token -> interactive browser/manual flow.
+- Token: exactly one of `--token|--token-file|--token-stdin` -> saved config secret ref (`auth.tokenRef`) -> interactive browser/manual flow.
+- x402 mode (optional): `--x402-mode` -> interactive prompt in setup when TTY is available -> default skip in non-interactive mode.
+- x402 local-key source: exactly one of `--x402-private-key-stdin|--x402-private-key-file`, and only with `--x402-mode local-key`.
 
 Runtime precedence:
 
@@ -82,6 +84,10 @@ cli send usdc <amount> <to> --network <network> --agent <agent>
 cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <agent>
 ```
 
+Validation notes:
+- `cli docs <query>` requires a non-empty query and `--limit` in `1..20`.
+- `cli tools get-cast --type` only accepts `hash` or `url`.
+
 Group command notes:
 
 - `cli tools` and `cli farcaster` print group help (no-op success) when no subcommand is provided.
@@ -97,12 +103,13 @@ Group command notes:
 
 ## Output Contract
 
-- `setup --json` returns an object with `config`, `defaultNetwork`, `wallet`, and `next`.
+- `setup` returns an object with `config`, `defaultNetwork`, `wallet`, optional `x402`, and `next` on stdout.
+- Setup wizard/progress/prompts are written to stderr (stdout remains machine-readable JSON).
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.
 - `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
 - Command failures exit non-zero with human-readable diagnostics.
-- `setup` is intentionally unavailable when running the CLI as an MCP server (`--mcp`).
+- `setup` is not registered when running the CLI as an MCP server (`--mcp`).
 
 ## Auth and Funds Expectations
 

@@ -1,16 +1,14 @@
-import { parseArgs } from "node:util";
 import { readConfig } from "../config.js";
-import { printJson } from "../output.js";
 import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import {
   buildIdempotencyHeaders,
+  normalizeEvmAddress,
   parseIntegerOption,
   resolveAgentKey,
   resolveExecIdempotencyKey,
   resolveNetwork,
   throwWithIdempotencyKey,
-  validateEvmAddress,
   validateNonNegativeDecimal,
   withIdempotencyKey,
 } from "./shared.js";
@@ -28,7 +26,11 @@ export interface SendCommandInput {
   idempotencyKey?: string;
 }
 
-export async function executeSendCommand(input: SendCommandInput, deps: CliDeps): Promise<Record<string, unknown>> {
+export interface SendCommandOutput extends Record<string, unknown> {
+  idempotencyKey: string;
+}
+
+export async function executeSendCommand(input: SendCommandInput, deps: CliDeps): Promise<SendCommandOutput> {
   const token = input.token;
   const amount = input.amount;
   const to = input.to;
@@ -41,11 +43,11 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
     throw new Error("--decimals must be between 0 and 255");
   }
   validateNonNegativeDecimal(amount, "amount");
-  validateEvmAddress(to, "to");
+  const normalizedTo = normalizeEvmAddress(to, "to");
 
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
-  const network = resolveNetwork(input.network);
+  const network = resolveNetwork(input.network, deps);
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
   let response: unknown;
@@ -59,7 +61,7 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
         agentKey,
         token,
         amount,
-        to,
+        to: normalizedTo,
         decimals,
       },
       {
@@ -70,35 +72,5 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
     throwWithIdempotencyKey(error, idempotencyKey);
   }
 
-  return withIdempotencyKey(idempotencyKey, response);
+  return withIdempotencyKey(idempotencyKey, response) as SendCommandOutput;
 }
-
-/* c8 ignore start */
-export async function handleSendCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      network: { type: "string" },
-      decimals: { type: "string" },
-      agent: { type: "string" },
-      "idempotency-key": { type: "string" },
-    },
-    args,
-    allowPositionals: true,
-    strict: true,
-  });
-
-  const output = await executeSendCommand(
-    {
-      token: parsed.positionals[0],
-      amount: parsed.positionals[1],
-      to: parsed.positionals[2],
-      network: parsed.values.network,
-      decimals: parsed.values.decimals,
-      agent: parsed.values.agent,
-      idempotencyKey: parsed.values["idempotency-key"],
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-/* c8 ignore stop */

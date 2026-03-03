@@ -4,7 +4,7 @@
 
 - Entry: `runCliFromProcess()` in `src/cli.ts` (invoked by `src/index.ts`)
 - Runtime router (Incur command tree in `src/cli-incur.ts`):
-  - `setup` -> `executeSetupCommand`
+  - `setup` -> `executeSetupCommand` (omitted when runtime is started with global `--mcp`)
   - `config` -> `executeConfigSetCommand` / `executeConfigShowCommand`
   - `wallet` -> `executeWalletCommand`
   - `farcaster` -> `executeFarcaster*Command`
@@ -20,7 +20,7 @@
 3. Preprocess argv compatibility shims in `preprocessIncurArgv`:
 - `setup --json` remapped to command-local setup json mode.
 - `--json setup ...` remapped to setup-local machine mode (`--setup-json`) while preserving other leading global flags.
-- `docs -- --<dashed-term>` preserved via escaped positional passthrough.
+- `docs -- --<dashed-term>` preserved via escaped positional passthrough (base64url marker encoding).
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.
 4. Incur resolves command path, parses args/options, and routes directly to structured command executors.
@@ -28,7 +28,7 @@
 
 ## Setup Flow
 
-1. Parse `setup` options (`--url`, `--chat-api-url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`).
+1. Parse `setup` options (`--url`, `--chat-api-url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`, optional x402 payer setup flags).
 2. Resolve defaults from config + environment (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
 3. In non-interactive first-time setup, fail closed when URL comes only from `COBUILD_CLI_URL` (require explicit `--url`).
 4. Prompt for missing URL when interactive, using resolved default value.
@@ -41,13 +41,15 @@
 8. If browser approval fails/times out, fall back to hidden token prompt.
 9. Persist config locally.
 10. Bootstrap wallet via `/api/buildbot/wallet`.
-11. Print wallet/bootstrap output and next-step guidance.
+11. Optionally configure Farcaster x402 payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
+12. Emit structured setup result on stdout and emit wizard/progress/prompt text on stderr.
 
 ## Config and Agent Resolution Flow
 
 1. `readConfig()` loads `~/.cobuild-cli/config.json` if present.
 2. `requireConfig()` enforces presence of interface `url`, resolves chat-api base (`chatApiUrl` with `url` fallback), and resolves PAT from `auth.tokenRef` (or migrates legacy plaintext `token` into a SecretRef).
 3. `resolveAgentKey()` prioritizes command `--agent`, then config `agent`, then `default`.
+4. `config set` normalizes/validates `--url` and `--chat-api-url`; when interface origin changes without a replacement token, persisted auth refs are cleared to force re-auth.
 
 ## Network Execution Flow
 
@@ -113,7 +115,7 @@
 ## Error and Exit Flow
 
 - `runCli()` executes Incur with buffered stdout + captured exit signal for deterministic test behavior.
-- `runCli()` bypasses output buffering for `--mcp` runtime startup and marks setup as unavailable in MCP mode.
+- `runCli()` bypasses output buffering for `--mcp` runtime startup, forces non-interactive deps for MCP mode, and serves an MCP command tree without `setup`.
 - Incur non-zero exits are normalized to legacy-style error messages where needed (including unknown command mapping).
 - `runCliFromProcess(...)` catches thrown errors -> prints `Error: <message>` to stderr -> exits `1`.
 - Help/usage style commands from Incur (`--help`, group help) exit `0`.
