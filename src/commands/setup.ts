@@ -1,25 +1,6 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  clearPersistedRefreshToken,
-  configPath,
-  DEFAULT_CHAT_API_URL,
-  DEFAULT_INTERFACE_URL,
-  persistRefreshToken,
-  readConfig,
-  writeConfig,
-} from "../config.js";
-import {
-  createPkcePair,
-  exchangeAuthorizationCode,
-  OAUTH_DEFAULT_SCOPE,
-} from "../oauth.js";
+import { DEFAULT_CHAT_API_URL, DEFAULT_INTERFACE_URL, readConfig } from "../config.js";
 import { printJson } from "../output.js";
-import { isSecretRef } from "../secrets/ref-contract.js";
-import { resolveSecretRefString } from "../secrets/runtime.js";
-import { buildSetupApprovalUrl, createSetupApprovalSession } from "../setup-approval.js";
-import { apiPost, asRecord } from "../transport.js";
+import { asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import {
   countTokenSources,
@@ -30,35 +11,32 @@ import {
   readTokenFromStdin,
 } from "./shared.js";
 import { executeWalletPayerInitCommand } from "./wallet.js";
+import {
+  DEFAULT_DEV_CHAT_API_URL,
+  DEFAULT_DEV_INTERFACE_URL,
+  getNonEmptyEnvValue,
+  getSetupWalletAddress,
+  isInteractive,
+  isJsonModeEnabled,
+  normalizeSetupPayerMode,
+  resolveStoredSetupToken,
+  safeOrigin,
+  type SetupValueSource,
+} from "../setup/env.js";
+import {
+  CLI_PRIMARY_COMMAND,
+  printSetupStep,
+  printSetupSuccessSummary,
+  printSetupWizardIntro,
+  promptLine,
+  promptSecret,
+} from "../setup/interactive.js";
+import { maybeLinkCliGlobalCommand } from "../setup/link.js";
+import { requestRefreshTokenViaBrowser } from "../setup/oauth-flow.js";
+import { bootstrapWalletWithSetupErrorHandling, persistSetupConfig } from "../setup/config-write.js";
 
 const SETUP_USAGE =
   "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <refresh-token>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]";
-const SETUP_AUTH_FAILURE_MESSAGE = [
-  "OAuth authorization failed while bootstrapping wallet access.",
-  "The saved token was cleared to avoid reusing it.",
-  "Run setup again and approve a fresh browser authorization.",
-].join(" ");
-const SETUP_AUTH_FAILURE_CLEANUP_WARNING_MESSAGE = [
-  "OAuth authorization failed while bootstrapping wallet access.",
-  "Token cleanup may have failed; remove persisted credentials manually before retrying setup.",
-].join(" ");
-const SETUP_BACKEND_FAILURE_MESSAGE = [
-  "Wallet bootstrap failed on the interface server.",
-  "Check interface logs, run the CLI SQL migrations, and verify CDP env vars are set",
-  "(CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).",
-].join(" ");
-const CLI_PACKAGE_NAME = "@cobuild/cli";
-const CLI_PRIMARY_COMMAND = "cobuild";
-const CLI_FALLBACK_COMMAND = "cli";
-const SETUP_PNPM_PATH_HINT =
-  "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
-const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
-const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
-type SetupPayerMode = "hosted" | "local-generate" | "local-key" | "skip";
-
-function isSetupPayerMode(value: string): value is SetupPayerMode {
-  return value === "hosted" || value === "local-generate" || value === "local-key" || value === "skip";
-}
 
 export interface SetupCommandInput {
   url?: string;
@@ -96,95 +74,7 @@ export interface SetupCommandOutput {
   next: string[];
 }
 
-/* c8 ignore start */
-function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
-  if (deps.isInteractive) return deps.isInteractive();
-  return Boolean(process.stdin.isTTY && process.stderr.isTTY);
-}
-
-function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
-  return deps.env ?? process.env;
-}
-
-function getNonEmptyEnvValue(
-  deps: Pick<CliDeps, "env">,
-  key: "COBUILD_CLI_OUTPUT" | "COBUILD_CLI_URL" | "COBUILD_CLI_NETWORK"
-): string | undefined {
-  const value = getEnv(deps)[key];
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function isAuthFailure(error: unknown): boolean {
-  return error instanceof Error && /unauthorized|forbidden/i.test(error.message);
-}
-
-function isGenericInternalFailure(error: unknown): boolean {
-  return error instanceof Error && /\binternal error\b/i.test(error.message);
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "unknown error";
-}
-
-function safeOrigin(rawUrl: string): string | undefined {
-  try {
-    return new URL(rawUrl).origin;
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveStoredSetupToken(
-  current: ReturnType<typeof readConfig>,
-  deps: Pick<CliDeps, "fs" | "homedir" | "env">
-): string {
-  if (isSecretRef(current.auth?.tokenRef)) {
-    return resolveSecretRefString({
-      deps,
-      config: current,
-      ref: current.auth.tokenRef,
-    });
-  }
-  return typeof current.token === "string" ? current.token.trim() : "";
-}
-
-function isJsonModeEnabled(value: unknown, deps: Pick<CliDeps, "env">): boolean {
-  if (value === true) return true;
-  return getNonEmptyEnvValue(deps, "COBUILD_CLI_OUTPUT")?.toLowerCase() === "json";
-}
-
-function getSetupWalletAddress(walletResponse: unknown): string | null {
-  const responseRecord = asRecord(walletResponse);
-  const walletRecord = asRecord(responseRecord.wallet);
-  return walletRecord && typeof walletRecord.address === "string" ? walletRecord.address : null;
-}
-
-function resolveInterfaceSetupCompleteUrl(params: {
-  interfaceUrl: string;
-  agent: string;
-  payerMode?: SetupPayerMode;
-}): string {
-  const { interfaceUrl, agent, payerMode } = params;
-  const normalizedBase = interfaceUrl.endsWith("/") ? interfaceUrl : `${interfaceUrl}/`;
-  const url = new URL("home", normalizedBase);
-  url.searchParams.set("cli_setup_complete", "1");
-  url.searchParams.set("agent_key", agent);
-  if (payerMode && payerMode !== "skip") {
-    url.searchParams.set("payer_mode", payerMode);
-  }
-  return url.toString();
-}
-
-function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (isSetupPayerMode(normalized)) {
-    return normalized;
-  }
-  throw new Error("--payer-mode must be one of: hosted, local-generate, local-key, skip");
-}
+type SetupOutputMode = "legacy" | "structured";
 
 function parseSetupPayerResult(payload: unknown): SetupCommandOutput["payer"] {
   const root = asRecord(payload);
@@ -227,426 +117,6 @@ function validateSetupPayerLocalKeyFileInput(filePath: string, deps: Pick<CliDep
   }
 }
 
-type GlobalLinkStatus = "not-requested" | "linked" | "failed" | "skipped";
-
-function firstNonEmptyLine(input: string): string | null {
-  for (const line of input.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length > 0) return trimmed;
-  }
-  return null;
-}
-
-function resolveSetupPackageRoot(): string | null {
-  let current = path.dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 8; depth += 1) {
-    const packageJsonPath = path.join(current, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      try {
-        const rawPackage = fs.readFileSync(packageJsonPath, "utf8");
-        const parsedPackage = JSON.parse(rawPackage) as { name?: unknown };
-        if (parsedPackage.name === CLI_PACKAGE_NAME) {
-          return current;
-        }
-      } catch {
-        return null;
-      }
-    }
-
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return null;
-}
-
-function resolveTrustedPnpmExecPath(deps: Pick<CliDeps, "env">): string | null {
-  const npmExecPath = getEnv(deps).npm_execpath?.trim();
-  if (!npmExecPath || !path.isAbsolute(npmExecPath)) return null;
-  if (!fs.existsSync(npmExecPath)) return null;
-
-  const basename = path.basename(npmExecPath).toLowerCase();
-  if (!basename.includes("pnpm")) return null;
-  return npmExecPath;
-}
-
-function buildTrustedPnpmInvocation(pnpmExecPath: string): { command: string; args: string[] } {
-  const normalized = pnpmExecPath.toLowerCase();
-  if (normalized.endsWith(".js") || normalized.endsWith(".cjs") || normalized.endsWith(".mjs")) {
-    return {
-      command: process.execPath,
-      args: [pnpmExecPath, "link", "--global"],
-    };
-  }
-
-  return {
-    command: pnpmExecPath,
-    args: ["link", "--global"],
-  };
-}
-
-async function runPnpmLinkGlobal(params: {
-  deps: Pick<CliDeps, "runSetupLinkGlobal">;
-  cwd: string;
-  pnpmExecPath: string;
-}): Promise<{ ok: boolean; output: string }> {
-  if (params.deps.runSetupLinkGlobal) {
-    const invocation = buildTrustedPnpmInvocation(params.pnpmExecPath);
-    return await params.deps.runSetupLinkGlobal({
-      cwd: params.cwd,
-      command: invocation.command,
-      args: invocation.args,
-    });
-  }
-
-  try {
-    const { spawn } = await import("node:child_process");
-    const invocation = buildTrustedPnpmInvocation(params.pnpmExecPath);
-    return await new Promise((resolve) => {
-      const output: string[] = [];
-      const child = spawn(invocation.command, invocation.args, {
-        cwd: params.cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      child.stdout?.on("data", (chunk) => {
-        output.push(chunk.toString("utf8"));
-      });
-      child.stderr?.on("data", (chunk) => {
-        output.push(chunk.toString("utf8"));
-      });
-
-      child.once("error", (error) => {
-        resolve({
-          ok: false,
-          output: error instanceof Error ? error.message : String(error),
-        });
-      });
-      child.once("exit", (code) => {
-        resolve({
-          ok: code === 0,
-          output: output.join("").trim(),
-        });
-      });
-    });
-  } catch (error) {
-    return {
-      ok: false,
-      output: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function maybeLinkCliGlobalCommand(
-  deps: Pick<CliDeps, "env" | "runSetupLinkGlobal" | "stderr">,
-  shouldLink: boolean
-): Promise<GlobalLinkStatus> {
-  if (!shouldLink) return "not-requested";
-
-  const setupPackageRoot = resolveSetupPackageRoot();
-  if (!setupPackageRoot) {
-    deps.stderr("Auto-link skipped: could not determine the cli package root.");
-    deps.stderr("Run manually: pnpm link --global");
-    return "skipped";
-  }
-
-  const pnpmExecPath = resolveTrustedPnpmExecPath(deps);
-  if (!pnpmExecPath) {
-    deps.stderr(SETUP_PNPM_PATH_HINT);
-    return "skipped";
-  }
-
-  deps.stderr("Installing global `cli` command via pnpm link...");
-  const linkResult = await runPnpmLinkGlobal({
-    deps,
-    cwd: setupPackageRoot,
-    pnpmExecPath,
-  });
-  if (linkResult.ok) {
-    deps.stderr("Global command installed. You can now run `cli ...` directly.");
-    return "linked";
-  }
-
-  const normalizedOutput = linkResult.output.toLowerCase();
-  if (
-    normalizedOutput.includes("err_pnpm_no_global_bin_dir") ||
-    normalizedOutput.includes("unable to find the global bin directory")
-  ) {
-    deps.stderr("Auto-link failed: pnpm global bin directory is not configured.");
-    deps.stderr("Run once: pnpm setup");
-    deps.stderr("Then restart your shell and run: pnpm link --global");
-    deps.stderr("Until then, run commands via: pnpm start -- <command>");
-    return "failed";
-  }
-
-  const firstLine = firstNonEmptyLine(linkResult.output);
-  if (firstLine) deps.stderr(`Auto-link failed: ${firstLine}`);
-  deps.stderr("Auto-link failed. Run manually: pnpm link --global");
-  return "failed";
-}
-
-async function activateTerminalApp(appName: string): Promise<boolean> {
-  try {
-    const { spawn } = await import("node:child_process");
-
-    return await new Promise((resolve) => {
-      const child = spawn("osascript", ["-e", `tell application "${appName}" to activate`], {
-        stdio: "ignore",
-      });
-      child.once("error", () => resolve(false));
-      child.once("exit", (code) => resolve(code === 0));
-    });
-  } catch {
-    return false;
-  }
-}
-
-async function maybeRefocusTerminalWindow(): Promise<void> {
-  if (process.platform !== "darwin") return;
-  if (process.env.COBUILD_CLI_DISABLE_TERMINAL_FOCUS === "1") return;
-
-  const appCandidates =
-    process.env.TERM_PROGRAM === "iTerm.app"
-      ? ["iTerm2", "iTerm"]
-      : process.env.TERM_PROGRAM === "Apple_Terminal"
-        ? ["Terminal"]
-        : process.env.TERM_PROGRAM === "WarpTerminal"
-          ? ["Warp"]
-          : process.env.TERM_PROGRAM === "WezTerm"
-            ? ["WezTerm"]
-            : [];
-
-  for (const appName of appCandidates) {
-    if (await activateTerminalApp(appName)) {
-      return;
-    }
-  }
-}
-
-function printSetupWizardIntro(deps: Pick<CliDeps, "stderr">): void {
-  deps.stderr("");
-  deps.stderr("================================");
-  deps.stderr("CLI Setup Wizard");
-  deps.stderr("================================");
-  deps.stderr("This wizard will save your CLI config and verify wallet access.");
-}
-
-function printSetupStep(deps: Pick<CliDeps, "stderr">, step: number, total: number, title: string): void {
-  deps.stderr("");
-  deps.stderr(`[${step}/${total}] ${title}`);
-}
-
-function printSetupSuccessSummary(params: {
-  deps: Pick<CliDeps, "stderr">;
-  configPath: string;
-  defaultNetwork: string;
-  walletAddress: string | null;
-  payer?: SetupCommandOutput["payer"];
-  linkStatus: GlobalLinkStatus;
-}): void {
-  params.deps.stderr("");
-  params.deps.stderr("Setup complete.");
-  params.deps.stderr(`Config saved: ${params.configPath}`);
-  if (params.walletAddress) {
-    params.deps.stderr(`Wallet address: ${params.walletAddress}`);
-  }
-  params.deps.stderr(`Default network: ${params.defaultNetwork}`);
-  if (params.payer) {
-    params.deps.stderr(`Wallet payer mode: ${params.payer.mode}`);
-    if (params.payer.payerAddress) {
-      params.deps.stderr(`Wallet payer address: ${params.payer.payerAddress}`);
-    }
-  }
-  params.deps.stderr("");
-  params.deps.stderr("Next:");
-  params.deps.stderr(`  ${CLI_PRIMARY_COMMAND} wallet`);
-  params.deps.stderr(
-    `  ${CLI_PRIMARY_COMMAND} send usdc 0.10 <to> (or ${CLI_PRIMARY_COMMAND} send eth 0.00001 <to>)`
-  );
-  if (params.linkStatus === "not-requested") {
-    params.deps.stderr(
-      `If ${CLI_PRIMARY_COMMAND} is not on your PATH, run \`pnpm link --global\` once (or use: \`npx -y @cobuild/cli@latest <command>\`).`
-    );
-  }
-}
-
-function redactApprovalUrlForDisplay(value: string): string {
-  try {
-    const url = new URL(value);
-    if (!url.hash) return url.toString();
-    url.hash = "#<redacted>";
-    return url.toString();
-  } catch {
-    return value;
-  }
-}
-
-async function maybeOpenInterface(
-  openUrl: string,
-  displayUrl: string,
-  deps: CliDeps
-): Promise<boolean> {
-  deps.stderr(`Opening ${displayUrl} in your browser...`);
-
-  let opened = false;
-  if (deps.openExternal) {
-    try {
-      opened = await deps.openExternal(openUrl);
-    } catch {
-      opened = false;
-    }
-  }
-
-  if (!opened) {
-    deps.stderr("Could not open a browser automatically.");
-    deps.stderr(`Open this URL manually: ${openUrl}`);
-    return false;
-  }
-
-  deps.stderr("Browser opened.");
-  return true;
-}
-
-type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
-
-type SetupOutputMode = "legacy" | "structured";
-
-async function requestAuthorizationCodeViaBrowser(params: {
-  interfaceUrl: string;
-  agent: string;
-  payerMode?: SetupPayerMode;
-  deps: CliDeps;
-}): Promise<{
-  code: string;
-  redirectUri: string;
-  codeVerifier: string;
-} | null> {
-  const {
-    interfaceUrl,
-    agent,
-    payerMode,
-    deps,
-  } = params;
-  const { codeVerifier, codeChallenge } = createPkcePair();
-
-  let session: Awaited<ReturnType<typeof createSetupApprovalSession>> | null = null;
-  try {
-    session = await createSetupApprovalSession({
-      postAuthRedirectUrl: resolveInterfaceSetupCompleteUrl({
-        interfaceUrl,
-        agent,
-        payerMode,
-      }),
-    });
-  } catch (error) {
-    deps.stderr(`Could not initialize secure setup channel (${getErrorMessage(error)}).`);
-    return null;
-  }
-
-  try {
-    const approvalUrl = buildSetupApprovalUrl({
-      baseUrl: interfaceUrl,
-      callbackUrl: session.callbackUrl,
-      state: session.state,
-      agent,
-      scope: OAUTH_DEFAULT_SCOPE,
-      codeChallenge,
-      ...(payerMode ? { payerMode } : {}),
-    });
-    const approvalUrlForDisplay = redactApprovalUrlForDisplay(approvalUrl);
-
-    deps.stderr("Approve CLI authorization in the browser to continue.");
-    const opened = await maybeOpenInterface(approvalUrl, approvalUrlForDisplay, deps);
-    if (!opened) {
-      deps.stderr(`If a browser did not open, visit: ${approvalUrl}`);
-    }
-    deps.stderr("Waiting for browser authorization...");
-
-    const code = await session.waitForCode;
-    deps.stderr("Approval received from browser.");
-    await maybeRefocusTerminalWindow();
-    return {
-      code,
-      redirectUri: session.callbackUrl,
-      codeVerifier,
-    };
-  } catch (error) {
-    deps.stderr(`Browser approval did not complete (${getErrorMessage(error)}).`);
-    return null;
-  } finally {
-    await session.close();
-  }
-}
-
-async function promptLine(question: string, defaultValue?: string): Promise<string> {
-  const { createInterface } = await import("node:readline/promises");
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
-  try {
-    const suffix = defaultValue ? ` (${defaultValue})` : "";
-    const answer = (await rl.question(`${question}${suffix}: `)).trim();
-    return answer || defaultValue || "";
-  } finally {
-    rl.close();
-  }
-}
-
-async function promptSecret(question: string): Promise<string> {
-  if (!process.stdin.isTTY) {
-    throw new Error("Cannot prompt for token without a TTY. Pass --token <refresh-token> instead.");
-  }
-
-  return new Promise((resolve, reject) => {
-    const stdin = process.stdin;
-    const stderr = process.stderr;
-    stderr.write(`${question}: `);
-
-    let value = "";
-
-    const cleanup = () => {
-      stdin.off("data", onData);
-      try {
-        stdin.setRawMode(false);
-      } catch {
-        // ignore cleanup errors
-      }
-      stdin.pause();
-    };
-
-    const onData = (chunk: Buffer | string) => {
-      const str = chunk.toString("utf8");
-      for (const ch of str) {
-        if (ch === "\n" || ch === "\r") {
-          cleanup();
-          stderr.write("\n");
-          resolve(value.trim());
-          return;
-        }
-        if (ch === "\u0003") {
-          cleanup();
-          stderr.write("\n");
-          reject(new Error("Setup cancelled"));
-          return;
-        }
-        if (ch === "\u007f") {
-          value = value.slice(0, -1);
-          continue;
-        }
-        value += ch;
-      }
-    };
-
-    try {
-      stdin.setRawMode(true);
-      stdin.resume();
-      stdin.on("data", onData);
-    } catch (error) {
-      cleanup();
-      reject(error instanceof Error ? error : new Error(String(error)));
-    }
-  });
-}
-/* c8 ignore stop */
-
 async function runSetupCommand(
   input: SetupCommandInput,
   deps: CliDeps,
@@ -664,7 +134,7 @@ async function runSetupCommand(
     throw new Error(`${SETUP_USAGE}\nProvide only one of --payer-private-key-stdin or --payer-private-key-file.`);
   }
 
-  let requestedPayerMode = normalizeSetupPayerMode(input.payerMode);
+  const requestedPayerMode = normalizeSetupPayerMode(input.payerMode);
   if (requestedPayerMode !== "local-key" && (input.payerPrivateKeyStdin || input.payerPrivateKeyFile)) {
     throw new Error(
       `${SETUP_USAGE}\n--payer-private-key-stdin/--payer-private-key-file require --payer-mode local-key.`
@@ -824,26 +294,13 @@ async function runSetupCommand(
       throw new Error(`${SETUP_USAGE}\nMissing --token and no config found.`);
     }
     /* c8 ignore start */
-    const browserAuthorization = await requestAuthorizationCodeViaBrowser({
+    token = (await requestRefreshTokenViaBrowser({
       interfaceUrl: url,
+      chatApiUrl,
       agent,
       payerMode: shouldConfigurePayer ? requestedPayerMode : undefined,
       deps,
-    });
-    if (browserAuthorization) {
-      try {
-        const exchanged = await exchangeAuthorizationCode({
-          deps,
-          chatApiUrl,
-          code: browserAuthorization.code,
-          redirectUri: browserAuthorization.redirectUri,
-          codeVerifier: browserAuthorization.codeVerifier,
-        });
-        token = exchanged.refreshToken;
-      } catch (error) {
-        deps.stderr(`OAuth token exchange failed (${getErrorMessage(error)}).`);
-      }
-    }
+    })) ?? undefined;
     if (!token) {
       deps.stderr("Falling back to manual token entry.");
       deps.stderr("Tip: paste from clipboard instead of using --token in shell history.");
@@ -873,45 +330,23 @@ async function runSetupCommand(
   }
   /* c8 ignore stop */
 
-  const path = configPath(deps);
-  const nextConfig = persistRefreshToken({
+  const { path } = persistSetupConfig({
     deps,
-    config: {
-      ...current,
-      url,
-      chatApiUrl,
-      agent,
-    },
-    token,
+    currentConfig: current,
     interfaceUrl: url,
+    chatApiUrl,
+    agent,
+    refreshToken: token,
   });
-  writeConfig(deps, nextConfig);
   if (!jsonMode && outputMode === "legacy") {
     deps.stderr(`Saved config: ${path}`);
   }
-  let walletResponse: unknown;
-  try {
-    walletResponse = await apiPost(deps, "/api/cli/wallet", {
-      agentKey: agent,
-      defaultNetwork,
-    });
-  } catch (error) {
-    if (isAuthFailure(error)) {
-      let cleanupSucceeded = true;
-      try {
-        clearPersistedRefreshToken(deps);
-      } catch {
-        cleanupSucceeded = false;
-      }
-      throw new Error(
-        cleanupSucceeded ? SETUP_AUTH_FAILURE_MESSAGE : SETUP_AUTH_FAILURE_CLEANUP_WARNING_MESSAGE
-      );
-    }
-    if (isGenericInternalFailure(error)) {
-      throw new Error(SETUP_BACKEND_FAILURE_MESSAGE);
-    }
-    throw error;
-  }
+
+  const walletResponse = await bootstrapWalletWithSetupErrorHandling({
+    deps,
+    agent,
+    defaultNetwork,
+  });
 
   let payer: SetupCommandOutput["payer"] | undefined;
   if (shouldConfigurePayer) {

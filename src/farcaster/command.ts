@@ -1,0 +1,550 @@
+import * as ed from "@noble/ed25519";
+import { bytesToHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { readConfig } from "../config.js";
+import { ApiRequestError, asRecord, apiPost } from "../transport.js";
+import type { CliDeps } from "../types.js";
+import {
+  normalizeEvmAddress,
+  resolveAgentKey,
+  resolveExecIdempotencyKey,
+  throwWithIdempotencyKey,
+} from "../commands/shared.js";
+import {
+  FARCASTER_CAST_HASH_HEX_PATTERN,
+  FARCASTER_MAX_CAST_TEXT_BYTES,
+  FARCASTER_USAGE,
+  POST_RECEIPT_VERSION,
+  SIGNER_FILE_NAME,
+  VERIFY_POLL_MAX_ATTEMPTS,
+  X402_NETWORK,
+  X402_TOKEN_SYMBOL,
+  X402_VALUE_USDC_DISPLAY,
+} from "./constants.js";
+import { buildCastMessage, sanitizeHubErrorText, submitCastToHub, verifyCastInclusion } from "./hub-client.js";
+import {
+  assertPostReceiptMatch,
+  buildPostResultPayload,
+  decodeMessageBytesBase64,
+  encodeMessageBytesBase64,
+  readPostReceipt,
+  resolvePostReceiptPath,
+  writePostReceipt,
+} from "./receipt.js";
+import {
+  fetchHostedPayerAddress,
+  ensurePayerConfigForPost,
+  getX402WalletPayerCostMicroUsdc,
+  printX402FundingHints,
+  readStoredX402PayerConfig,
+  resolveLocalPayerPrivateKey,
+  resolvePostPayer,
+  runX402InitWorkflow,
+  writeStoredX402PayerConfig,
+} from "./payer.js";
+import {
+  generateEd25519PrivateKey,
+  normalizeDirectoryOption,
+  normalizeSignerFileOption,
+  parseExtraStorage,
+  parseFidString,
+  readStoredSigner,
+  resolveSignerFilePath,
+  resolveSignerOutputDirectory,
+  saveSignerSecret,
+} from "./signer.js";
+import type {
+  FarcasterPostReceiptResult,
+  FarcasterPostVerifyResult,
+  FarcasterReplyTarget,
+  HexString,
+  X402PaymentHeader,
+  X402VerifyMode,
+} from "./types.js";
+
+function normalizeTextOption(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("--text cannot be empty");
+  }
+  if (Buffer.byteLength(trimmed, "utf8") > FARCASTER_MAX_CAST_TEXT_BYTES) {
+    throw new Error(`--text must be at most ${FARCASTER_MAX_CAST_TEXT_BYTES} bytes`);
+  }
+  return trimmed;
+}
+
+function parseReplyToOption(value: string | undefined): FarcasterReplyTarget | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("--reply-to cannot be empty");
+  }
+
+  const separator = trimmed.indexOf(":");
+  if (separator <= 0 || separator === trimmed.length - 1) {
+    throw new Error("--reply-to must be in the format <parent-fid:0x-parent-hash>");
+  }
+
+  const parentFidRaw = trimmed.slice(0, separator).trim();
+  const parentHashRaw = trimmed.slice(separator + 1).trim().toLowerCase();
+  if (!/^\d+$/.test(parentFidRaw)) {
+    throw new Error("--reply-to parent fid must be a positive integer");
+  }
+  const parentAuthorFid = Number.parseInt(parentFidRaw, 10);
+  if (!Number.isSafeInteger(parentAuthorFid) || parentAuthorFid <= 0) {
+    throw new Error("--reply-to parent fid must be a positive integer");
+  }
+  if (!FARCASTER_CAST_HASH_HEX_PATTERN.test(parentHashRaw)) {
+    throw new Error("--reply-to parent hash must be 0x + 40 hex chars");
+  }
+
+  return {
+    parentAuthorFid,
+    parentHashHex: parentHashRaw as HexString,
+  };
+}
+
+function resolveVerifyMode(input: string | undefined): X402VerifyMode {
+  if (input === undefined) return "none";
+  const normalized = input.trim().toLowerCase();
+  if (normalized === "none" || normalized === "false") return "none";
+  if (normalized === "once" || normalized === "true") return "once";
+  if (normalized === "poll") return "poll";
+  throw new Error("--verify must be one of: none, once, poll");
+}
+
+function withSignerInfo(
+  payload: Record<string, unknown>,
+  signerPublicKey: `0x${string}`,
+  saved: boolean
+) {
+  return {
+    ...payload,
+    signer: {
+      publicKey: signerPublicKey,
+      saved,
+      file: SIGNER_FILE_NAME,
+    },
+  };
+}
+
+function resolvePostFid(params: {
+  inputFid: string | undefined;
+  signerFid: number | null;
+}): number {
+  const explicit = parseFidString(params.inputFid, "--fid");
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  if (params.signerFid !== null) {
+    return params.signerFid;
+  }
+  throw new Error("Farcaster FID missing. Pass --fid or run `cli farcaster signup` to refresh signer metadata.");
+}
+
+export interface FarcasterSignupCommandInput {
+  agent?: string;
+  recovery?: string;
+  extraStorage?: string;
+  outDir?: string;
+}
+
+export interface WalletPayerInitCommandInput {
+  agent?: string;
+  mode?: string;
+  privateKeyStdin?: boolean;
+  privateKeyFile?: string;
+  noPrompt?: boolean;
+}
+
+export interface WalletPayerStatusCommandInput {
+  agent?: string;
+}
+
+export interface FarcasterPostCommandInput {
+  agent?: string;
+  text?: string;
+  fid?: string;
+  replyTo?: string;
+  signerFile?: string;
+  idempotencyKey?: string;
+  verify?: string;
+}
+
+export async function executeFarcasterSignupCommand(
+  input: FarcasterSignupCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+
+  const recoveryInput = input.recovery?.trim();
+  const recovery = recoveryInput ? normalizeEvmAddress(recoveryInput, "--recovery") : null;
+
+  const extraStorage = parseExtraStorage(input.extraStorage);
+  const outDir = normalizeDirectoryOption(input.outDir, "--out-dir");
+  const outputDirectory = resolveSignerOutputDirectory({
+    deps,
+    agentKey,
+    outDir,
+  });
+
+  const signerPrivateKey = generateEd25519PrivateKey();
+  const signerPublicKey = bytesToHex(
+    await ed.getPublicKeyAsync(signerPrivateKey)
+  ) as `0x${string}`;
+
+  let response: unknown;
+  try {
+    response = await apiPost(deps, "/api/cli/farcaster/signup", {
+      signerPublicKey,
+      ...(recovery ? { recoveryAddress: recovery } : {}),
+      ...(extraStorage ? { extraStorage } : {}),
+    });
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409) {
+      const payload = asRecord(error.payload);
+      const details = asRecord(payload.details);
+      const fid = typeof details.fid === "string" ? details.fid : null;
+      const custodyAddress =
+        typeof details.custodyAddress === "string" ? details.custodyAddress : null;
+      const detailParts = [
+        fid ? `fid=${fid}` : null,
+        custodyAddress ? `custodyAddress=${custodyAddress}` : null,
+      ].filter((value): value is string => Boolean(value));
+      const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(", ")})` : "";
+      throw new Error(
+        `Farcaster account already exists for this agent wallet${detailSuffix}. Use a different --agent key for a new Farcaster signup.`
+      );
+    }
+    throw error;
+  }
+
+  const payload = asRecord(response);
+  const result = asRecord(payload.result);
+  const status = typeof result.status === "string" ? result.status : null;
+  if (status === "complete") {
+    saveSignerSecret({
+      deps,
+      config: current,
+      agentKey,
+      outputDirectory,
+      signerPublicKey,
+      signerPrivateKey,
+      result,
+    });
+    return withSignerInfo(payload, signerPublicKey, true);
+  }
+
+  return withSignerInfo(payload, signerPublicKey, false);
+}
+
+export async function executeWalletPayerInitCommand(
+  input: WalletPayerInitCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+  const setup = await runX402InitWorkflow({
+    deps,
+    currentConfig: current,
+    agentKey,
+    modeArg: input.mode,
+    noPrompt: input.noPrompt ?? false,
+    privateKeyStdin: input.privateKeyStdin ?? false,
+    privateKeyFile: input.privateKeyFile,
+  });
+  printX402FundingHints(deps, setup);
+
+  return {
+    ok: true,
+    agentKey,
+    payer: {
+      mode: setup.mode,
+      payerAddress: setup.payerAddress,
+      network: X402_NETWORK,
+      token: X402_TOKEN_SYMBOL,
+      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
+    },
+  };
+}
+
+export async function executeWalletPayerStatusCommand(
+  input: WalletPayerStatusCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+  const stored = readStoredX402PayerConfig({
+    deps,
+    agentKey,
+  });
+  if (!stored) {
+    throw new Error(
+      "No wallet payer is configured for this agent. Run `cli wallet payer init --mode hosted|local-generate|local-key`."
+    );
+  }
+
+  let payerAddress = stored.payerAddress;
+  if (stored.mode === "local") {
+    const privateKeyHex = resolveLocalPayerPrivateKey({
+      deps,
+      currentConfig: current,
+      payerConfig: stored,
+    });
+    payerAddress = privateKeyToAccount(privateKeyHex).address;
+  } else if (!payerAddress) {
+    try {
+      payerAddress = await fetchHostedPayerAddress({
+        deps,
+        agentKey,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Hosted payer address is unknown and could not be fetched from backend wallet endpoint: ${message}`
+      );
+    }
+  }
+
+  if (payerAddress !== stored.payerAddress) {
+    writeStoredX402PayerConfig({
+      deps,
+      agentKey,
+      config: {
+        ...stored,
+        payerAddress,
+      },
+    });
+  }
+
+  return {
+    ok: true,
+    agentKey,
+    payer: {
+      mode: stored.mode,
+      payerAddress,
+      network: stored.network,
+      token: stored.token,
+      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
+    },
+  };
+}
+
+export async function executeFarcasterPostCommand(
+  input: FarcasterPostCommandInput,
+  deps: CliDeps
+): Promise<Record<string, unknown>> {
+  const text = normalizeTextOption(input.text);
+  if (!text) {
+    throw new Error(FARCASTER_USAGE);
+  }
+
+  const current = readConfig(deps);
+  const agentKey = resolveAgentKey(input.agent, current.agent);
+  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
+  const verifyMode = resolveVerifyMode(input.verify);
+  const verify = verifyMode !== "none";
+  const replyTo = parseReplyToOption(input.replyTo);
+  const signerFile = normalizeSignerFileOption(input.signerFile);
+  const signerFilePath = resolveSignerFilePath({
+    deps,
+    agentKey,
+    signerFile,
+  });
+  const signer = readStoredSigner({
+    deps,
+    config: current,
+    agentKey,
+    signerFilePath,
+  });
+  const fid = resolvePostFid({
+    inputFid: input.fid,
+    signerFid: signer.fid,
+  });
+
+  const receiptPath = resolvePostReceiptPath({
+    deps,
+    agentKey,
+    idempotencyKey,
+  });
+  const existingReceipt = readPostReceipt({
+    deps,
+    receiptPath,
+  });
+  if (existingReceipt) {
+    assertPostReceiptMatch({
+      receipt: existingReceipt,
+      idempotencyKey,
+      fid,
+      text,
+      verify,
+      verifyMode,
+      replyTo,
+    });
+    if (existingReceipt.state === "succeeded" && existingReceipt.result) {
+      return {
+        ok: true,
+        replayed: true,
+        idempotencyKey,
+        result: buildPostResultPayload({
+          fid,
+          text,
+          castHashHex: existingReceipt.castHashHex,
+          result: existingReceipt.result,
+          fallbackAgentKey: agentKey,
+          replyTo: existingReceipt.request.replyTo,
+        }),
+      };
+    }
+  }
+
+  const payerConfig = await ensurePayerConfigForPost({
+    deps,
+    currentConfig: current,
+    agentKey,
+  });
+  const payer = resolvePostPayer({
+    deps,
+    currentConfig: current,
+    agentKey,
+    payerConfig,
+  });
+  if (verifyMode === "poll") {
+    deps.stderr(
+      `Verification polling may incur up to ${VERIFY_POLL_MAX_ATTEMPTS} additional paid hub calls (${X402_VALUE_USDC_DISPLAY} USDC each).`
+    );
+  }
+
+  const resumePending = existingReceipt?.state === "pending" ? existingReceipt : null;
+  let castHashHex: HexString;
+  let messageBytes: Uint8Array;
+  let messageBytesBase64: string;
+
+  if (resumePending) {
+    castHashHex = resumePending.castHashHex;
+    messageBytesBase64 = resumePending.messageBytesBase64;
+    messageBytes = decodeMessageBytesBase64(messageBytesBase64);
+  } else {
+    let cast: { messageBytes: Uint8Array; castHashHex: HexString };
+    /* c8 ignore start */
+    try {
+      cast = await buildCastMessage({
+        fid,
+        text,
+        signerPrivateKeyHex: signer.privateKeyHex,
+        replyTo,
+      });
+    } catch (error) {
+      throwWithIdempotencyKey(error, idempotencyKey);
+    }
+    /* c8 ignore stop */
+    castHashHex = cast.castHashHex;
+    messageBytes = cast.messageBytes;
+    messageBytesBase64 = encodeMessageBytesBase64(messageBytes);
+
+    writePostReceipt({
+      deps,
+      receiptPath,
+      receipt: {
+        version: POST_RECEIPT_VERSION,
+        idempotencyKey,
+        state: "pending",
+        request: {
+          fid,
+          text,
+          verify,
+          ...(replyTo ? { replyTo } : {}),
+          ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
+        },
+        castHashHex,
+        messageBytesBase64,
+        savedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  let submitResult: {
+    hubResponseStatus: number;
+    hubResponseText: string;
+    x402: Omit<X402PaymentHeader, "xPayment">;
+  };
+  let verification: FarcasterPostVerifyResult | undefined;
+  try {
+    submitResult = await submitCastToHub({
+      deps,
+      agentKey,
+      payer,
+      messageBytes,
+    });
+
+    if (submitResult.hubResponseStatus < 200 || submitResult.hubResponseStatus >= 300) {
+      const detail = sanitizeHubErrorText(submitResult.hubResponseText);
+      const suffix = detail ? `: ${detail}` : "";
+      throw new Error(
+        `Neynar hub rejected Farcaster cast submit (status ${submitResult.hubResponseStatus}, cast ${castHashHex})${suffix}`
+      );
+    }
+
+    if (verify) {
+      verification = await verifyCastInclusion({
+        deps,
+        agentKey,
+        payer,
+        fid,
+        castHashHex,
+        mode: verifyMode,
+      });
+    }
+  } catch (error) {
+    throwWithIdempotencyKey(error, idempotencyKey);
+  }
+
+  const result: FarcasterPostReceiptResult = {
+    hubResponseStatus: submitResult.hubResponseStatus,
+    hubResponseText: submitResult.hubResponseText,
+    payerAddress: submitResult.x402.payerAddress,
+    payerAgentKey: submitResult.x402.payerAgentKey,
+    x402Token: submitResult.x402.x402Token,
+    x402Amount: submitResult.x402.x402Amount,
+    x402Network: submitResult.x402.x402Network,
+    ...(verification ? { verification } : {}),
+  };
+
+  writePostReceipt({
+    deps,
+    receiptPath,
+    receipt: {
+      version: POST_RECEIPT_VERSION,
+      idempotencyKey,
+      state: "succeeded",
+      request: {
+        fid,
+        text,
+        verify,
+        ...(replyTo ? { replyTo } : {}),
+        ...(verify ? { verifyMode: verifyMode === "poll" ? "poll" : "once" } : {}),
+      },
+      castHashHex,
+      messageBytesBase64: "",
+      result,
+      savedAt: new Date().toISOString(),
+    },
+  });
+
+  return {
+    ok: true,
+    replayed: false,
+    resumedPending: Boolean(resumePending),
+    idempotencyKey,
+    result: buildPostResultPayload({
+      fid,
+      text,
+      castHashHex,
+      result,
+      fallbackAgentKey: agentKey,
+      replyTo,
+    }),
+  };
+}
