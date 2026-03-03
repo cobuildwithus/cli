@@ -2,7 +2,6 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import { parseArgs } from "node:util";
 import * as ed from "@noble/ed25519";
 import {
   CastType,
@@ -14,7 +13,6 @@ import {
 import { bytesToHex, hexToBytes } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { readConfig } from "../config.js";
-import { printJson } from "../output.js";
 import { ApiRequestError, asRecord, apiGet, apiPost } from "../transport.js";
 import type { CliConfig, CliDeps, SecretRef } from "../types.js";
 import {
@@ -184,21 +182,6 @@ function normalizeTextOption(value: string | undefined): string | undefined {
   return trimmed;
 }
 
-function normalizeSignupArgs(args: string[]): string[] {
-  const normalized: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const current = args[index];
-    const next = args[index + 1];
-    if (current === "--extra-storage" && typeof next === "string" && /^-\d+$/.test(next)) {
-      normalized.push(`--extra-storage=${next}`);
-      index += 1;
-      continue;
-    }
-    normalized.push(current);
-  }
-  return normalized;
-}
-
 function normalizeDirectoryOption(value: string | undefined, optionName: string): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
@@ -297,20 +280,6 @@ function resolveX402PayerFilePath(params: {
     "farcaster",
     X402_PAYER_FILE_NAME
   );
-}
-
-function normalizePostArgs(args: string[]): string[] {
-  const normalized: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const current = args[index];
-    const next = args[index + 1];
-    if (current === "--verify" && (next === undefined || next.startsWith("-"))) {
-      normalized.push("--verify=once");
-      continue;
-    }
-    normalized.push(current);
-  }
-  return normalized;
 }
 
 function resolveVerifyMode(input: string | undefined): X402VerifyMode {
@@ -2238,149 +2207,3 @@ export async function executeFarcasterPostCommand(
     }),
   };
 }
-
-/* c8 ignore start */
-async function handleFarcasterSignupCommand(args: string[], deps: CliDeps): Promise<void> {
-  const normalizedArgs = normalizeSignupArgs(args);
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      recovery: { type: "string" },
-      "extra-storage": { type: "string" },
-      "out-dir": { type: "string" },
-    },
-    args: normalizedArgs,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const output = await executeFarcasterSignupCommand(
-    {
-      agent: parsed.values.agent,
-      recovery: parsed.values.recovery,
-      extraStorage: parsed.values["extra-storage"],
-      outDir: parsed.values["out-dir"],
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-
-async function handleFarcasterX402InitCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      mode: { type: "string" },
-      "private-key-stdin": { type: "boolean", default: false },
-      "private-key-file": { type: "string" },
-      "no-prompt": { type: "boolean", default: false },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const output = await executeFarcasterX402InitCommand(
-    {
-      agent: parsed.values.agent,
-      mode: parsed.values.mode,
-      privateKeyStdin: parsed.values["private-key-stdin"],
-      privateKeyFile: parsed.values["private-key-file"],
-      noPrompt: parsed.values["no-prompt"],
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-
-async function handleFarcasterX402StatusCommand(args: string[], deps: CliDeps): Promise<void> {
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-    },
-    args,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const output = await executeFarcasterX402StatusCommand(
-    {
-      agent: parsed.values.agent,
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-
-async function handleFarcasterPostCommand(args: string[], deps: CliDeps): Promise<void> {
-  const normalizedArgs = normalizePostArgs(args);
-  const parsed = parseArgs({
-    options: {
-      agent: { type: "string" },
-      text: { type: "string" },
-      fid: { type: "string" },
-      "reply-to": { type: "string" },
-      "signer-file": { type: "string" },
-      "idempotency-key": { type: "string" },
-      verify: { type: "string" },
-    },
-    args: normalizedArgs,
-    allowPositionals: false,
-    strict: true,
-  });
-
-  const output = await executeFarcasterPostCommand(
-    {
-      agent: parsed.values.agent,
-      text: parsed.values.text,
-      fid: parsed.values.fid,
-      replyTo: parsed.values["reply-to"],
-      signerFile: parsed.values["signer-file"],
-      idempotencyKey: parsed.values["idempotency-key"],
-      verify: parsed.values.verify,
-    },
-    deps
-  );
-  printJson(deps, output);
-}
-
-async function handleFarcasterX402Command(args: string[], deps: CliDeps): Promise<void> {
-  const [subcommand, ...rest] = args;
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    throw new Error(FARCASTER_USAGE);
-  }
-  if (subcommand === "init") {
-    await handleFarcasterX402InitCommand(rest, deps);
-    return;
-  }
-  if (subcommand === "status") {
-    await handleFarcasterX402StatusCommand(rest, deps);
-    return;
-  }
-  throw new Error(`Unknown farcaster x402 subcommand: ${subcommand}`);
-}
-
-export async function handleFarcasterCommand(args: string[], deps: CliDeps): Promise<void> {
-  const [subcommand, ...rest] = args;
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
-    throw new Error(FARCASTER_USAGE);
-  }
-
-  if (subcommand === "signup") {
-    await handleFarcasterSignupCommand(rest, deps);
-    return;
-  }
-
-  if (subcommand === "post") {
-    await handleFarcasterPostCommand(rest, deps);
-    return;
-  }
-
-  if (subcommand === "x402") {
-    await handleFarcasterX402Command(rest, deps);
-    return;
-  }
-
-  throw new Error(`Unknown farcaster subcommand: ${subcommand}`);
-}
-/* c8 ignore stop */

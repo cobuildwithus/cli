@@ -4,23 +4,36 @@ import {
   executeToolsGetCastCommand,
   executeToolsGetUserCommand,
   executeToolsTreasuryStatsCommand,
-  handleToolsCommand,
 } from "../src/commands/tools.js";
 import { createHarness } from "./helpers.js";
 
-function parseLastJsonOutput(outputs: string[]): unknown {
-  return JSON.parse(outputs.at(-1) ?? "null");
+function getToolExecutionPayloads(fetchCalls: Array<unknown[]>): Array<Record<string, unknown>> {
+  return fetchCalls.flatMap((call) => {
+    const input = call[0];
+    if (!String(input).endsWith("/v1/tool-executions")) {
+      return [];
+    }
+    const init = (call[1] ?? {}) as { body?: unknown };
+    return [JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>];
+  });
 }
 
 describe("tools branch coverage", () => {
-  it("legacy handler rejects unknown subcommands", async () => {
+  it("execute surfaces enforce usage requirements", async () => {
     const harness = createHarness();
-    await expect(handleToolsCommand(["unknown"], harness.deps)).rejects.toThrow(
-      "Unknown tools subcommand: unknown"
-    );
+    await expect(executeToolsGetUserCommand({}, harness.deps)).rejects.toThrow("Usage:");
+    await expect(executeToolsGetUserCommand({ fname: "   " }, harness.deps)).rejects.toThrow("Usage:");
+    await expect(executeToolsGetCastCommand({}, harness.deps)).rejects.toThrow("Usage:");
+    await expect(executeToolsCastPreviewCommand({}, harness.deps)).rejects.toThrow("Usage:");
+    await expect(
+      executeToolsCastPreviewCommand({ text: "hello", embed: ["a", "b", "c"] }, harness.deps)
+    ).rejects.toThrow("A maximum of two --embed values are allowed.");
+    await expect(
+      executeToolsGetCastCommand({ identifier: "0xabc", type: "other" }, harness.deps)
+    ).rejects.toThrow("--type must be either 'hash' or 'url'");
   });
 
-  it("legacy handler executes get-user, get-cast, and cast-preview", async () => {
+  it("execute get-user, get-cast, and cast-preview normalize responses", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -44,26 +57,107 @@ describe("tools branch coverage", () => {
       },
     });
 
-    await handleToolsCommand(["get-user", "alice"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+    const getUserOutput = await executeToolsGetUserCommand({ fname: "alice" }, harness.deps);
+    expect(getUserOutput).toEqual({
       ok: true,
       result: { cast: { text: "hi" } },
     });
 
-    await handleToolsCommand(["get-cast", "0xabc"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+    const getCastOutput = await executeToolsGetCastCommand({ identifier: "0xabc" }, harness.deps);
+    expect(getCastOutput).toEqual({
       ok: true,
       cast: { text: "hi" },
     });
 
-    await handleToolsCommand(["cast-preview", "--text", "hello"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+    const castPreviewOutput = await executeToolsCastPreviewCommand({ text: "hello" }, harness.deps);
+    expect(castPreviewOutput).toEqual({
       ok: true,
       cast: { text: "hi" },
     });
   });
 
-  it("legacy handler enforces treasury usage and emits normalized result", async () => {
+  it("execute get-cast infers URL type and trims identifiers before canonical execution", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ cast: { ok: true } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "getCast" }] }),
+        };
+      },
+    });
+
+    await executeToolsGetCastCommand(
+      { identifier: "  https://warpcast.com/alice/0xabc  " },
+      harness.deps
+    );
+
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "getCast",
+        input: {
+          identifier: "https://warpcast.com/alice/0xabc",
+          type: "url",
+        },
+      },
+    ]);
+  });
+
+  it("execute cast-preview trims text and embed URLs before canonical execution", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ cast: { text: "hi" } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "castPreview" }] }),
+        };
+      },
+    });
+
+    await executeToolsCastPreviewCommand(
+      {
+        text: "  hello  ",
+        embed: ["  https://1.example  ", "", "   ", "https://2.example"],
+      },
+      harness.deps
+    );
+
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "castPreview",
+        input: {
+          text: "hello",
+          embeds: [{ url: "https://1.example" }, { url: "https://2.example" }],
+        },
+      },
+    ]);
+  });
+
+  it("treasury stats emits normalized result", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -86,12 +180,8 @@ describe("tools branch coverage", () => {
       },
     });
 
-    await expect(handleToolsCommand(["get-treasury-stats", "extra"], harness.deps)).rejects.toThrow(
-      "Usage:"
-    );
-
-    await handleToolsCommand(["get-treasury-stats"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+    const output = await executeToolsTreasuryStatsCommand(harness.deps);
+    expect(output).toEqual({
       ok: true,
       data: { snapshots: 2 },
     });
