@@ -7,8 +7,6 @@ import { executeDocsCommand } from "./commands/docs.js";
 import {
   executeFarcasterPostCommand,
   executeFarcasterSignupCommand,
-  executeFarcasterX402InitCommand,
-  executeFarcasterX402StatusCommand,
 } from "./commands/farcaster.js";
 import { executeSendCommand } from "./commands/send.js";
 import { executeSetupCommand } from "./commands/setup.js";
@@ -19,7 +17,11 @@ import {
   executeToolsTreasuryStatsCommand,
 } from "./commands/tools.js";
 import { executeTxCommand } from "./commands/tx.js";
-import { executeWalletCommand } from "./commands/wallet.js";
+import {
+  executeWalletCommand,
+  executeWalletPayerInitCommand,
+  executeWalletPayerStatusCommand,
+} from "./commands/wallet.js";
 import type { CliDeps } from "./types.js";
 
 const POSITIONAL_ESCAPE_PREFIX = "__incur_positional_b64__";
@@ -96,6 +98,11 @@ function normalizeFarcasterPostArgv(argv: string[]): string[] {
   }
 
   return normalized;
+}
+
+function normalizeFarcasterPayerArgv(argv: string[]): string[] {
+  if (argv[0] !== "farcaster" || argv[1] !== "payer") return argv;
+  return ["wallet", "payer", ...argv.slice(2)];
 }
 
 function normalizeDocsArgv(argv: string[]): string[] {
@@ -256,7 +263,9 @@ export function preprocessIncurArgv(argv: string[]): string[] {
 
   const commandNormalizedTail = normalizeSetupArgv(
     normalizeToolsArgv(
-      normalizeDocsArgv(normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail)))
+      normalizeDocsArgv(
+        normalizeFarcasterPayerArgv(normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail)))
+      )
     )
   );
 
@@ -430,46 +439,6 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       },
     });
 
-  const farcasterPayer = Cli.create("payer", {
-    description: "Configure and inspect Farcaster payer",
-  })
-    .command("init", {
-      description: "Initialize hosted/local payer mode",
-      options: z.object({
-        agent: z.string().optional(),
-        mode: z.string().optional(),
-        privateKeyStdin: z.boolean().optional(),
-        privateKeyFile: z.string().optional(),
-        prompt: z.boolean().optional(),
-      }),
-      run(context) {
-        return executeFarcasterX402InitCommand(
-          {
-            agent: context.options.agent,
-            mode: context.options.mode,
-            privateKeyStdin: context.options.privateKeyStdin,
-            privateKeyFile: context.options.privateKeyFile,
-            noPrompt: context.options.prompt === false,
-          },
-          deps
-        );
-      },
-    })
-    .command("status", {
-      description: "Show payer status for an agent",
-      options: z.object({
-        agent: z.string().optional(),
-      }),
-      run(context) {
-        return executeFarcasterX402StatusCommand(
-          {
-            agent: context.options.agent,
-          },
-          deps
-        );
-      },
-    });
-
   const farcaster = Cli.create("farcaster", {
     description: "Manage Farcaster signup/posting",
   })
@@ -518,8 +487,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
           deps
         );
       },
-    })
-    .command(farcasterPayer);
+    });
 
   const root = Cli.create("cli", {
     description: "Cobuild CLI",
@@ -537,19 +505,58 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   })
     .command(config)
     .command("wallet", {
-      description: "Fetch wallet details",
+      description: "Fetch wallet details and manage payer configuration",
+      args: z.object({
+        namespace: z.string().optional(),
+        action: z.string().optional(),
+      }),
       options: z.object({
         network: z.string().optional(),
         agent: z.string().optional(),
+        mode: z.string().optional(),
+        privateKeyStdin: z.boolean().optional(),
+        privateKeyFile: z.string().optional(),
+        prompt: z.boolean().optional(),
       }),
       output: z.unknown(),
       run(context) {
-        return executeWalletCommand(
-          {
-            network: context.options.network,
-            agent: context.options.agent,
-          },
-          deps
+        const namespace = context.args.namespace?.trim().toLowerCase();
+        const action = context.args.action?.trim().toLowerCase();
+
+        if (namespace === undefined && action === undefined) {
+          return executeWalletCommand(
+            {
+              network: context.options.network,
+              agent: context.options.agent,
+            },
+            deps
+          );
+        }
+
+        if (namespace === "payer" && action === "init") {
+          return executeWalletPayerInitCommand(
+            {
+              agent: context.options.agent,
+              mode: context.options.mode,
+              privateKeyStdin: context.options.privateKeyStdin,
+              privateKeyFile: context.options.privateKeyFile,
+              noPrompt: context.options.prompt === false,
+            },
+            deps
+          );
+        }
+
+        if (namespace === "payer" && action === "status") {
+          return executeWalletPayerStatusCommand(
+            {
+              agent: context.options.agent,
+            },
+            deps
+          );
+        }
+
+        throw new Error(
+          "Usage:\n  cli wallet [--network <network>] [--agent <key>]\n  cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli wallet payer status [--agent <key>]"
         );
       },
     })
