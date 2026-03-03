@@ -8,6 +8,15 @@ import { resolveSecretRefString, setSecretRefString, withDefaultSecretProviders 
 import { apiGet, asRecord } from "../transport.js";
 import type { CliConfig, CliDeps } from "../types.js";
 import {
+  normalizePrivateKeyHex,
+  readTrimmedTextFromFile,
+  readTrimmedTextFromStdin,
+} from "../wallet/key-input.js";
+import {
+  normalizeOptionalWalletInitMode,
+  parseWalletModePromptAnswer,
+} from "../wallet/mode.js";
+import {
   PAYER_FILE_NAME,
   X402_NETWORK,
   X402_TOKEN_SYMBOL,
@@ -44,59 +53,6 @@ function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
     return deps.isInteractive();
   }
   return Boolean(process.stdin.isTTY && process.stderr.isTTY);
-}
-
-function readTrimmedTextFromFile(
-  deps: Pick<CliDeps, "fs">,
-  filePath: string,
-  label: string
-): string {
-  let raw: string;
-  try {
-    raw = deps.fs.readFileSync(filePath, "utf8");
-  } catch (error) {
-    throw new Error(
-      `Could not read ${label} file: ${filePath} (${error instanceof Error ? error.message : String(error)})`
-    );
-  }
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    throw new Error(`${label} file is empty: ${filePath}`);
-  }
-  return trimmed;
-}
-
-async function readTrimmedTextFromStdin(
-  deps: Pick<CliDeps, "readStdin">,
-  label: string
-): Promise<string> {
-  if (deps.readStdin) {
-    const value = (await deps.readStdin()).trim();
-    if (!value) {
-      throw new Error(`${label} stdin input is empty.`);
-    }
-    return value;
-  }
-
-  /* c8 ignore start */
-  if (process.stdin.isTTY) {
-    throw new Error(`Refusing --${label.toLowerCase().replace(/\s+/g, "-")}-stdin from interactive TTY.`);
-  }
-  process.stdin.setEncoding("utf8");
-  const raw = await new Promise<string>((resolve, reject) => {
-    let buffer = "";
-    process.stdin.on("data", (chunk: string) => {
-      buffer += chunk;
-    });
-    process.stdin.once("end", () => resolve(buffer));
-    process.stdin.once("error", reject);
-  });
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    throw new Error(`${label} stdin input is empty.`);
-  }
-  return trimmed;
-  /* c8 ignore stop */
 }
 
 /* c8 ignore start */
@@ -141,13 +97,9 @@ async function promptSelectX402Mode(
     output: process.stderr,
   });
   try {
-    const answer = (await rl.question("Select mode [1-3]: ")).trim();
-    /* v8 ignore next */
-    if (answer === "1" || answer.toLowerCase() === "hosted") return "hosted";
-    /* v8 ignore next */
-    if (answer === "2" || answer.toLowerCase() === "local-generate") return "local-generate";
-    /* v8 ignore next */
-    if (answer === "3" || answer.toLowerCase() === "local-key") return "local-key";
+    const answer = await rl.question("Select mode [1-3]: ");
+    const selected = parseWalletModePromptAnswer(answer);
+    if (selected) return selected;
     throw new Error("Invalid selection. Choose hosted, local-generate, or local-key.");
   } finally {
     rl.close();
@@ -179,19 +131,6 @@ async function promptMaskedPrivateKey(deps: Pick<CliDeps, "stderr">): Promise<st
     rl.close();
   }
   /* c8 ignore stop */
-}
-
-function isHex32BytePrivateKey(value: unknown): value is HexString {
-  return typeof value === "string" && /^0x[0-9a-fA-F]{64}$/.test(value);
-}
-
-function normalizePrivateKeyHex(value: string): HexString {
-  const trimmed = value.trim();
-  const withPrefix = trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
-  if (!isHex32BytePrivateKey(withPrefix)) {
-    throw new Error("Private key must be 32 bytes hex (0x + 64 hex chars).");
-  }
-  return withPrefix.toLowerCase() as HexString;
 }
 
 function isEvmAddress(value: unknown): value is string {
@@ -390,12 +329,9 @@ async function resolvePayerSetupMode(params: {
   modeArg: string | undefined;
   noPrompt: boolean;
 }): Promise<X402InitMode> {
-  if (params.modeArg) {
-    const mode = params.modeArg.trim().toLowerCase();
-    if (mode === "hosted" || mode === "local-generate" || mode === "local-key") {
-      return mode;
-    }
-    throw new Error("--mode must be one of: hosted, local-generate, local-key");
+  const explicitMode = normalizeOptionalWalletInitMode(params.modeArg, "--mode");
+  if (explicitMode) {
+    return explicitMode;
   }
 
   if (params.noPrompt || !isInteractive(params.deps)) {

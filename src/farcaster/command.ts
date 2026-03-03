@@ -1,6 +1,5 @@
 import * as ed from "@noble/ed25519";
 import { bytesToHex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { readConfig } from "../config.js";
 import { ApiRequestError, asRecord, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
@@ -17,8 +16,6 @@ import {
   POST_RECEIPT_VERSION,
   SIGNER_FILE_NAME,
   VERIFY_POLL_MAX_ATTEMPTS,
-  X402_NETWORK,
-  X402_TOKEN_SYMBOL,
   X402_VALUE_USDC_DISPLAY,
 } from "./constants.js";
 import { buildCastMessage, sanitizeHubErrorText, submitCastToHub, verifyCastInclusion } from "./hub-client.js";
@@ -32,15 +29,10 @@ import {
   writePostReceipt,
 } from "./receipt.js";
 import {
-  fetchHostedPayerAddress,
   ensurePayerConfigForPost,
-  getX402WalletPayerCostMicroUsdc,
-  printX402FundingHints,
   readStoredX402PayerConfig,
   resolveLocalPayerPrivateKey,
   resolvePostPayer,
-  runX402InitWorkflow,
-  writeStoredX402PayerConfig,
 } from "./payer.js";
 import {
   executeLocalFarcasterSignup,
@@ -152,18 +144,6 @@ export interface FarcasterSignupCommandInput {
   recovery?: string;
   extraStorage?: string;
   outDir?: string;
-}
-
-export interface WalletInitCommandInput {
-  agent?: string;
-  mode?: string;
-  privateKeyStdin?: boolean;
-  privateKeyFile?: string;
-  noPrompt?: boolean;
-}
-
-export interface WalletStatusCommandInput {
-  agent?: string;
 }
 
 export interface FarcasterPostCommandInput {
@@ -304,98 +284,6 @@ export async function executeFarcasterSignupCommand(
   }
 
   return withSignerInfo(payload, signerPublicKey, false);
-}
-
-export async function executeWalletInitCommand(
-  input: WalletInitCommandInput,
-  deps: CliDeps
-): Promise<Record<string, unknown>> {
-  const current = readConfig(deps);
-  const agentKey = resolveAgentKey(input.agent, current.agent);
-  const setup = await runX402InitWorkflow({
-    deps,
-    currentConfig: current,
-    agentKey,
-    modeArg: input.mode,
-    noPrompt: input.noPrompt ?? false,
-    privateKeyStdin: input.privateKeyStdin ?? false,
-    privateKeyFile: input.privateKeyFile,
-  });
-  printX402FundingHints(deps, setup);
-
-  return {
-    ok: true,
-    agentKey,
-    walletConfig: {
-      mode: setup.mode,
-      walletAddress: setup.payerAddress,
-      network: X402_NETWORK,
-      token: X402_TOKEN_SYMBOL,
-      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
-    },
-  };
-}
-
-export async function executeWalletStatusCommand(
-  input: WalletStatusCommandInput,
-  deps: CliDeps
-): Promise<Record<string, unknown>> {
-  const current = readConfig(deps);
-  const agentKey = resolveAgentKey(input.agent, current.agent);
-  const stored = readStoredX402PayerConfig({
-    deps,
-    agentKey,
-  });
-  if (!stored) {
-    throw new Error(
-      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
-    );
-  }
-
-  let payerAddress = stored.payerAddress;
-  if (stored.mode === "local") {
-    const privateKeyHex = resolveLocalPayerPrivateKey({
-      deps,
-      currentConfig: current,
-      payerConfig: stored,
-    });
-    payerAddress = privateKeyToAccount(privateKeyHex).address;
-  } else if (!payerAddress) {
-    try {
-      payerAddress = await fetchHostedPayerAddress({
-        deps,
-        agentKey,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Hosted wallet address is unknown and could not be fetched from backend wallet endpoint: ${message}`
-      );
-    }
-  }
-
-  if (payerAddress !== stored.payerAddress) {
-    writeStoredX402PayerConfig({
-      deps,
-      agentKey,
-      config: {
-        ...stored,
-        payerAddress,
-      },
-    });
-  }
-
-  return {
-    ok: true,
-    agentKey,
-    walletConfig: {
-      mode: stored.mode,
-      walletAddress: payerAddress,
-      network: stored.network,
-      token: stored.token,
-      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
-    },
-  };
 }
 
 export async function executeFarcasterPostCommand(

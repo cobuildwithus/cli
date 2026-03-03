@@ -1,6 +1,7 @@
 import type { CliDeps } from "../types.js";
 import { asRecord } from "../transport.js";
-import { getAddress, isAddress, isHex, type Address } from "viem";
+import { normalizeEvmAddress as normalizeWireEvmAddress } from "@cobuild/wire";
+import { isHex, type Address } from "viem";
 import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
 import {
   buildIdempotencyRequestHeaders,
@@ -135,10 +136,14 @@ export function throwWithIdempotencyKey(error: unknown, idempotencyKey: string):
 }
 
 export function normalizeEvmAddress(value: string, label: string): Address {
-  if (!isAddress(value, { strict: false })) {
-    throw new Error(`${label} must be a 20-byte hex address (0x + 40 hex chars)`);
+  try {
+    return normalizeWireEvmAddress(value, label) as Address;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("must be a valid 20-byte hex address")) {
+      throw new Error(`${label} must be a 20-byte hex address (0x + 40 hex chars)`);
+    }
+    throw error;
   }
-  return getAddress(value).toLowerCase() as Address;
 }
 
 export function validateEvmAddress(value: string, label: string): void {

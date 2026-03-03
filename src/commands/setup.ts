@@ -24,6 +24,8 @@ import {
   safeOrigin,
   type SetupValueSource,
 } from "../setup/env.js";
+import { normalizePrivateKeyHex, readTrimmedTextFromFile } from "../wallet/key-input.js";
+import { parseWalletModePromptAnswer } from "../wallet/mode.js";
 import {
   CLI_PRIMARY_COMMAND,
   printSetupStep,
@@ -109,17 +111,8 @@ function parseSetupWalletConfigResult(payload: unknown): SetupCommandOutput["wal
 }
 
 function validateSetupWalletLocalKeyFileInput(filePath: string, deps: Pick<CliDeps, "fs">): void {
-  let raw: string;
-  try {
-    raw = deps.fs.readFileSync(filePath, "utf8");
-  } catch (error) {
-    throw new Error(
-      `Could not read wallet private key file: ${filePath} (${error instanceof Error ? error.message : String(error)})`
-    );
-  }
-  if (!raw.trim()) {
-    throw new Error(`Wallet private key file is empty: ${filePath}`);
-  }
+  const privateKey = readTrimmedTextFromFile(deps, filePath, "wallet private key");
+  normalizePrivateKeyHex(privateKey);
 }
 
 async function resolveSetupWalletMode(params: {
@@ -138,10 +131,8 @@ async function resolveSetupWalletMode(params: {
     "Wallet type [hosted|local-generate|local-key or 1|2|3]",
     "hosted"
   );
-  const normalized = answer.trim().toLowerCase();
-  if (normalized === "1" || normalized === "hosted") return "hosted";
-  if (normalized === "2" || normalized === "local-generate") return "local-generate";
-  if (normalized === "3" || normalized === "local-key") return "local-key";
+  const selected = parseWalletModePromptAnswer(answer);
+  if (selected) return selected;
   throw new Error(`${SETUP_USAGE}\n--wallet-mode must be one of: hosted, local-generate, local-key`);
   /* c8 ignore stop */
 }

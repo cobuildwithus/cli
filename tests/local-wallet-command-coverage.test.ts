@@ -52,6 +52,24 @@ function setLocalWalletConfig(harness: ReturnType<typeof createHarness>, agentKe
   );
 }
 
+function setHostedWalletConfig(harness: ReturnType<typeof createHarness>, agentKey = "default"): void {
+  harness.files.set(
+    `/tmp/cli-tests/.cobuild-cli/agents/${agentKey}/wallet/payer.json`,
+    JSON.stringify(
+      {
+        version: 1,
+        mode: "hosted",
+        payerAddress: "0x00000000000000000000000000000000000000aa",
+        network: "base",
+        token: "usdc",
+        createdAt: "2026-03-03T00:00:00.000Z",
+      },
+      null,
+      2
+    )
+  );
+}
+
 describe("local wallet command coverage", () => {
   beforeEach(() => {
     localExecMocks.executeLocalTransferMock.mockReset();
@@ -211,6 +229,36 @@ describe("local wallet command coverage", () => {
       walletConfig: {
         mode: "hosted",
         walletAddress: null,
+        network: "base",
+        token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
+      },
+    });
+  });
+
+  it("returns hosted wallet object payloads merged with wallet config", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "default",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
+      }),
+    });
+    setHostedWalletConfig(harness);
+
+    const result = await executeWalletCommand({}, harness.deps);
+
+    expect(result).toEqual({
+      ok: true,
+      address: "0xabc",
+      walletConfig: {
+        mode: "hosted",
+        walletAddress: "0x00000000000000000000000000000000000000aa",
         network: "base",
         token: "usdc",
         costPerPaidCallMicroUsdc: "1000",

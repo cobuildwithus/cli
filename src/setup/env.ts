@@ -3,25 +3,20 @@ import { parseCliWalletAddressForSetupSummary } from "../api-response-schemas.js
 import { isSecretRef } from "../secrets/ref-contract.js";
 import { resolveSecretRefString } from "../secrets/runtime.js";
 import type { CliConfig, CliDeps } from "../types.js";
+import {
+  normalizeOptionalWalletInitMode,
+  type WalletInitMode,
+} from "../wallet/mode.js";
 
 export const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
 export const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
 
-export type SetupWalletMode = "hosted" | "local-generate" | "local-key";
+export type SetupWalletMode = WalletInitMode;
 
 export type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
 
-export function isSetupWalletMode(value: string): value is SetupWalletMode {
-  return value === "hosted" || value === "local-generate" || value === "local-key";
-}
-
 export function normalizeSetupWalletMode(value: string | undefined): SetupWalletMode | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (isSetupWalletMode(normalized)) {
-    return normalized;
-  }
-  throw new Error("--wallet-mode must be one of: hosted, local-generate, local-key");
+  return normalizeOptionalWalletInitMode(value, "--wallet-mode");
 }
 
 export function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {

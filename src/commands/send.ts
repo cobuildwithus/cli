@@ -12,8 +12,8 @@ import {
   validateNonNegativeDecimal,
   withIdempotencyKey,
 } from "./shared.js";
-import { readStoredX402PayerConfig, resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
 import { executeLocalTransfer } from "../wallet/local-exec.js";
+import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
 
 const SEND_USAGE =
   "Usage: cli send <token> <amount> <to> [--network] [--decimals] [--agent] [--idempotency-key]";
@@ -52,60 +52,50 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
   const network = resolveNetwork(input.network, deps);
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
-  const walletConfig = readStoredX402PayerConfig({
+  const response = await executeWithConfiguredWallet({
     deps,
+    currentConfig: current,
     agentKey,
-  });
-  if (!walletConfig) {
-    throw new Error(
-      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
-    );
-  }
-
-  let response: unknown;
-  if (walletConfig.mode === "local") {
-    const privateKeyHex = resolveLocalPayerPrivateKey({
-      deps,
-      currentConfig: current,
-      payerConfig: walletConfig,
-    });
-    try {
-      response = await executeLocalTransfer({
-        deps,
-        agentKey,
-        privateKeyHex,
-        network,
-        token,
-        amount,
-        to: normalizedTo,
-        decimals,
-        idempotencyKey,
-      });
-    } catch (error) {
-      throwWithIdempotencyKey(error, idempotencyKey);
-    }
-  } else {
-    try {
-      response = await apiPost(
-        deps,
-        "/api/cli/exec",
-        {
-          kind: "transfer",
-          network,
+    onLocal: async ({ privateKeyHex }) => {
+      try {
+        return await executeLocalTransfer({
+          deps,
           agentKey,
+          privateKeyHex,
+          network,
           token,
           amount,
           to: normalizedTo,
           decimals,
-        },
-        {
-          headers: buildIdempotencyHeaders(idempotencyKey),
-        }
-      );
-    } catch (error) {
-      throwWithIdempotencyKey(error, idempotencyKey);
-    }
-  }
+          idempotencyKey,
+        });
+      } catch (error) {
+        throwWithIdempotencyKey(error, idempotencyKey);
+      }
+    },
+    onHosted: async () => {
+      try {
+        return await apiPost(
+          deps,
+          "/api/cli/exec",
+          {
+            kind: "transfer",
+            network,
+            agentKey,
+            token,
+            amount,
+            to: normalizedTo,
+            decimals,
+          },
+          {
+            headers: buildIdempotencyHeaders(idempotencyKey),
+          }
+        );
+      } catch (error) {
+        throwWithIdempotencyKey(error, idempotencyKey);
+      }
+    },
+  });
 
   return withIdempotencyKey(idempotencyKey, response) as SendCommandOutput;
 }
