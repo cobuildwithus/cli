@@ -553,4 +553,51 @@ describe("tool execution helper", () => {
       message: "Request failed (status 404): Tool not found",
     });
   });
+
+  it("treats unknown/invalid tool-name 404s as candidate mismatch instead of route-unavailable", async () => {
+    const attemptedToolNames: string[] = [];
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Cannot GET /v1/tools" }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          attemptedToolNames.push(body.name);
+          if (body.name === "docsSearch") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Unknown tool: docsSearch" }),
+            };
+          }
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Invalid tool name: file_search" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    const thrown = await executeCanonicalToolOnly(harness.deps, {
+      canonicalToolNames: ["docsSearch", "file_search"],
+      input: { query: "setup" },
+    }).catch((error) => error);
+
+    expect(thrown).toBeInstanceOf(ApiRequestError);
+    expect(thrown).toMatchObject({
+      status: 404,
+      detail: "Invalid tool name: file_search",
+      message: "Request failed (status 404): Invalid tool name: file_search",
+    });
+    expect(attemptedToolNames).toEqual(["docsSearch", "file_search"]);
+  });
 });
