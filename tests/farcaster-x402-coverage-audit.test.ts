@@ -6,6 +6,30 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+function mockXPayment(label: string): string {
+  return Buffer.from(
+    JSON.stringify({
+      x402Version: 1,
+      scheme: "exact",
+      network: "base",
+      payload: {
+        signature: `0x${label}`,
+        authorization: {
+          from: "0x0000000000000000000000000000000000000001",
+          to: "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1",
+          value: "1000",
+          validAfter: "0",
+          validBefore: "4102444800",
+          nonce: "0x0000000000000000000000000000000000000000000000000000000000000001",
+        },
+      },
+    })
+  ).toString("base64");
+}
+
+const MOCK_PAYMENT_VERIFY_ONCE_404 = mockXPayment("payment-verify-once-404");
+const MOCK_PAYMENT_VERIFY_HOSTED_402 = mockXPayment("payment-verify-hosted-402");
+
 function setHostedX402PayerConfig(
   harness: ReturnType<typeof createHarness>,
   payerAddress: string | null
@@ -110,7 +134,7 @@ describe("farcaster x402 coverage audit", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-verify-once-404",
+                  xPayment: MOCK_PAYMENT_VERIFY_ONCE_404,
                   agentKey: "default",
                 },
               }),
@@ -187,7 +211,7 @@ describe("farcaster x402 coverage audit", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-verify-hosted-402",
+                  xPayment: MOCK_PAYMENT_VERIFY_HOSTED_402,
                   agentKey: "default",
                 },
               }),
@@ -209,7 +233,9 @@ describe("farcaster x402 coverage audit", () => {
               text: async () => "payment required",
             };
           }
-          expect((init?.headers as Record<string, string>)["X-PAYMENT"]).toBe("payment-verify-hosted-402");
+          expect((init?.headers as Record<string, string>)["X-PAYMENT"]).toBe(
+            MOCK_PAYMENT_VERIFY_HOSTED_402
+          );
           return {
             ok: true,
             status: 200,

@@ -7,6 +7,69 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+/** Build a structurally valid x402 payment header that passes `validateX402PaymentPayload`. */
+function mockXPayment(
+  label = "mock",
+  overrides?: {
+    network?: string;
+    to?: string;
+    value?: string;
+    validBefore?: string;
+    includeAuthorization?: boolean;
+  }
+): string {
+  const authorization = {
+    from: "0x0000000000000000000000000000000000000001",
+    to: overrides?.to ?? "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1",
+    value: overrides?.value ?? "1000",
+    validAfter: "0",
+    validBefore: overrides?.validBefore ?? "4102444800",
+    nonce: "0x0000000000000000000000000000000000000000000000000000000000000001",
+  };
+  const payload = {
+    x402Version: 1,
+    scheme: "exact",
+    network: overrides?.network ?? "base",
+    payload:
+      overrides?.includeAuthorization === false
+        ? {
+            signature: `0x${label}`,
+          }
+        : {
+            signature: `0x${label}`,
+            authorization,
+          },
+  };
+
+  // Use a far-future validBefore so the value is stable across test runs.
+  return Buffer.from(JSON.stringify(payload)).toString("base64");
+}
+
+function mutateXPayment(
+  xPaymentBase64: string,
+  mutate: (payload: Record<string, unknown>) => void
+): string {
+  const payload = JSON.parse(Buffer.from(xPaymentBase64, "base64").toString("utf-8")) as Record<
+    string,
+    unknown
+  >;
+  mutate(payload);
+  return Buffer.from(JSON.stringify(payload)).toString("base64");
+}
+
+// Pre-built mock payment headers for stable assertions.
+const MOCK_PAYMENT_1 = mockXPayment("payment-1");
+const MOCK_PAYMENT_2 = mockXPayment("payment-2");
+const MOCK_PAYMENT_RESUME = mockXPayment("payment-resume");
+const MOCK_PAYMENT_VERIFY = mockXPayment("payment-verify");
+const MOCK_PAYMENT_POLL = mockXPayment("payment-poll");
+const MOCK_PAYMENT_POLL_FAIL = mockXPayment("payment-poll-fail");
+const MOCK_PAYMENT_NONE = mockXPayment("payment-none");
+const MOCK_PAYMENT_OVERRIDE = mockXPayment("payment-override");
+const MOCK_PAYMENT_MIGRATE = mockXPayment("payment-migrate");
+const MOCK_PAYMENT_TIMEOUT = mockXPayment("payment-timeout");
+const MOCK_PAYMENT_REPLY = mockXPayment("reply-payment");
+
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
     ok: status >= 200 && status < 300,
@@ -534,7 +597,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-1",
+                  xPayment: MOCK_PAYMENT_1,
                   agentKey: "stored-agent",
                   payerAddress: "0x0000000000000000000000000000000000000009",
                   token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
@@ -547,7 +610,7 @@ describe("farcaster command", () => {
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
           expect(init?.headers).toMatchObject({
             "Content-Type": "application/octet-stream",
-            "X-PAYMENT": "payment-1",
+            "X-PAYMENT": MOCK_PAYMENT_1,
           });
           expect(init?.body).toBeInstanceOf(Uint8Array);
           return {
@@ -653,6 +716,7 @@ describe("farcaster command", () => {
         const url = String(input);
         if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
           x402Calls += 1;
+          const xPayment = x402Calls === 1 ? MOCK_PAYMENT_1 : MOCK_PAYMENT_2;
           return {
             ok: true,
             status: 200,
@@ -660,7 +724,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: `payment-${x402Calls}`,
+                  xPayment,
                   agentKey: "default",
                   payerAddress: "0x0000000000000000000000000000000000000007",
                 },
@@ -670,10 +734,10 @@ describe("farcaster command", () => {
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
           hubCalls += 1;
           if (hubCalls === 1) {
-            expect(init?.headers).toMatchObject({ "X-PAYMENT": "payment-1" });
+            expect(init?.headers).toMatchObject({ "X-PAYMENT": MOCK_PAYMENT_1 });
             return { ok: false, status: 402, text: async () => "payment required" };
           }
-          expect(init?.headers).toMatchObject({ "X-PAYMENT": "payment-2" });
+          expect(init?.headers).toMatchObject({ "X-PAYMENT": MOCK_PAYMENT_2 });
           return { ok: true, status: 200, text: async () => "{\"ok\":true}" };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -732,7 +796,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-resume",
+                  xPayment: MOCK_PAYMENT_RESUME,
                   agentKey: "default",
                 },
               }),
@@ -854,7 +918,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-verify",
+                  xPayment: MOCK_PAYMENT_VERIFY,
                   agentKey: "default",
                 },
               }),
@@ -944,7 +1008,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-poll",
+                  xPayment: MOCK_PAYMENT_POLL,
                   agentKey: "default",
                 },
               }),
@@ -1017,7 +1081,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-poll-fail",
+                  xPayment: MOCK_PAYMENT_POLL_FAIL,
                   agentKey: "default",
                 },
               }),
@@ -1079,7 +1143,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-none",
+                  xPayment: MOCK_PAYMENT_NONE,
                   agentKey: "default",
                 },
               }),
@@ -1526,14 +1590,14 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-override",
+                  xPayment: MOCK_PAYMENT_OVERRIDE,
                   agentKey: "default",
                 },
               }),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
-          expect(init?.headers).toMatchObject({ "X-PAYMENT": "payment-override" });
+          expect(init?.headers).toMatchObject({ "X-PAYMENT": MOCK_PAYMENT_OVERRIDE });
           return { ok: true, status: 200, text: async () => "accepted" };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -1597,7 +1661,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "reply-payment",
+                  xPayment: MOCK_PAYMENT_REPLY,
                   agentKey: "default",
                 },
               }),
@@ -1678,7 +1742,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-migrate",
+                  xPayment: MOCK_PAYMENT_MIGRATE,
                   agentKey: "default",
                 },
               }),
@@ -1753,7 +1817,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-1",
+                  xPayment: MOCK_PAYMENT_1,
                   agentKey: "token-agent",
                 },
               }),
@@ -2066,7 +2130,7 @@ describe("farcaster command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ ok: true, result: { xPayment: "payment-1" } }),
+          text: async () => JSON.stringify({ ok: true, result: { xPayment: MOCK_PAYMENT_1 } }),
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -2095,7 +2159,7 @@ describe("farcaster command", () => {
           ok: true,
           status: 200,
           text: async () =>
-            JSON.stringify({ ok: true, result: { xPayment: "payment-1", agentKey: "default" } }),
+            JSON.stringify({ ok: true, result: { xPayment: MOCK_PAYMENT_1, agentKey: "default" } }),
         };
       }
       if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -2125,6 +2189,135 @@ describe("farcaster command", () => {
     );
   });
 
+  it("rejects invalid hosted x402 payment payloads before hub submit", async () => {
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/ed25519-signer.json";
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+    setHostedX402PayerConfig(harness);
+
+    harness.files.set(
+      signerPath,
+      JSON.stringify(
+        {
+          version: 1,
+          algorithm: "ed25519",
+          publicKey: `0x${"11".repeat(32)}`,
+          privateKeyHex: `0x${"22".repeat(32)}`,
+          fid: "123",
+        },
+        null,
+        2
+      )
+    );
+
+    const invalidCases: Array<{ key: string; xPayment: string; expected: string }> = [
+      {
+        key: "11111111-1111-4111-8111-111111111111",
+        xPayment: "not-base64-json",
+        expected: "x402 payment header from hosted source is not valid base64 JSON.",
+      },
+      {
+        key: "12121212-1212-4121-8121-121212121212",
+        xPayment: Buffer.from(JSON.stringify("not-an-object")).toString("base64"),
+        expected: "x402 payment header from hosted source is not a JSON object.",
+      },
+      {
+        key: "22222222-2222-4222-8222-222222222222",
+        xPayment: mockXPayment("network-mismatch", { network: "optimism" }),
+        expected: 'x402 payment header network mismatch: expected "base", got "optimism".',
+      },
+      {
+        key: "33333333-3333-4333-8333-333333333333",
+        xPayment: mockXPayment("missing-auth", { includeAuthorization: false }),
+        expected: "x402 payment header from hosted source is missing payload.authorization.",
+      },
+      {
+        key: "34343434-3434-4343-8343-343434343434",
+        xPayment: mutateXPayment(mockXPayment("missing-to"), (payload) => {
+          const inner = payload.payload as Record<string, unknown>;
+          const auth = inner.authorization as Record<string, unknown>;
+          delete auth.to;
+        }),
+        expected: "x402 payment header from hosted source is missing payload.authorization.to.",
+      },
+      {
+        key: "44444444-4444-4444-8444-444444444444",
+        xPayment: mockXPayment("to-mismatch", { to: "0x000000000000000000000000000000000000dEaD" }),
+        expected:
+          "x402 payment \"to\" address mismatch: expected 0xa6a8736f18f383f1cc2d938576933e5ea7df01a1, got 0x000000000000000000000000000000000000dead. Refusing to send payment to unknown address.",
+      },
+      {
+        key: "55555555-5555-4555-8555-555555555555",
+        xPayment: mockXPayment("value-mismatch", { value: "999" }),
+        expected:
+          "x402 payment value mismatch: expected 1000, got 999. Refusing to send unexpected payment amount.",
+      },
+      {
+        key: "66666666-6666-4666-8666-666666666666",
+        xPayment: mutateXPayment(mockXPayment("invalid-valid-before-type"), (payload) => {
+          const inner = payload.payload as Record<string, unknown>;
+          const auth = inner.authorization as Record<string, unknown>;
+          auth.validBefore = { unexpected: true };
+        }),
+        expected: "x402 payment header from hosted source is missing payload.authorization.validBefore.",
+      },
+      {
+        key: "67676767-6767-4676-8676-676767676767",
+        xPayment: mockXPayment("non-finite-valid-before", { validBefore: "not-a-number" }),
+        expected:
+          "x402 payment header from hosted source has invalid payload.authorization.validBefore (not-a-number).",
+      },
+      {
+        key: "77777777-7777-4777-8777-777777777777",
+        xPayment: mockXPayment("expired", { validBefore: "1" }),
+        expected: "x402 payment header from hosted source has expired (validBefore=1).",
+      },
+    ];
+
+    for (const invalidCase of invalidCases) {
+      harness.fetchMock.mockClear();
+      harness.fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                ok: true,
+                result: { xPayment: invalidCase.xPayment, agentKey: "default" },
+              }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      await expect(
+        runCli(
+          [
+            "farcaster",
+            "post",
+            "--text",
+            "Ship update",
+            "--idempotency-key",
+            invalidCase.key,
+          ],
+          harness.deps
+        )
+      ).rejects.toThrow(`${invalidCase.expected} (idempotency key: ${invalidCase.key})`);
+
+      expect(
+        harness.fetchMock.mock.calls.some(
+          ([input]) => String(input) === "https://hub-api.neynar.com/v1/submitMessage"
+        )
+      ).toBe(false);
+    }
+  });
+
   it("surfaces Neynar hub timeout errors with idempotency context", async () => {
     const idempotencyKey = "2f089f9f-8f7c-45d7-a987-c8af47795d1e";
     const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/ed25519-signer.json";
@@ -2143,7 +2336,7 @@ describe("farcaster command", () => {
               JSON.stringify({
                 ok: true,
                 result: {
-                  xPayment: "payment-timeout",
+                  xPayment: MOCK_PAYMENT_TIMEOUT,
                   agentKey: "default",
                 },
               }),

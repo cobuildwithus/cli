@@ -3,13 +3,19 @@ import type { CliDeps } from "../types.js";
 
 const CANONICAL_TOOLS_DISCOVERY_PATH = "/v1/tools";
 const CANONICAL_TOOL_EXECUTIONS_PATH = "/v1/tool-executions";
-const FALLBACK_STATUS_CODES = new Set([400, 401, 403, 404, 405, 415, 422, 501]);
+const RETRYABLE_CANONICAL_STATUS_CODES = new Set([400, 404, 405, 422]);
+const CANONICAL_ROUTE_CUTOVER_GUIDANCE =
+  "Canonical /v1 tool routes are unavailable. Ensure /v1/tools and /v1/tool-executions are routed to Chat API (for example, edge rewrite /v1/* -> Chat API).";
 
-interface ExecuteToolWithFallbackOptions {
+interface ExecuteCanonicalToolOptions {
   canonicalToolNames: string[];
   input: Record<string, unknown>;
-  legacyPath: string;
-  legacyBody: Record<string, unknown>;
+}
+
+interface CanonicalDiscoveryResult {
+  catalog: unknown | null;
+  routeUnavailable: boolean;
+  routeUnavailableDetail: string | null;
 }
 
 function normalizeToolName(value: string): string {
@@ -105,30 +111,42 @@ function extractCanonicalExecutionResult(payload: unknown): unknown {
   return payload;
 }
 
-export function shouldFallbackToLegacyToolRoute(error: unknown): boolean {
+function shouldRetryCanonicalToolCandidate(error: unknown): error is ApiRequestError {
   if (!(error instanceof ApiRequestError)) {
     return false;
   }
-  return FALLBACK_STATUS_CODES.has(error.status);
+  return RETRYABLE_CANONICAL_STATUS_CODES.has(error.status);
+}
+
+function isCanonicalRouteNotFound(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && error.status === 404;
 }
 
 function buildCanonicalExecutionBody(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
   return {
-    toolName,
     name: toolName,
     input,
-    arguments: input,
   };
 }
 
 async function discoverCanonicalToolCatalog(
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">
-): Promise<unknown | null> {
+): Promise<CanonicalDiscoveryResult> {
   try {
-    return await apiGet(deps, CANONICAL_TOOLS_DISCOVERY_PATH);
+    return {
+      catalog: await apiGet(deps, CANONICAL_TOOLS_DISCOVERY_PATH),
+      routeUnavailable: false,
+      routeUnavailableDetail: null,
+    };
   } catch (error) {
-    if (shouldFallbackToLegacyToolRoute(error)) {
-      return null;
+    if (shouldRetryCanonicalToolCandidate(error)) {
+      const routeUnavailable = isCanonicalRouteNotFound(error);
+      return {
+        catalog: null,
+        routeUnavailable,
+        routeUnavailableDetail:
+          routeUnavailable && error instanceof ApiRequestError ? error.detail : null,
+      };
     }
     throw error;
   }
@@ -147,27 +165,54 @@ async function executeCanonicalTool(
   return extractCanonicalExecutionResult(payload);
 }
 
-export async function executeToolWithLegacyFallback(
+export async function executeCanonicalToolOnly(
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">,
-  options: ExecuteToolWithFallbackOptions
+  options: ExecuteCanonicalToolOptions
 ): Promise<unknown> {
   const configured = options.canonicalToolNames.map((name) => name.trim()).filter(Boolean);
   if (configured.length === 0) {
     throw new Error("At least one canonical tool name must be configured.");
   }
 
-  const discoveredCatalog = await discoverCanonicalToolCatalog(deps);
-  const candidates = prioritizedCanonicalToolNames(configured, discoveredCatalog);
+  const discovery = await discoverCanonicalToolCatalog(deps);
+  const candidates = prioritizedCanonicalToolNames(configured, discovery.catalog);
+  let lastRetryableError: unknown = null;
+  let allExecutionErrorsWereNotFound = true;
+  const executionNotFoundDetails = new Set<string>();
 
   for (const candidate of candidates) {
     try {
       return await executeCanonicalTool(deps, candidate, options.input);
     } catch (error) {
-      if (!shouldFallbackToLegacyToolRoute(error)) {
+      if (!shouldRetryCanonicalToolCandidate(error)) {
         throw error;
       }
+      if (!isCanonicalRouteNotFound(error)) {
+        allExecutionErrorsWereNotFound = false;
+      } else {
+        executionNotFoundDetails.add(error.detail ?? "");
+      }
+      lastRetryableError = error;
     }
   }
 
-  return apiPost(deps, options.legacyPath, options.legacyBody);
+  if (lastRetryableError) {
+    const discoveryNotFoundDetail = discovery.routeUnavailableDetail ?? "";
+    const matchesDiscoveryNotFoundDetail =
+      executionNotFoundDetails.size > 0 &&
+      [...executionNotFoundDetails].every((detail) => detail === discoveryNotFoundDetail);
+
+    if (
+      allExecutionErrorsWereNotFound &&
+      discovery.routeUnavailable &&
+      matchesDiscoveryNotFoundDetail
+    ) {
+      throw new Error(CANONICAL_ROUTE_CUTOVER_GUIDANCE, {
+        cause: lastRetryableError instanceof Error ? lastRetryableError : undefined,
+      });
+    }
+    throw lastRetryableError;
+  }
+
+  throw new Error("Failed to execute canonical tool.");
 }
