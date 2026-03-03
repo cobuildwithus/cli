@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { CliConfig, SecretRef } from "../src/types.js";
 import {
   DEFAULT_SECRET_PROVIDER_ALIAS,
-  buildFarcasterX402PayerRef,
-  buildFarcasterX402PayerSecretKey,
+  buildWalletPayerRef,
+  buildWalletPayerSecretKey,
   SINGLE_VALUE_FILE_REF_ID,
   buildFarcasterSignerRef,
   buildFarcasterSignerSecretKey,
@@ -106,11 +106,11 @@ describe("secrets ref-contract", () => {
       provider: "vault",
       id: "/farcaster:ed25519:agent-one:signer",
     });
-    expect(buildFarcasterX402PayerSecretKey("agent-one")).toBe("farcaster:x402:agent-one:payer");
-    expect(buildFarcasterX402PayerRef(config, "agent-one")).toEqual({
+    expect(buildWalletPayerSecretKey("agent-one")).toBe("wallet:payer:agent-one");
+    expect(buildWalletPayerRef(config, "agent-one")).toEqual({
       source: "file",
       provider: "vault",
-      id: "/farcaster:x402:agent-one:payer",
+      id: "/wallet:payer:agent-one",
     });
   });
 
@@ -145,10 +145,10 @@ describe("secrets ref-contract", () => {
       provider: "default",
       id: "/farcaster:ed25519:agent-one:signer",
     });
-    expect(buildFarcasterX402PayerRef(config, "agent-one")).toEqual({
+    expect(buildWalletPayerRef(config, "agent-one")).toEqual({
       source: "file",
       provider: "default",
-      id: "/farcaster:x402:agent-one:payer",
+      id: "/wallet:payer:agent-one",
     });
   });
 
@@ -174,7 +174,7 @@ describe("secrets ref-contract", () => {
     expect(() => buildFarcasterSignerRef(config, "agent-one")).toThrow(
       'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
     );
-    expect(() => buildFarcasterX402PayerRef(config, "agent-one")).toThrow(
+    expect(() => buildWalletPayerRef(config, "agent-one")).toThrow(
       'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
     );
   });

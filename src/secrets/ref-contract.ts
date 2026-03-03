@@ -138,14 +138,14 @@ export function buildFarcasterSignerRef(config: CliConfig, agentKey: string): Se
   };
 }
 
-export function buildFarcasterX402PayerSecretKey(agentKey: string): string {
-  return `farcaster:x402:${agentKey}:payer`;
+export function buildWalletPayerSecretKey(agentKey: string): string {
+  return `wallet:payer:${agentKey}`;
 }
 
-export function buildFarcasterX402PayerRef(config: CliConfig, agentKey: string): SecretRef {
+export function buildWalletPayerRef(config: CliConfig, agentKey: string): SecretRef {
   return {
     source: "file",
     provider: resolveStructuredFileProviderAlias(config),
-    id: toFileSecretRefId(buildFarcasterX402PayerSecretKey(agentKey)),
+    id: toFileSecretRefId(buildWalletPayerSecretKey(agentKey)),
   };
 }

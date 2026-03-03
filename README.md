@@ -1,6 +1,6 @@
 # cli
 
-TypeScript CLI + agent skill for running wallet actions through the interface app's API (`/api/buildbot/*` routes).
+TypeScript CLI + agent skill for running wallet actions through the interface app's API (`/api/cli/*` routes).
 
 > Warning
 > This project drives real wallet operations. Use test networks and small amounts while validating your setup.
@@ -92,8 +92,8 @@ cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--tok
 - Browser approval flow:
   - Opens `/home` in your interface app and waits for one-time localhost callback approval.
   - Falls back to hidden manual token prompt only if approval fails or times out.
-- Optional Farcaster payer setup (same setup command):
-  - `--payer-mode hosted` uses backend wallet access for paid Farcaster requests.
+- Optional wallet payer setup (same setup command):
+  - `--payer-mode hosted` uses backend wallet access for paid requests.
   - `--payer-mode local-generate` creates and stores a local payer key.
   - `--payer-mode local-key` uses `--payer-private-key-stdin` or `--payer-private-key-file`.
 - Machine output:
@@ -139,6 +139,8 @@ For runtime commands:
 
 ```bash
 cli wallet [--network <network>] [--agent <key>]
+cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+cli wallet payer status [--agent <key>]
 cli docs <query> [--limit <n>]
 cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
 cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
@@ -148,6 +150,8 @@ Examples:
 
 ```bash
 cli wallet --network base-sepolia --agent default
+cli wallet payer init --agent default --mode local-generate
+cli wallet payer status --agent default
 cli docs setup approval flow --limit 5
 cli docs -- --token-stdin
 cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default

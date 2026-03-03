@@ -36,18 +36,18 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `wallet`
 
 - `wallet [--network <network>] [--agent <key>]`
-- Calls `/api/buildbot/wallet` with agent + network context.
+- `wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
+- `wallet payer status [--agent <key>]`
+- Calls `/api/cli/wallet` with agent + network context.
+- `payer init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/wallet/payer.json`.
 
 ### `farcaster`
 
 - `farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]`
 - `farcaster post --text <text> [--agent <key>] [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]`
-- `farcaster payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
-- `farcaster payer status [--agent <key>]`
-- `signup` calls `/api/buildbot/farcaster/signup` and persists Ed25519 signer key material via SecretRef.
-- `payer init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+- `signup` calls `/api/cli/farcaster/signup` and persists Ed25519 signer key material via SecretRef.
 - `post` submits directly to Neynar hub and selects x402 payment source per agent:
-  - `hosted` mode calls `/api/buildbot/farcaster/x402-payment`.
+  - `hosted` mode calls `/api/cli/farcaster/x402-payment`.
   - `local` mode signs USDC typed data locally and emits `X-PAYMENT` without backend signing.
 
 ### `docs`
@@ -69,7 +69,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `send`
 
 - `send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]`
-- Calls `/api/buildbot/exec` with `kind: transfer` envelope.
+- Calls `/api/cli/exec` with `kind: transfer` envelope.
 - Validates amount and destination address format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
 - Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
@@ -77,7 +77,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `tx`
 
 - `tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
-- Calls `/api/buildbot/exec` with `kind: tx` envelope.
+- Calls `/api/cli/exec` with `kind: tx` envelope.
 - Validates address/calldata/value format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
 - Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
@@ -118,7 +118,7 @@ Update this doc when changing:
 - command names/options/required args,
 - Incur runtime command registration or argv preprocessor compatibility behavior,
 - `docs`/`tools` command topology or canonical `/v1/tool-executions` endpoint contracts,
-- payload envelopes for `/api/buildbot/wallet` or `/api/buildbot/exec`,
+- payload envelopes for `/api/cli/wallet` or `/api/cli/exec`,
 - config file path/schema,
 - transport/auth/error normalization behavior,
 - skill command guidance in `skills/cli/SKILL.md` for the same command/tool changes.

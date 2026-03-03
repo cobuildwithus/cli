@@ -24,7 +24,7 @@ import {
   readTokenFromFile,
   readTokenFromStdin,
 } from "./shared.js";
-import { executeFarcasterX402InitCommand } from "./farcaster.js";
+import { executeWalletPayerInitCommand } from "./wallet.js";
 
 const SETUP_USAGE =
   "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]";
@@ -166,7 +166,7 @@ function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | un
 async function promptSetupPayerMode(deps: Pick<CliDeps, "stderr">): Promise<SetupPayerMode> {
   while (true) {
     const input = (await promptLine(
-      "Farcaster payer mode (hosted/local-generate/local-key/skip)",
+      "Wallet payer mode (hosted/local-generate/local-key/skip)",
       "skip"
     ))
       .trim()
@@ -444,9 +444,9 @@ function printSetupSuccessSummary(params: {
   }
   params.deps.stderr(`Default network: ${params.defaultNetwork}`);
   if (params.payer) {
-    params.deps.stderr(`Farcaster payer mode: ${params.payer.mode}`);
+    params.deps.stderr(`Wallet payer mode: ${params.payer.mode}`);
     if (params.payer.payerAddress) {
-      params.deps.stderr(`Farcaster payer address: ${params.payer.payerAddress}`);
+      params.deps.stderr(`Wallet payer address: ${params.payer.payerAddress}`);
     }
   }
   params.deps.stderr("");
@@ -847,7 +847,7 @@ async function runSetupCommand(
   }
   let walletResponse: unknown;
   try {
-    walletResponse = await apiPost(deps, "/api/buildbot/wallet", {
+    walletResponse = await apiPost(deps, "/api/cli/wallet", {
       agentKey: agent,
       defaultNetwork,
     });
@@ -875,7 +875,7 @@ async function runSetupCommand(
   const canPromptForPayerSelection = interactive && Boolean(process.stdin.isTTY && process.stderr.isTTY);
   if (!requestedPayerMode && canPromptForPayerSelection) {
     /* c8 ignore start */
-    printSetupStep(deps, 4, 4, "Farcaster payer (optional)");
+    printSetupStep(deps, 4, 4, "Wallet payer (optional)");
     payerStepShown = true;
     requestedPayerMode = await promptSetupPayerMode(deps);
     payerModeSelectedInteractively = true;
@@ -885,12 +885,12 @@ async function runSetupCommand(
   if (requestedPayerMode && requestedPayerMode !== "skip") {
     if (interactive && !payerStepShown) {
       /* c8 ignore start */
-      printSetupStep(deps, 4, 4, "Farcaster payer (optional)");
+      printSetupStep(deps, 4, 4, "Wallet payer (optional)");
       /* c8 ignore stop */
     }
     let payerResult: unknown;
     try {
-      payerResult = await executeFarcasterX402InitCommand(
+      payerResult = await executeWalletPayerInitCommand(
         {
           agent,
           mode: requestedPayerMode,

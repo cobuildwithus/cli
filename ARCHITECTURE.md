@@ -25,10 +25,10 @@ cli/
 - `src/cli.ts` owns process lifecycle adapters and bridges process/test harness IO into the runtime.
 - `src/cli-incur.ts` owns command parsing and subcommand routing via Incur (`Cli.create`, command groups, built-in `skills add`, `mcp add`, `--llms`, and `--mcp`).
 - Command families:
-  - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap + optional Farcaster payer setup.
+  - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap + optional wallet payer setup.
   - `config`: local config read/write/inspect.
-  - `wallet`: wallet lookup via interface API.
-  - `farcaster`: Farcaster signup + posting + payer setup/status orchestration (`signup`, `post`, `payer init`, `payer status`).
+  - `wallet`: wallet lookup via interface API + payer setup/status (`payer init`, `payer status`).
+  - `farcaster`: Farcaster signup + posting orchestration (`signup`, `post`).
   - `docs`: docs search query via docs search API.
   - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `get-treasury-stats`).
   - `send`: token transfer execution envelope.
@@ -79,14 +79,14 @@ cli/
 3. Command envelope invariant
 
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
-- `setup` then persists config and performs a wallet bootstrap call to `/api/buildbot/wallet`.
-- `wallet` always targets `/api/buildbot/wallet`.
-- `farcaster signup` targets `/api/buildbot/farcaster/signup`, generates Ed25519 signer keys locally, and stores the private signer key via secret provider refs (metadata-only signer file).
-- `farcaster payer init` persists per-agent payer mode metadata (`hosted` or `local`) and payer key refs for local mode.
+- `setup` then persists config and performs a wallet bootstrap call to `/api/cli/wallet`.
+- `wallet` always targets `/api/cli/wallet`.
+- `farcaster signup` targets `/api/cli/farcaster/signup`, generates Ed25519 signer keys locally, and stores the private signer key via secret provider refs (metadata-only signer file).
+- `wallet payer init` persists per-agent payer mode metadata (`hosted` or `local`) and payer key refs for local mode.
 - `farcaster post` signs cast bytes locally, submits directly to Neynar hub, and resolves `X-PAYMENT` from either hosted backend signing or local typed-data signing depending on payer mode.
 - `farcaster post` verification mode defaults to `none`; `--verify` maps to one delayed check (`once`) and `--verify=poll` performs bounded repeated checks.
 - `docs` and `tools` target canonical chat-api tool surfaces first (`GET /v1/tools` when needed, `POST /v1/tool-executions`) via configured chat-api base (`chatApiUrl`, fallback `url`).
-- `send` and `tx` always target `/api/buildbot/exec` with explicit `kind`.
+- `send` and `tx` always target `/api/cli/exec` with explicit `kind`.
 - `send` and `tx` always forward an explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
 - Optional agent options are forwarded without hidden defaults beyond documented behavior.
 
@@ -116,13 +116,13 @@ cli/
 8. Open interface `/home` with setup query params for non-secret fields and fragment params for callback/state, then wait for browser approval.
 9. On approval, receive PAT over loopback callback, persist PAT via secret provider ref, and bootstrap wallet.
 10. If approval fails/times out, fall back to hidden manual token prompt.
-11. Optionally configure Farcaster payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
+11. Optionally configure wallet payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
 
 ### Wallet lookup flow
 
 1. Parse CLI options (`--network`, `--agent`).
 2. Resolve agent key from flag or config default.
-3. Build payload and POST `/api/buildbot/wallet`.
+3. Build payload and POST `/api/cli/wallet`.
 4. Print normalized JSON result.
 
 ### Farcaster signup flow
@@ -130,16 +130,16 @@ cli/
 1. Parse `farcaster signup` options (`--agent`, `--recovery`, `--extra-storage`, `--out-dir`).
 2. Resolve agent key from explicit flag or saved config.
 3. Generate an Ed25519 signer keypair locally in the CLI process.
-4. POST signup payload (`signerPublicKey`, optional recovery/storage options) to `/api/buildbot/farcaster/signup`.
+4. POST signup payload (`signerPublicKey`, optional recovery/storage options) to `/api/cli/farcaster/signup`.
 5. On successful completion, persist signer secret locally to a private file and print JSON result.
 
-### Farcaster payer setup/status flow
+### Wallet payer setup/status flow
 
-1. Parse `farcaster payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+1. Parse `wallet payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
 2. Resolve payer mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
-3. Persist per-agent payer config at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+3. Persist per-agent payer config at `~/.cobuild-cli/agents/<agent>/wallet/payer.json`.
 4. In local mode, persist payer private key via SecretRef (file-backed by default).
-5. `farcaster payer status` reads payer config and reports payer address, network, token, and per-call micro-USDC cost.
+5. `wallet payer status` reads payer config and reports payer address, network, token, and per-call micro-USDC cost.
 
 ### Farcaster post flow
 
@@ -147,7 +147,7 @@ cli/
 2. Resolve signer key + fid from local signer file (or explicit `--fid` override).
 3. Resolve agent payer config; fail closed when missing in non-interactive mode.
 4. Build `X-PAYMENT` header:
-   - `hosted`: POST `/api/buildbot/farcaster/x402-payment` for backend-signed payload.
+   - `hosted`: POST `/api/cli/farcaster/x402-payment` for backend-signed payload.
    - `local`: sign USDC `TransferWithAuthorization` typed data locally and base64-encode x402 payload.
 5. Submit cast bytes to `https://hub-api.neynar.com/v1/submitMessage`, retrying once on 402 with fresh payment.
 6. Optionally verify inclusion (`once` or bounded `poll`) against `https://hub-api.neynar.com/v1/castById`.
@@ -157,14 +157,14 @@ cli/
 
 1. Parse positional args (`token amount to`) plus optional flags.
 2. Validate minimum argument contract plus strict amount/address input checks and optional `--decimals` parsing.
-3. Build transfer payload (`kind: transfer`) and POST `/api/buildbot/exec`.
+3. Build transfer payload (`kind: transfer`) and POST `/api/cli/exec`.
 4. Print normalized JSON result with `idempotencyKey` attached; on request failure, throw an error that includes the key.
 
 ### Generic tx flow
 
 1. Parse required flags (`--to`, `--data`) and optional value/network/agent.
 2. Validate `--to`, `--data`, and `--value` formats before request dispatch.
-3. Build tx payload (`kind: tx`) and POST `/api/buildbot/exec`.
+3. Build tx payload (`kind: tx`) and POST `/api/cli/exec`.
 4. Print normalized JSON result with `idempotencyKey` attached; on request failure, throw an error that includes the key.
 
 ### Docs search flow

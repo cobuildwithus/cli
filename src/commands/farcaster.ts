@@ -17,7 +17,7 @@ import { ApiRequestError, asRecord, apiGet, apiPost } from "../transport.js";
 import type { CliConfig, CliDeps, SecretRef } from "../types.js";
 import {
   buildFarcasterSignerRef,
-  buildFarcasterX402PayerRef,
+  buildWalletPayerRef,
   isSecretRef,
 } from "../secrets/ref-contract.js";
 import { resolveSecretRefString, setSecretRefString, withDefaultSecretProviders } from "../secrets/runtime.js";
@@ -30,11 +30,9 @@ import {
 
 const FARCASTER_USAGE = `Usage:
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
-  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
-  cli farcaster payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-  cli farcaster payer status [--agent <key>]`;
+  cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]`;
 const SIGNER_FILE_NAME = "ed25519-signer.json";
-const X402_PAYER_FILE_NAME = "x402-payer.json";
+const PAYER_FILE_NAME = "payer.json";
 const NEYNAR_HUB_SUBMIT_URL = "https://hub-api.neynar.com/v1/submitMessage";
 const NEYNAR_HUB_CAST_BY_ID_URL = "https://hub-api.neynar.com/v1/castById";
 const HUB_PAYMENT_RETRYABLE_STATUS = 402;
@@ -268,7 +266,7 @@ function resolveSignerFilePath(params: {
   return path.join(signerDirectory, SIGNER_FILE_NAME);
 }
 
-function resolveX402PayerFilePath(params: {
+function resolveWalletPayerFilePath(params: {
   deps: Pick<CliDeps, "homedir">;
   agentKey: string;
 }): string {
@@ -277,8 +275,8 @@ function resolveX402PayerFilePath(params: {
     ".cobuild-cli",
     "agents",
     params.agentKey,
-    "farcaster",
-    X402_PAYER_FILE_NAME
+    "wallet",
+    PAYER_FILE_NAME
   );
 }
 
@@ -383,7 +381,7 @@ function createMaskingWriter(onWrite: (chunk: string) => void): MaskingWriter {
 async function promptSelectX402Mode(
   deps: Pick<CliDeps, "stderr">
 ): Promise<X402InitMode> {
-  deps.stderr("How should this agent pay Farcaster fees?");
+  deps.stderr("How should this agent pay for paid calls?");
   deps.stderr("  1) hosted (recommended)");
   deps.stderr("  2) local-generate");
   deps.stderr("  3) local-key");
@@ -644,7 +642,7 @@ function readStoredX402PayerConfig(params: {
   deps: Pick<CliDeps, "fs" | "homedir">;
   agentKey: string;
 }): StoredX402PayerConfig | null {
-  const payerPath = resolveX402PayerFilePath(params);
+  const payerPath = resolveWalletPayerFilePath(params);
   if (!params.deps.fs.existsSync(payerPath)) {
     return null;
   }
@@ -675,7 +673,7 @@ function writeStoredX402PayerConfig(params: {
   agentKey: string;
   config: StoredX402PayerConfig;
 }): string {
-  const payerPath = resolveX402PayerFilePath(params);
+  const payerPath = resolveWalletPayerFilePath(params);
   const payerDir = path.dirname(payerPath);
   params.deps.fs.mkdirSync(payerDir, { recursive: true, mode: 0o700 });
   params.deps.fs.writeFileSync(payerPath, JSON.stringify(params.config, null, 2), {
@@ -716,7 +714,7 @@ async function fetchHostedPayerAddress(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir">;
   agentKey: string;
 }): Promise<string | null> {
-  const payload = await apiGet(params.deps, `/api/buildbot/wallet?agentKey=${encodeURIComponent(params.agentKey)}`);
+  const payload = await apiGet(params.deps, `/api/cli/wallet?agentKey=${encodeURIComponent(params.agentKey)}`);
   return resolveWalletAddressFromPayload(payload);
 }
 
@@ -727,7 +725,7 @@ function saveLocalX402Payer(params: {
   privateKeyHex: HexString;
 }): X402PayerSetupResult {
   const configWithProviders = withDefaultSecretProviders(params.currentConfig, params.deps);
-  const payerRef = buildFarcasterX402PayerRef(configWithProviders, params.agentKey);
+  const payerRef = buildWalletPayerRef(configWithProviders, params.agentKey);
   setSecretRefString({
     deps: params.deps,
     config: configWithProviders,
@@ -819,7 +817,7 @@ async function resolvePayerSetupMode(params: {
 
   if (params.noPrompt || !isInteractive(params.deps)) {
     throw new Error(
-      "Missing --mode in non-interactive mode. Run: cli farcaster payer init --mode hosted|local-generate|local-key"
+      "Missing --mode in non-interactive mode. Run: cli wallet payer init --mode hosted|local-generate|local-key"
     );
   }
 
@@ -895,7 +893,7 @@ function printX402FundingHints(
     deps.stderr(`Payer address: ${setup.payerAddress}`);
     deps.stderr("Fund with USDC on Base. Suggested buffer: 0.10 USDC (~100 paid calls).");
   } else {
-    deps.stderr("Payer address is not available yet. Run `cli farcaster payer status` after wallet bootstrap.");
+    deps.stderr("Payer address is not available yet. Run `cli wallet payer status` after wallet bootstrap.");
   }
   if (setup.mode === "local") {
     deps.stderr("Local payer keys are stored in local file-backed secrets. Keep this wallet as low-balance hot funds.");
@@ -919,11 +917,11 @@ async function ensurePayerConfigForPost(params: {
 
   if (!isInteractive(params.deps)) {
     throw new Error(
-      "Missing payer config. Run `cli farcaster payer init --agent <key> --mode hosted|local-generate|local-key`."
+      "Missing payer config. Run `cli wallet payer init --agent <key> --mode hosted|local-generate|local-key`."
     );
   }
 
-  params.deps.stderr("No payer configured for this agent. Starting setup...");
+  params.deps.stderr("No wallet payer configured for this agent. Starting setup...");
   const setup = await runX402InitWorkflow({
     deps: params.deps,
     currentConfig: params.currentConfig,
@@ -1453,7 +1451,7 @@ async function requestHostedX402PaymentHeader(params: {
   expectedAgentKey: string;
   fallbackPayerAddress: string | null;
 }): Promise<X402PaymentHeader> {
-  const response = await apiPost(params.deps, "/api/buildbot/farcaster/x402-payment", {});
+  const response = await apiPost(params.deps, "/api/cli/farcaster/x402-payment", {});
   const payload = asRecord(response);
   const result = asRecord(payload.result);
   const xPayment =
@@ -1759,7 +1757,7 @@ export interface FarcasterSignupCommandInput {
   outDir?: string;
 }
 
-export interface FarcasterX402InitCommandInput {
+export interface WalletPayerInitCommandInput {
   agent?: string;
   mode?: string;
   privateKeyStdin?: boolean;
@@ -1767,7 +1765,7 @@ export interface FarcasterX402InitCommandInput {
   noPrompt?: boolean;
 }
 
-export interface FarcasterX402StatusCommandInput {
+export interface WalletPayerStatusCommandInput {
   agent?: string;
 }
 
@@ -1806,7 +1804,7 @@ export async function executeFarcasterSignupCommand(
 
   let response: unknown;
   try {
-    response = await apiPost(deps, "/api/buildbot/farcaster/signup", {
+    response = await apiPost(deps, "/api/cli/farcaster/signup", {
       signerPublicKey,
       ...(recovery ? { recoveryAddress: recovery } : {}),
       ...(extraStorage ? { extraStorage } : {}),
@@ -1849,8 +1847,8 @@ export async function executeFarcasterSignupCommand(
   return withSignerInfo(payload, signerPublicKey, false);
 }
 
-export async function executeFarcasterX402InitCommand(
-  input: FarcasterX402InitCommandInput,
+export async function executeWalletPayerInitCommand(
+  input: WalletPayerInitCommandInput,
   deps: CliDeps
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
@@ -1879,8 +1877,8 @@ export async function executeFarcasterX402InitCommand(
   };
 }
 
-export async function executeFarcasterX402StatusCommand(
-  input: FarcasterX402StatusCommandInput,
+export async function executeWalletPayerStatusCommand(
+  input: WalletPayerStatusCommandInput,
   deps: CliDeps
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
@@ -1891,7 +1889,7 @@ export async function executeFarcasterX402StatusCommand(
   });
   if (!stored) {
     throw new Error(
-      "No payer is configured for this agent. Run `cli farcaster payer init --mode hosted|local-generate|local-key`."
+      "No wallet payer is configured for this agent. Run `cli wallet payer init --mode hosted|local-generate|local-key`."
     );
   }
 

@@ -6,7 +6,7 @@
 - Runtime router (Incur command tree in `src/cli-incur.ts`):
   - `setup` -> `executeSetupCommand` (omitted when runtime is started with global `--mcp`)
   - `config` -> `executeConfigSetCommand` / `executeConfigShowCommand`
-  - `wallet` -> `executeWalletCommand`
+  - `wallet` -> `executeWallet*Command`
   - `farcaster` -> `executeFarcaster*Command`
   - `docs` -> `executeDocsCommand`
   - `tools` -> `executeTools*Command`
@@ -40,8 +40,8 @@
 7. Accept at most one token source (`--token`, `--token-file`, `--token-stdin`) and fail on conflicts.
 8. If browser approval fails/times out, fall back to hidden token prompt.
 9. Persist config locally.
-10. Bootstrap wallet via `/api/buildbot/wallet`.
-11. Optionally configure Farcaster payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
+10. Bootstrap wallet via `/api/cli/wallet`.
+11. Optionally configure wallet payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
 12. Emit structured setup result on stdout and emit wizard/progress/prompt text on stderr.
 
 ## Config and Agent Resolution Flow
@@ -73,22 +73,22 @@
 5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
 6. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
-## Farcaster Payer Init/Status Flow
+## Wallet Payer Init/Status Flow
 
-1. Parse `farcaster payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+1. Parse `wallet payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
 2. Resolve agent key from `--agent` or config default.
 3. Resolve mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
-4. Persist per-agent payer metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+4. Persist per-agent payer metadata at `~/.cobuild-cli/agents/<agent>/wallet/payer.json`.
 5. In local mode, persist payer private key via SecretRef file provider by default.
-6. `farcaster payer status` reads payer metadata and reports payer address/network/token/cost.
+6. `wallet payer status` reads payer metadata and reports payer address/network/token/cost.
 
 ## Farcaster Post Flow
 
 1. Parse `farcaster post` options (`--agent`, `--text`, `--fid`, `--signer-file`, `--idempotency-key`, `--verify` mode).
 2. Resolve signer secret + fid from local signer file (or explicit `--fid`).
-3. Resolve payer mode from per-agent `x402-payer.json` (prompted setup in interactive mode when missing).
+3. Resolve payer mode from per-agent `wallet/payer.json` (prompted setup in interactive mode when missing).
 4. Build x402 header:
-   - hosted mode: POST `/api/buildbot/farcaster/x402-payment`
+   - hosted mode: POST `/api/cli/farcaster/x402-payment`
    - local mode: sign USDC `TransferWithAuthorization` typed data locally and base64-encode payload
 5. Submit cast bytes to `https://hub-api.neynar.com/v1/submitMessage`.
 6. On 402 submit response, mint fresh payment and retry once.

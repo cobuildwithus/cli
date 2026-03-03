@@ -75,6 +75,8 @@ Runtime precedence:
 
 ```bash
 cli wallet --network <network> --agent <agent>
+cli wallet payer init --agent <agent> --mode hosted|local-generate|local-key [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+cli wallet payer status --agent <agent>
 cli docs <query> [--limit <n>]
 cli tools get-user <fname>
 cli tools get-cast <identifier> [--type <hash|url>]
@@ -97,7 +99,7 @@ Group command notes:
 
 - `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
 - `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
-- `wallet`, `send`, and `tx` call interface API `POST /api/buildbot/wallet` and `POST /api/buildbot/exec`.
+- `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
 - `config set --chat-api-url` (or `setup --chat-api-url`) is the preferred way to point canonical `/v1/*` calls at a separate Chat API origin.
 - Hosted `https://co.build` may still route `/v1/*` to Chat API at the edge; self-hosted installs can use either edge rewrites or explicit `chatApiUrl` config.
 

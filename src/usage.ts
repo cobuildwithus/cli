@@ -7,10 +7,10 @@ Usage:
   cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]
   cli config show
   cli wallet [--network <network>] [--agent <key>]
+  cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+  cli wallet payer status [--agent <key>]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
-  cli farcaster payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-  cli farcaster payer status [--agent <key>]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -32,10 +32,10 @@ Examples:
   cli config set --url http://localhost:3000 --chat-api-url http://localhost:4000 --token bbt_xxx --agent default
   cli config set --token-file ./cli.token
   cli wallet --network base-sepolia
+  cli wallet payer init --agent default --mode local-generate
+  cli wallet payer status --agent default
   cli farcaster signup --agent default
   cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
-  cli farcaster payer init --agent default --mode local-generate
-  cli farcaster payer status --agent default
   cli farcaster post --text "Ship update"
   cli farcaster post --text "Replying on thread" --reply-to 123:0x1111111111111111111111111111111111111111
   cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once

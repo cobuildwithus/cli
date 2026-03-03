@@ -35,7 +35,7 @@ function setHostedX402PayerConfig(
   payerAddress: string | null
 ): void {
   harness.files.set(
-    "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/x402-payer.json",
+    "/tmp/cli-tests/.cobuild-cli/agents/default/wallet/payer.json",
     JSON.stringify(
       {
         version: 1,
@@ -51,7 +51,7 @@ function setHostedX402PayerConfig(
   );
 }
 
-describe("farcaster payer coverage audit", () => {
+describe("wallet payer coverage audit", () => {
   it("initializes hosted payer from wallet.address payloads", async () => {
     const harness = createHarness({
       config: {
@@ -60,7 +60,7 @@ describe("farcaster payer coverage audit", () => {
       },
       fetchResponder: async (input) => {
         const url = String(input);
-        if (url === "https://api.example/api/buildbot/wallet?agentKey=default") {
+        if (url === "https://api.example/api/cli/wallet?agentKey=default") {
           return {
             ok: true,
             status: 200,
@@ -79,7 +79,7 @@ describe("farcaster payer coverage audit", () => {
       },
     });
 
-    await runCli(["farcaster", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
+    await runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
@@ -90,7 +90,7 @@ describe("farcaster payer coverage audit", () => {
       },
     });
     const persisted = JSON.parse(
-      harness.files.get("/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/x402-payer.json") ?? "{}"
+      harness.files.get("/tmp/cli-tests/.cobuild-cli/agents/default/wallet/payer.json") ?? "{}"
     ) as { mode?: string; payerAddress?: string | null };
     expect(persisted.mode).toBe("hosted");
     expect(persisted.payerAddress).toBe("0x00000000000000000000000000000000000000bb");
@@ -103,7 +103,7 @@ describe("farcaster payer coverage audit", () => {
     await expect(
       runCli(
         [
-          "farcaster",
+          "wallet",
           "payer",
           "init",
           "--mode",
@@ -126,7 +126,7 @@ describe("farcaster payer coverage audit", () => {
       },
       fetchResponder: async (input) => {
         const url = String(input);
-        if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
+        if (url.endsWith("/api/cli/farcaster/x402-payment")) {
           return {
             ok: true,
             status: 200,
@@ -202,7 +202,7 @@ describe("farcaster payer coverage audit", () => {
       },
       fetchResponder: async (input, init) => {
         const url = String(input);
-        if (url.endsWith("/api/buildbot/farcaster/x402-payment")) {
+        if (url.endsWith("/api/cli/farcaster/x402-payment")) {
           x402Calls += 1;
           return {
             ok: true,

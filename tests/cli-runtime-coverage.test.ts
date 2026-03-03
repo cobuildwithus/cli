@@ -57,6 +57,14 @@ describe("cli runtime coverage", () => {
     ).toEqual(["--json", "farcaster", "post", "--verify=once"]);
   });
 
+  it("does not rewrite legacy farcaster payer command paths after hard cutover", () => {
+    expect(cliIncur.preprocessIncurArgv(["farcaster", "payer", "status"])).toEqual([
+      "farcaster",
+      "payer",
+      "status",
+    ]);
+  });
+
   it("treats leading --json as setup machine-mode when command is setup", () => {
     expect(
       cliIncur.preprocessIncurArgv(["--json", "setup", "--url", "https://api.example"])

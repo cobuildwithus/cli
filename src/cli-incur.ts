@@ -100,11 +100,6 @@ function normalizeFarcasterPostArgv(argv: string[]): string[] {
   return normalized;
 }
 
-function normalizeFarcasterPayerArgv(argv: string[]): string[] {
-  if (argv[0] !== "farcaster" || argv[1] !== "payer") return argv;
-  return ["wallet", "payer", ...argv.slice(2)];
-}
-
 function normalizeDocsArgv(argv: string[]): string[] {
   if (argv[0] !== "docs") return argv;
 
@@ -264,7 +259,7 @@ export function preprocessIncurArgv(argv: string[]): string[] {
   const commandNormalizedTail = normalizeSetupArgv(
     normalizeToolsArgv(
       normalizeDocsArgv(
-        normalizeFarcasterPayerArgv(normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail)))
+        normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail))
       )
     )
   );
