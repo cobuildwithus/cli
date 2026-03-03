@@ -118,7 +118,7 @@ describe("oauth helpers", () => {
     );
     expect(JSON.parse(String(deps.fetch.mock.calls[0]?.[1]?.body))).toEqual({
       grant_type: "authorization_code",
-      client_id: "buildbot_cli",
+      client_id: CLI_OAUTH_PUBLIC_CLIENT_ID,
       code: "code-1",
       redirect_uri: "http://127.0.0.1:43111/auth/callback",
       code_verifier: "A".repeat(43),
@@ -152,7 +152,7 @@ describe("oauth helpers", () => {
     });
     expect(JSON.parse(String(deps.fetch.mock.calls[0]?.[1]?.body))).toEqual({
       grant_type: "refresh_token",
-      client_id: "buildbot_cli",
+      client_id: CLI_OAUTH_PUBLIC_CLIENT_ID,
       refresh_token: "rfr_old",
     });
   });

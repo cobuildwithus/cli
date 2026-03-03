@@ -5,6 +5,7 @@ import { executeTxCommand } from "./commands/tx.js";
 import { registerConfigCommand } from "./incur/commands/config.command.js";
 import { registerDocsCommand } from "./incur/commands/docs.command.js";
 import { registerFarcasterCommand } from "./incur/commands/farcaster.command.js";
+import { registerGoalCommand } from "./incur/commands/goal.command.js";
 import { registerToolsCommand } from "./incur/commands/tools.command.js";
 import { registerWalletCommand } from "./incur/commands/wallet.command.js";
 import type { CliDeps } from "./types.js";
@@ -298,6 +299,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   registerConfigCommand(root, deps);
   registerWalletCommand(root, deps);
   registerFarcasterCommand(root, deps);
+  registerGoalCommand(root, deps);
   registerDocsCommand(root, deps, decodeEscapedPositional);
   registerToolsCommand(root, deps, decodeEscapedPositional);
 

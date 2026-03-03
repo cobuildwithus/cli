@@ -50,6 +50,13 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
   - `hosted` mode calls `/api/cli/farcaster/x402-payment`.
   - `local` mode signs USDC typed data locally and emits `X-PAYMENT` without backend signing.
 
+### `goal`
+
+- `goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
+- Builds GoalFactory `deployGoal` calldata from JSON params using shared wire ABI contracts.
+- Executes through the existing hosted/local wallet split (`/api/cli/exec` in hosted mode, local viem tx in local mode).
+- Attempts to decode `GoalDeployed` from the transaction receipt when available.
+
 ### `docs`
 
 - `docs <query> [--limit <n>]`

@@ -8,6 +8,7 @@
   - `config` -> `executeConfigSetCommand` / `executeConfigShowCommand`
   - `wallet` -> `executeWallet*Command`
   - `farcaster` -> `executeFarcaster*Command`
+  - `goal` -> `executeGoalCreateCommand`
   - `docs` -> `executeDocsCommand`
   - `tools` -> `executeTools*Command`
   - `send` -> `executeSendCommand`
@@ -24,7 +25,7 @@
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.
 4. Incur resolves command path, parses args/options, and routes directly to structured command executors.
-5. Command modules execute directly from Incur inputs via `execute*Command` APIs (no argv reparse shim for docs/tools/wallet/config/send/tx/setup).
+5. Command modules execute directly from Incur inputs via `execute*Command` APIs (no argv reparse shim for docs/tools/wallet/config/send/tx/setup/goal).
 
 ## Setup Flow
 
@@ -94,6 +95,16 @@
 6. On 402 submit response, mint fresh payment and retry once.
 7. Optional verification (`none|once|poll`) queries `https://hub-api.neynar.com/v1/castById`.
 8. Persist/replay idempotency receipts under `~/.cobuild-cli/agents/<agent>/farcaster/posts/<uuid>.json`.
+
+## Goal Create Flow
+
+1. Parse `goal create` options (`--factory`, exactly one params source, optional `--network`, `--agent`, `--idempotency-key`).
+2. Parse JSON params and extract GoalFactory `DeployParams` payload.
+3. Encode `deployGoal` calldata using GoalFactory ABI exported by `@cobuild/wire`.
+4. Execute transaction through existing wallet split:
+   - hosted mode: POST `/api/cli/exec` with `kind: tx`
+   - local mode: execute local wallet tx path
+5. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed`.
 
 ## Tools Flow
 
