@@ -47,7 +47,7 @@ describe("setup URL defaults and normalization", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--token", "bbt_secret"], harness.deps);
+    await runCli(["setup", "--wallet-mode", "hosted", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/cli/wallet");
@@ -61,7 +61,7 @@ describe("setup URL defaults and normalization", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--dev", "--token", "bbt_secret"], harness.deps);
+    await runCli(["setup", "--wallet-mode", "hosted", "--dev", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
@@ -75,7 +75,10 @@ describe("setup URL defaults and normalization", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "localhost:3000", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--wallet-mode", "hosted", "--url", "localhost:3000", "--token", "bbt_secret"],
+      harness.deps
+    );
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
@@ -90,7 +93,7 @@ describe("setup URL defaults and normalization", () => {
     });
 
     await runCli(
-      ["setup", "--url", "localhost:3000/co.build", "--token", "bbt_secret"],
+      ["setup", "--wallet-mode", "hosted", "--url", "localhost:3000/co.build", "--token", "bbt_secret"],
       harness.deps
     );
 
@@ -106,7 +109,10 @@ describe("setup URL defaults and normalization", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "co.build", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--wallet-mode", "hosted", "--url", "co.build", "--token", "bbt_secret"],
+      harness.deps
+    );
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/cli/wallet");
@@ -120,7 +126,10 @@ describe("setup URL defaults and normalization", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--dev", "--url", "https://co.build", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--wallet-mode", "hosted", "--dev", "--url", "https://co.build", "--token", "bbt_secret"],
+      harness.deps
+    );
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("https://co.build")

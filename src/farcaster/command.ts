@@ -43,6 +43,10 @@ import {
   writeStoredX402PayerConfig,
 } from "./payer.js";
 import {
+  executeLocalFarcasterSignup,
+  LocalFarcasterAlreadyRegisteredError,
+} from "./local-signup.js";
+import {
   generateEd25519PrivateKey,
   normalizeDirectoryOption,
   normalizeSignerFileOption,
@@ -150,7 +154,7 @@ export interface FarcasterSignupCommandInput {
   outDir?: string;
 }
 
-export interface WalletPayerInitCommandInput {
+export interface WalletInitCommandInput {
   agent?: string;
   mode?: string;
   privateKeyStdin?: boolean;
@@ -158,7 +162,7 @@ export interface WalletPayerInitCommandInput {
   noPrompt?: boolean;
 }
 
-export interface WalletPayerStatusCommandInput {
+export interface WalletStatusCommandInput {
   agent?: string;
 }
 
@@ -194,6 +198,68 @@ export async function executeFarcasterSignupCommand(
   const signerPublicKey = bytesToHex(
     await ed.getPublicKeyAsync(signerPrivateKey)
   ) as `0x${string}`;
+  let walletConfig: ReturnType<typeof readStoredX402PayerConfig> = null;
+  try {
+    walletConfig = readStoredX402PayerConfig({
+      deps,
+      agentKey,
+    });
+  } catch {
+    // Signup can proceed without wallet metadata; local mode is an optimization path.
+    walletConfig = null;
+  }
+
+  if (walletConfig?.mode === "local") {
+    const privateKeyHex = resolveLocalPayerPrivateKey({
+      deps,
+      currentConfig: current,
+      payerConfig: walletConfig,
+    });
+    let localResult: Awaited<ReturnType<typeof executeLocalFarcasterSignup>>;
+    try {
+      localResult = await executeLocalFarcasterSignup({
+        deps,
+        privateKeyHex,
+        signerPublicKey,
+        ...(recovery ? { recoveryAddress: recovery } : {}),
+        ...(extraStorage ? { extraStorage } : {}),
+      });
+    } catch (error) {
+      if (error instanceof LocalFarcasterAlreadyRegisteredError) {
+        throw new Error(
+          `Farcaster account already exists for this agent wallet (fid=${error.fid}, custodyAddress=${error.custodyAddress}). Use a different --agent key for a new Farcaster signup.`
+        );
+      }
+      throw error;
+    }
+    if (localResult.status === "complete") {
+      saveSignerSecret({
+        deps,
+        config: current,
+        agentKey,
+        outputDirectory,
+        signerPublicKey,
+        signerPrivateKey,
+        result: localResult,
+      });
+      return withSignerInfo(
+        {
+          ok: true,
+          result: localResult,
+        },
+        signerPublicKey,
+        true
+      );
+    }
+    return withSignerInfo(
+      {
+        ok: true,
+        result: localResult,
+      },
+      signerPublicKey,
+      false
+    );
+  }
 
   let response: unknown;
   try {
@@ -240,8 +306,8 @@ export async function executeFarcasterSignupCommand(
   return withSignerInfo(payload, signerPublicKey, false);
 }
 
-export async function executeWalletPayerInitCommand(
-  input: WalletPayerInitCommandInput,
+export async function executeWalletInitCommand(
+  input: WalletInitCommandInput,
   deps: CliDeps
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
@@ -260,9 +326,9 @@ export async function executeWalletPayerInitCommand(
   return {
     ok: true,
     agentKey,
-    payer: {
+    walletConfig: {
       mode: setup.mode,
-      payerAddress: setup.payerAddress,
+      walletAddress: setup.payerAddress,
       network: X402_NETWORK,
       token: X402_TOKEN_SYMBOL,
       costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
@@ -270,8 +336,8 @@ export async function executeWalletPayerInitCommand(
   };
 }
 
-export async function executeWalletPayerStatusCommand(
-  input: WalletPayerStatusCommandInput,
+export async function executeWalletStatusCommand(
+  input: WalletStatusCommandInput,
   deps: CliDeps
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
@@ -282,7 +348,7 @@ export async function executeWalletPayerStatusCommand(
   });
   if (!stored) {
     throw new Error(
-      "No wallet payer is configured for this agent. Run `cli wallet payer init --mode hosted|local-generate|local-key`."
+      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
     );
   }
 
@@ -303,7 +369,7 @@ export async function executeWalletPayerStatusCommand(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Hosted payer address is unknown and could not be fetched from backend wallet endpoint: ${message}`
+        `Hosted wallet address is unknown and could not be fetched from backend wallet endpoint: ${message}`
       );
     }
   }
@@ -322,9 +388,9 @@ export async function executeWalletPayerStatusCommand(
   return {
     ok: true,
     agentKey,
-    payer: {
+    walletConfig: {
       mode: stored.mode,
-      payerAddress,
+      walletAddress: payerAddress,
       network: stored.network,
       token: stored.token,
       costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),

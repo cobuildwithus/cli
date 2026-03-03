@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildCliAuthorizeUrl,
   createPkcePair,
+  CLI_OAUTH_DEFAULT_SCOPE,
+  CLI_OAUTH_PUBLIC_CLIENT_ID,
+  CLI_OAUTH_WRITE_SCOPE,
   exchangeAuthorizationCode,
-  OAUTH_CLIENT_ID,
-  OAUTH_DEFAULT_SCOPE,
   OAuthTokenRequestError,
   refreshAccessToken,
 } from "../src/oauth.js";
@@ -20,8 +21,8 @@ function createDeps(fetchImpl: (input: URL | string, init?: Record<string, unkno
 }
 
 describe("oauth helpers", () => {
-  it("creates valid PKCE verifier/challenge pairs", () => {
-    const { codeVerifier, codeChallenge } = createPkcePair();
+  it("creates valid PKCE verifier/challenge pairs", async () => {
+    const { codeVerifier, codeChallenge } = await createPkcePair();
     expect(codeVerifier).toMatch(/^[A-Za-z0-9._~-]{43,128}$/);
     expect(codeChallenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
@@ -35,13 +36,13 @@ describe("oauth helpers", () => {
         codeChallenge: "A".repeat(43),
         agentKey: "default",
         label: "  laptop-main  ",
-        payerMode: "hosted",
+        walletMode: "hosted",
       })
     );
-    expect(withLabel.searchParams.get("client_id")).toBe(OAUTH_CLIENT_ID);
-    expect(withLabel.searchParams.get("scope")).toBe(OAUTH_DEFAULT_SCOPE);
+    expect(withLabel.searchParams.get("client_id")).toBe(CLI_OAUTH_PUBLIC_CLIENT_ID);
+    expect(withLabel.searchParams.get("scope")).toBe(CLI_OAUTH_DEFAULT_SCOPE);
     expect(withLabel.searchParams.get("label")).toBe("laptop-main");
-    expect(withLabel.searchParams.get("payer_mode")).toBe("hosted");
+    expect(withLabel.searchParams.get("wallet_mode")).toBe("hosted");
 
     const withoutLabel = new URL(
       buildCliAuthorizeUrl({
@@ -55,6 +56,26 @@ describe("oauth helpers", () => {
     );
     expect(withoutLabel.searchParams.get("oauth_authorize")).toBe("1");
     expect(withoutLabel.searchParams.get("label")).toBeTruthy();
+
+    const withInvalidLabel = new URL(
+      buildCliAuthorizeUrl({
+        interfaceUrl: "https://co.build/",
+        redirectUri: "http://127.0.0.1:43113/auth/callback",
+        state: "state-3",
+        codeChallenge: "C".repeat(43),
+        agentKey: "default",
+        label: "<script>",
+      })
+    );
+    expect(withInvalidLabel.searchParams.get("label")).toBeTruthy();
+    expect(withInvalidLabel.searchParams.get("label")).not.toBe("<script>");
+  });
+
+  it("exposes read-only and write setup scope presets", () => {
+    expect(CLI_OAUTH_DEFAULT_SCOPE).toBe("offline_access tools:read wallet:read");
+    expect(CLI_OAUTH_WRITE_SCOPE).toBe(
+      "offline_access tools:read tools:write wallet:execute wallet:read"
+    );
   });
 
   it("exchanges authorization code tokens", async () => {

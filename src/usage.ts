@@ -3,12 +3,11 @@ import type { CliDeps } from "./types.js";
 export const USAGE_TEXT = `cli
 
 Usage:
-  cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <refresh-token>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]
+  cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <refresh-token>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--write] [--show-approval-url] --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>] [--json] [--link]
   cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <refresh-token>|--token-file <path>|--token-stdin [--agent <key>]
   cli config show
-  cli wallet [--network <network>] [--agent <key>]
-  cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-  cli wallet payer status [--agent <key>]
+  cli wallet [status] [--network <network>] [--agent <key>]
+  cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
   cli docs <query> [--limit <n>]
@@ -23,18 +22,18 @@ Usage:
 Examples:
   cli setup --url http://localhost:3000 --chat-api-url http://localhost:4000 --agent default --network base
   cli setup --url https://co.build --agent default
+  cli setup --url https://co.build --agent default --write
   cli setup --dev --agent default --network base
-  cli setup --url https://co.build --agent default --payer-mode hosted
-  cli setup --url https://co.build --agent default --payer-mode local-generate
-  echo "0x<64-hex-private-key>" | cli setup --url https://co.build --agent default --payer-mode local-key --payer-private-key-stdin
+  cli setup --url https://co.build --agent default --wallet-mode hosted
+  cli setup --url https://co.build --agent default --wallet-mode local-generate
+  echo "0x<64-hex-private-key>" | cli setup --url https://co.build --agent default --wallet-mode local-key --wallet-private-key-stdin
   echo "rfr_xxx" | cli setup --url http://localhost:3000 --token-stdin --network base
   cli setup --url http://localhost:3000 --network base --json
   cli setup --url http://localhost:3000 --network base --link
   cli config set --url http://localhost:3000 --chat-api-url http://localhost:4000 --token rfr_xxx --agent default
   cli config set --token-file ./cli.token
   cli wallet --network base
-  cli wallet payer init --agent default --mode local-generate
-  cli wallet payer status --agent default
+  cli wallet init --agent default --mode local-generate
   cli farcaster signup --agent default
   cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
   cli farcaster post --text "Ship update"

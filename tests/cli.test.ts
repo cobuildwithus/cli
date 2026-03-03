@@ -59,6 +59,16 @@ function expectedPersistedSetupConfig(url: string, chatApiUrl: string = DEFAULT_
   };
 }
 
+function expectedHostedWalletConfig(walletAddress: string | null) {
+  return {
+    mode: "hosted",
+    walletAddress,
+    network: "base",
+    token: "usdc",
+    costPerPaidCallMicroUsdc: "1000",
+  };
+}
+
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
     ok: status >= 200 && status < 300,
@@ -389,6 +399,8 @@ describe("cli", () => {
         "https://api.example",
         "--token",
         "bbt_secret",
+        "--wallet-mode",
+        "hosted",
         "--network",
         "base-sepolia",
       ],
@@ -412,6 +424,7 @@ describe("cli", () => {
       },
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: expectedHostedWalletConfig(null),
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
@@ -455,7 +468,7 @@ describe("cli", () => {
         "https://api.example",
         "--token",
         "bbt_secret",
-        "--payer-mode",
+        "--wallet-mode",
         "hosted",
       ],
       harness.deps
@@ -463,12 +476,12 @@ describe("cli", () => {
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(2);
     const output = parseLastJsonOutput(harness.outputs) as {
-      payer?: { mode?: string; payerAddress?: string | null };
+      walletConfig?: { mode?: string; walletAddress?: string | null };
       next?: string[];
     };
-    expect(output.payer).toEqual({
+    expect(output.walletConfig).toEqual({
       mode: "hosted",
-      payerAddress: "0x00000000000000000000000000000000000000aa",
+      walletAddress: "0x00000000000000000000000000000000000000aa",
       network: "base",
       token: "usdc",
       costPerPaidCallMicroUsdc: "1000",
@@ -487,6 +500,8 @@ describe("cli", () => {
         "https://api.example",
         "--token",
         "bbt_secret",
+        "--wallet-mode",
+        "hosted",
         "--network",
         "base-sepolia",
         "--json",
@@ -505,6 +520,7 @@ describe("cli", () => {
       },
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: expectedHostedWalletConfig(null),
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
@@ -525,6 +541,8 @@ describe("cli", () => {
         "https://api.example",
         "--token",
         "bbt_secret",
+        "--wallet-mode",
+        "hosted",
         "--network",
         "base-sepolia",
       ],
@@ -541,6 +559,7 @@ describe("cli", () => {
       },
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: expectedHostedWalletConfig(null),
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
@@ -562,10 +581,12 @@ describe("cli", () => {
         "https://chat.example",
         "--token",
         "bbt_secret",
+        "--wallet-mode",
+        "hosted",
       ],
       harness.deps
     );
-    expect(harness.fetchMock).toHaveBeenCalledTimes(1);
+    expect(harness.fetchMock).toHaveBeenCalledTimes(2);
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://interface.example",
       chatApiUrl: "https://chat.example",
@@ -587,7 +608,7 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "http://localhost:3000"], harness.deps);
+    await runCli(["setup", "--url", "http://localhost:3000", "--wallet-mode", "hosted"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
@@ -609,6 +630,8 @@ describe("cli", () => {
           "https://api.example",
           "--token",
           "bbt_bad_token",
+          "--wallet-mode",
+          "hosted",
           "--network",
           "base-sepolia",
         ],
@@ -639,6 +662,8 @@ describe("cli", () => {
           "https://api.example",
           "--token",
           "bbt_secret",
+          "--wallet-mode",
+          "hosted",
           "--network",
           "base-sepolia",
         ],
@@ -658,7 +683,7 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--token", "bbt_secret"], harness.deps);
+    await runCli(["setup", "--token", "bbt_secret", "--wallet-mode", "hosted"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/cli/wallet");
@@ -672,7 +697,7 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--dev", "--token", "bbt_secret"], harness.deps);
+    await runCli(["setup", "--dev", "--token", "bbt_secret", "--wallet-mode", "hosted"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
@@ -686,7 +711,10 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "localhost:3000", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--url", "localhost:3000", "--token", "bbt_secret", "--wallet-mode", "hosted"],
+      harness.deps
+    );
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
@@ -701,7 +729,15 @@ describe("cli", () => {
     });
 
     await runCli(
-      ["setup", "--url", "localhost:3000/co.build", "--token", "bbt_secret"],
+      [
+        "setup",
+        "--url",
+        "localhost:3000/co.build",
+        "--token",
+        "bbt_secret",
+        "--wallet-mode",
+        "hosted",
+      ],
       harness.deps
     );
 
@@ -717,7 +753,10 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "co.build", "--token", "bbt_secret"], harness.deps);
+    await runCli(
+      ["setup", "--url", "co.build", "--token", "bbt_secret", "--wallet-mode", "hosted"],
+      harness.deps
+    );
 
     const [input] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/cli/wallet");
@@ -728,7 +767,9 @@ describe("cli", () => {
 
   it("setup requires token in non-interactive mode when none is configured", async () => {
     const harness = createHarness();
-    await expect(runCli(["setup", "--url", "https://api.example"], harness.deps)).rejects.toThrow(
+    await expect(
+      runCli(["setup", "--url", "https://api.example", "--wallet-mode", "hosted"], harness.deps)
+    ).rejects.toThrow(
       "Missing --token and no config found."
     );
   });
@@ -747,7 +788,7 @@ describe("cli", () => {
     process.env.COBUILD_CLI_NETWORK = "base";
 
     try {
-      await runCli(["setup"], harness.deps);
+      await runCli(["setup", "--wallet-mode", "hosted"], harness.deps);
     } finally {
       if (previous === undefined) {
         delete process.env.COBUILD_CLI_NETWORK;
@@ -784,6 +825,7 @@ describe("cli", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       address: "0xabc",
+      walletConfig: expectedHostedWalletConfig(null),
     });
   });
 
@@ -795,6 +837,21 @@ describe("cli", () => {
       },
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
+    harness.files.set(
+      "/tmp/cli-tests/.cobuild-cli/agents/override/wallet/payer.json",
+      JSON.stringify(
+        {
+          version: 1,
+          mode: "hosted",
+          payerAddress: null,
+          network: "base",
+          token: "usdc",
+          createdAt: "2026-03-03T00:00:00.000Z",
+        },
+        null,
+        2
+      )
+    );
 
     await runCli(["wallet", "--agent", "override"], harness.deps);
 
@@ -2209,6 +2266,21 @@ describe("cli", () => {
       },
       fetchResponder: createJsonResponder({ ok: true, hash: "0x2" }),
     });
+    harness.files.set(
+      "/tmp/cli-tests/.cobuild-cli/agents/manual-agent/wallet/payer.json",
+      JSON.stringify(
+        {
+          version: 1,
+          mode: "hosted",
+          payerAddress: null,
+          network: "base",
+          token: "usdc",
+          createdAt: "2026-03-03T00:00:00.000Z",
+        },
+        null,
+        2
+      )
+    );
 
     await runCli(
       [

@@ -131,8 +131,8 @@ function createMaskingWriter(onWrite: (chunk: string) => void): MaskingWriter {
 async function promptSelectX402Mode(
   deps: Pick<CliDeps, "stderr">
 ): Promise<X402InitMode> {
-  deps.stderr("How should this agent pay for paid calls?");
-  deps.stderr("  1) hosted (recommended)");
+  deps.stderr("How should this wallet run paid calls?");
+  deps.stderr("  1) hosted");
   deps.stderr("  2) local-generate");
   deps.stderr("  3) local-key");
 
@@ -400,7 +400,7 @@ async function resolvePayerSetupMode(params: {
 
   if (params.noPrompt || !isInteractive(params.deps)) {
     throw new Error(
-      "Missing --mode in non-interactive mode. Run: cli wallet payer init --mode hosted|local-generate|local-key"
+      "Missing --mode in non-interactive mode. Run: cli wallet init --mode hosted|local-generate|local-key"
     );
   }
 
@@ -471,16 +471,16 @@ export function printX402FundingHints(
   setup: X402PayerSetupResult
 ): void {
   deps.stderr("");
-  deps.stderr(`Payer mode: ${setup.mode}`);
+  deps.stderr(`Wallet mode: ${setup.mode}`);
   if (setup.payerAddress) {
-    deps.stderr(`Payer address: ${setup.payerAddress}`);
+    deps.stderr(`Wallet address: ${setup.payerAddress}`);
     deps.stderr("Fund with USDC on Base. Suggested buffer: 0.10 USDC (~100 paid calls).");
   } else {
     /* v8 ignore next */
-    deps.stderr("Payer address is not available yet. Run `cli wallet payer status` after wallet bootstrap.");
+    deps.stderr("Wallet address is not available yet. Run `cli wallet status` after wallet bootstrap.");
   }
   if (setup.mode === "local") {
-    deps.stderr("Local payer keys are stored in local file-backed secrets. Keep this wallet as low-balance hot funds.");
+    deps.stderr("Local wallet keys are stored in local file-backed secrets. Keep this wallet as low-balance hot funds.");
   } else {
     deps.stderr("Hosted mode requires CLI auth and backend wallet access.");
   }
@@ -501,12 +501,12 @@ export async function ensurePayerConfigForPost(params: {
 
   if (!isInteractive(params.deps)) {
     throw new Error(
-      "Missing payer config. Run `cli wallet payer init --agent <key> --mode hosted|local-generate|local-key`."
+      "Missing wallet config. Run `cli wallet init --agent <key> --mode hosted|local-generate|local-key`."
     );
   }
 
   /* v8 ignore start */
-  params.deps.stderr("No wallet payer configured for this agent. Starting setup...");
+  params.deps.stderr("No wallet configured for this agent. Starting setup...");
   const setup = await runX402InitWorkflow({
     deps: params.deps,
     currentConfig: params.currentConfig,

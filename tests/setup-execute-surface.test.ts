@@ -17,6 +17,7 @@ describe("setup execute surface", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
+        walletMode: "hosted",
       },
       harness.deps
     );

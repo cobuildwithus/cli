@@ -5,13 +5,17 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { buildCliAuthorizeUrl, type CliSetupPayerModeHint } from "./oauth.js";
+import {
+  buildCliAuthorizeUrl,
+  CLI_OAUTH_REDIRECT_PATH,
+  type CliSetupWalletModeHint,
+} from "./oauth.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
 const SETUP_STATE_PATTERN = /^[A-Za-z0-9_-]{32,200}$/;
 const AUTH_CODE_PATTERN = /^[A-Za-z0-9._~-]{20,1024}$/;
-const CALLBACK_PATH = "/auth/callback";
+const CALLBACK_PATH = CLI_OAUTH_REDIRECT_PATH;
 
 export type SetupApprovalSession = {
   state: string;
@@ -118,7 +122,7 @@ export function buildSetupApprovalUrl(params: {
   codeChallenge: string;
   scope: string;
   label?: string;
-  payerMode?: CliSetupPayerModeHint;
+  walletMode?: CliSetupWalletModeHint;
 }): string {
   if (!isValidSetupState(params.state)) {
     throw new Error("Invalid setup state");
@@ -132,7 +136,7 @@ export function buildSetupApprovalUrl(params: {
     codeChallenge: params.codeChallenge,
     agentKey: params.agent,
     ...(params.label ? { label: params.label } : {}),
-    ...(params.payerMode ? { payerMode: params.payerMode } : {}),
+    ...(params.walletMode ? { walletMode: params.walletMode } : {}),
   });
 }
 

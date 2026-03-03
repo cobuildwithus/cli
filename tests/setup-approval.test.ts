@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { OAUTH_CLIENT_ID, OAUTH_DEFAULT_SCOPE } from "../src/oauth.js";
+import { CLI_OAUTH_DEFAULT_SCOPE, CLI_OAUTH_PUBLIC_CLIENT_ID } from "../src/oauth.js";
 import {
   buildSetupApprovalUrl,
   createSetupApprovalSession,
@@ -29,10 +29,10 @@ describe("setup approval", () => {
       callbackUrl,
       state: "a".repeat(32),
       agent: "default",
-      scope: OAUTH_DEFAULT_SCOPE,
+      scope: CLI_OAUTH_DEFAULT_SCOPE,
       codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
       label: "cli-default",
-      payerMode: "hosted",
+      walletMode: "hosted",
     });
 
     const parsed = new URL(url);
@@ -40,14 +40,14 @@ describe("setup approval", () => {
     expect(parsed.pathname).toBe("/home");
     expect(parsed.searchParams.get("oauth_authorize")).toBe("1");
     expect(parsed.searchParams.get("response_type")).toBe("code");
-    expect(parsed.searchParams.get("client_id")).toBe(OAUTH_CLIENT_ID);
+    expect(parsed.searchParams.get("client_id")).toBe(CLI_OAUTH_PUBLIC_CLIENT_ID);
     expect(parsed.searchParams.get("redirect_uri")).toBe(callbackUrl);
     expect(parsed.searchParams.get("state")).toBe("a".repeat(32));
-    expect(parsed.searchParams.get("scope")).toBe(OAUTH_DEFAULT_SCOPE);
+    expect(parsed.searchParams.get("scope")).toBe(CLI_OAUTH_DEFAULT_SCOPE);
     expect(parsed.searchParams.get("agent_key")).toBe("default");
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
     expect(parsed.searchParams.get("label")).toBe("cli-default");
-    expect(parsed.searchParams.get("payer_mode")).toBe("hosted");
+    expect(parsed.searchParams.get("wallet_mode")).toBe("hosted");
   });
 
   it("rejects invalid setup state values", () => {
@@ -58,7 +58,7 @@ describe("setup approval", () => {
         callbackUrl: "http://127.0.0.1:12345/auth/callback",
         state: "bad state",
         agent: "default",
-        scope: OAUTH_DEFAULT_SCOPE,
+        scope: CLI_OAUTH_DEFAULT_SCOPE,
         codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
       })
     ).toThrow("Invalid setup state");
@@ -70,7 +70,7 @@ describe("setup approval", () => {
       callbackUrl: "http://127.0.0.1:43210/auth/callback",
       state: "b".repeat(32),
       agent: "default",
-      scope: OAUTH_DEFAULT_SCOPE,
+      scope: CLI_OAUTH_DEFAULT_SCOPE,
       codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
     });
 

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@cobuild/wire':
+        specifier: link:../wire
+        version: link:../wire
       '@farcaster/hub-nodejs':
         specifier: ^0.15.10
         version: 0.15.10(typescript@5.9.3)(zod@4.3.6)

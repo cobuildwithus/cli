@@ -28,7 +28,7 @@ describe("env contract hard cutover", () => {
     };
     harness.deps.isInteractive = () => false;
 
-    await runCli(["setup", "--token", "bbt_secret"], harness.deps);
+    await runCli(["setup", "--wallet-mode", "hosted", "--token", "bbt_secret"], harness.deps);
 
     const [input, init] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://co.build/api/cli/wallet");
@@ -49,7 +49,7 @@ describe("env contract hard cutover", () => {
     jsonHarness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
       jsonHarness.deps
     );
 
@@ -64,6 +64,13 @@ describe("env contract hard cutover", () => {
       },
       defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: {
+        mode: "hosted",
+        walletAddress: null,
+        network: "base",
+        token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
+      },
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
@@ -79,7 +86,7 @@ describe("env contract hard cutover", () => {
     legacyOnlyHarness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
       legacyOnlyHarness.deps
     );
 
@@ -94,6 +101,13 @@ describe("env contract hard cutover", () => {
       },
       defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: {
+        mode: "hosted",
+        walletAddress: null,
+        network: "base",
+        token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
+      },
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",

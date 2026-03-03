@@ -101,7 +101,7 @@ describe("setup/config trust-boundary hardening", () => {
     try {
       process.chdir(spoofRepo);
       await runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--link"],
+        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted", "--link"],
         harness.deps
       );
     } finally {
@@ -132,7 +132,7 @@ describe("setup/config trust-boundary hardening", () => {
     };
     harness.deps.isInteractive = () => true;
 
-    await runCli(["setup", "--payer-mode", "skip"], harness.deps);
+    await runCli(["setup", "--wallet-mode", "hosted"], harness.deps);
 
     expect(harness.errors).toContain("Using interface URL from COBUILD_CLI_URL: https://env.example");
     expect(harness.errors).toContain("Using default network from COBUILD_CLI_NETWORK: base");
@@ -153,7 +153,7 @@ describe("setup/config trust-boundary hardening", () => {
     const restoreStderr = overrideIsTty(process.stderr, true);
     try {
       await runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
+        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
         harness.deps
       );
     } finally {
@@ -177,8 +177,8 @@ describe("setup/config trust-boundary hardening", () => {
     };
     harness.deps.isInteractive = () => false;
 
-    await runCli(["setup", "--url", "https://interface.example"], harness.deps);
-    expect(harness.fetchMock).toHaveBeenCalledTimes(1);
+    await runCli(["setup", "--url", "https://interface.example", "--wallet-mode", "hosted"], harness.deps);
+    expect(harness.fetchMock).toHaveBeenCalledTimes(2);
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://interface.example",
@@ -202,7 +202,7 @@ describe("setup/config trust-boundary hardening", () => {
     };
     harness.deps.isInteractive = () => false;
 
-    await expect(runCli(["setup"], harness.deps)).rejects.toThrow(
+    await expect(runCli(["setup", "--wallet-mode", "hosted"], harness.deps)).rejects.toThrow(
       "COBUILD_CLI_URL came from environment for first-time setup. Pass --url explicitly to trust it."
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -214,7 +214,10 @@ describe("setup/config trust-boundary hardening", () => {
     });
 
     await expect(
-      runCli(["setup", "--url", "http://api.example", "--token", "bbt_secret"], harness.deps)
+      runCli(
+        ["setup", "--url", "http://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
+        harness.deps
+      )
     ).rejects.toThrow(
       "Interface URL must use https (http is allowed only for localhost, 127.0.0.1, or [::1])."
     );
@@ -227,7 +230,10 @@ describe("setup/config trust-boundary hardening", () => {
     });
 
     await expect(
-      runCli(["setup", "--url", "https://user:pass@api.example", "--token", "bbt_secret"], harness.deps)
+      runCli(
+        ["setup", "--url", "https://user:pass@api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
+        harness.deps
+      )
     ).rejects.toThrow("Interface URL must not include username or password.");
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
@@ -238,7 +244,10 @@ describe("setup/config trust-boundary hardening", () => {
     });
     harness.deps.readStdin = async () => "bbt_from_stdin\n";
 
-    await runCli(["setup", "--url", "https://api.example", "--token-stdin"], harness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token-stdin", "--wallet-mode", "hosted"],
+      harness.deps
+    );
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
@@ -262,7 +271,10 @@ describe("setup/config trust-boundary hardening", () => {
     const tokenFile = "/tmp/cli-setup-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
-    await runCli(["setup", "--url", "https://api.example", "--token-file", tokenFile], harness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token-file", tokenFile, "--wallet-mode", "hosted"],
+      harness.deps
+    );
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
       url: "https://api.example",
@@ -303,7 +315,10 @@ describe("setup/config trust-boundary hardening", () => {
     };
 
     await expect(
-      runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], harness.deps)
+      runCli(
+        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
+        harness.deps
+      )
     ).rejects.toThrow(
       "OAuth authorization failed while bootstrapping wallet access. Token cleanup may have failed; remove persisted credentials manually before retrying setup."
     );
@@ -334,7 +349,7 @@ describe("setup/config trust-boundary hardening", () => {
       )
     );
 
-    await runCli(["setup", "--url", "https://api.example"], harness.deps);
+    await runCli(["setup", "--url", "https://api.example", "--wallet-mode", "hosted"], harness.deps);
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(init?.headers).toMatchObject({
@@ -358,7 +373,10 @@ describe("setup/config trust-boundary hardening", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["setup", "--url", "https://api.example", "--token", "bbt_override"], harness.deps);
+    await runCli(
+      ["setup", "--url", "https://api.example", "--token", "bbt_override", "--wallet-mode", "hosted"],
+      harness.deps
+    );
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(init?.headers).toMatchObject({
@@ -382,7 +400,9 @@ describe("setup/config trust-boundary hardening", () => {
     });
     harness.deps.isInteractive = () => false;
 
-    await expect(runCli(["setup", "--url", "https://api.example"], harness.deps)).rejects.toThrow(
+    await expect(
+      runCli(["setup", "--url", "https://api.example", "--wallet-mode", "hosted"], harness.deps)
+    ).rejects.toThrow(
       'Environment variable "MISSING_STORED_PAT" is missing or empty.'
     );
   });
@@ -392,22 +412,41 @@ describe("setup/config trust-boundary hardening", () => {
 
     await expect(
       runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--token-file", "/tmp/token.txt"],
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--token",
+          "bbt_a",
+          "--token-file",
+          "/tmp/token.txt",
+          "--wallet-mode",
+          "hosted",
+        ],
         harness.deps
       )
     ).rejects.toThrow("Provide only one of --token, --token-file, or --token-stdin.");
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
-  it("setup rejects payer private key sources without --payer-mode local-key", async () => {
+  it("setup rejects payer private key sources without --wallet-mode local-key", async () => {
     const harness = createHarness();
 
     await expect(
       runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--payer-private-key-stdin"],
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--token",
+          "bbt_a",
+          "--wallet-mode",
+          "hosted",
+          "--wallet-private-key-stdin",
+        ],
         harness.deps
       )
-    ).rejects.toThrow("--payer-private-key-stdin/--payer-private-key-file require --payer-mode local-key.");
+    ).rejects.toThrow("--wallet-private-key-stdin/--wallet-private-key-file require --wallet-mode local-key.");
   });
 
   it("setup rejects multiple payer private key input sources", async () => {
@@ -421,15 +460,15 @@ describe("setup/config trust-boundary hardening", () => {
           "https://api.example",
           "--token",
           "bbt_a",
-          "--payer-mode",
+          "--wallet-mode",
           "local-key",
-          "--payer-private-key-stdin",
-          "--payer-private-key-file",
+          "--wallet-private-key-stdin",
+          "--wallet-private-key-file",
           "/tmp/key.txt",
         ],
         harness.deps
       )
-    ).rejects.toThrow("Provide only one of --payer-private-key-stdin or --payer-private-key-file.");
+    ).rejects.toThrow("Provide only one of --wallet-private-key-stdin or --wallet-private-key-file.");
   });
 
   it("setup rejects local-key mode without a key source in non-interactive mode", async () => {
@@ -438,11 +477,11 @@ describe("setup/config trust-boundary hardening", () => {
 
     await expect(
       runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--payer-mode", "local-key"],
+        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--wallet-mode", "local-key"],
         harness.deps
       )
     ).rejects.toThrow(
-      "--payer-mode local-key requires --payer-private-key-stdin or --payer-private-key-file in non-interactive mode."
+      "--wallet-mode local-key requires --wallet-private-key-stdin or --wallet-private-key-file in non-interactive mode."
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
@@ -458,14 +497,14 @@ describe("setup/config trust-boundary hardening", () => {
           "https://api.example",
           "--token",
           "bbt_a",
-          "--payer-mode",
+          "--wallet-mode",
           "local-key",
-          "--payer-private-key-file",
+          "--wallet-private-key-file",
           "/tmp/missing-x402.key",
         ],
         harness.deps
       )
-    ).rejects.toThrow("Could not read payer private key file: /tmp/missing-x402.key");
+    ).rejects.toThrow("Could not read wallet private key file: /tmp/missing-x402.key");
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
@@ -483,7 +522,7 @@ describe("setup/config trust-boundary hardening", () => {
     };
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--link"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted", "--link"],
       harness.deps
     );
 

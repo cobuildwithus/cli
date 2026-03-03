@@ -7,21 +7,21 @@ import type { CliConfig, CliDeps } from "../types.js";
 export const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
 export const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
 
-export type SetupPayerMode = "hosted" | "local-generate" | "local-key" | "skip";
+export type SetupWalletMode = "hosted" | "local-generate" | "local-key";
 
 export type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
 
-export function isSetupPayerMode(value: string): value is SetupPayerMode {
-  return value === "hosted" || value === "local-generate" || value === "local-key" || value === "skip";
+export function isSetupWalletMode(value: string): value is SetupWalletMode {
+  return value === "hosted" || value === "local-generate" || value === "local-key";
 }
 
-export function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | undefined {
+export function normalizeSetupWalletMode(value: string | undefined): SetupWalletMode | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim().toLowerCase();
-  if (isSetupPayerMode(normalized)) {
+  if (isSetupWalletMode(normalized)) {
     return normalized;
   }
-  throw new Error("--payer-mode must be one of: hosted, local-generate, local-key, skip");
+  throw new Error("--wallet-mode must be one of: hosted, local-generate, local-key");
 }
 
 export function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
@@ -77,15 +77,17 @@ export function getSetupWalletAddress(walletResponse: unknown): string | null {
 export function resolveInterfaceSetupCompleteUrl(params: {
   interfaceUrl: string;
   agent: string;
-  payerMode?: SetupPayerMode;
+  walletMode?: SetupWalletMode;
 }): string {
-  const { interfaceUrl, agent, payerMode } = params;
+  const { interfaceUrl, agent, walletMode } = params;
   const normalizedBase = interfaceUrl.endsWith("/") ? interfaceUrl : `${interfaceUrl}/`;
   const url = new URL("home", normalizedBase);
   url.searchParams.set("cli_setup_complete", "1");
   url.searchParams.set("agent_key", agent);
-  if (payerMode && payerMode !== "skip") {
-    url.searchParams.set("payer_mode", payerMode);
+  if (walletMode) {
+    url.searchParams.set("wallet_mode", walletMode);
+    // Keep old query key for in-flight interface deployments.
+    url.searchParams.set("payer_mode", walletMode);
   }
   return url.toString();
 }

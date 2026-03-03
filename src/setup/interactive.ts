@@ -27,9 +27,9 @@ export function printSetupSuccessSummary(params: {
   configPath: string;
   defaultNetwork: string;
   walletAddress: string | null;
-  payer?: {
+  walletConfig: {
     mode: "hosted" | "local";
-    payerAddress: string | null;
+    walletAddress: string | null;
     network: string;
     token: string;
     costPerPaidCallMicroUsdc: string;
@@ -43,11 +43,9 @@ export function printSetupSuccessSummary(params: {
     params.deps.stderr(`Wallet address: ${params.walletAddress}`);
   }
   params.deps.stderr(`Default network: ${params.defaultNetwork}`);
-  if (params.payer) {
-    params.deps.stderr(`Wallet payer mode: ${params.payer.mode}`);
-    if (params.payer.payerAddress) {
-      params.deps.stderr(`Wallet payer address: ${params.payer.payerAddress}`);
-    }
+  params.deps.stderr(`Wallet mode: ${params.walletConfig.mode}`);
+  if (params.walletConfig.walletAddress) {
+    params.deps.stderr(`Wallet mode address: ${params.walletConfig.walletAddress}`);
   }
   params.deps.stderr("");
   params.deps.stderr("Next:");

@@ -24,12 +24,12 @@ describe("backbone cutover audit regressions", () => {
     harness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--wallet-mode", "hosted"],
       harness.deps
     );
 
     expect(harness.errors).toContain("CLI Setup Wizard");
-    expect(harness.errors).toContain("[1/3] Interface URL");
+    expect(harness.errors).toContain("[1/4] Interface URL");
     expect(harness.outputs).toHaveLength(1);
     expect(harness.outputs.join("\n")).not.toContain("CLI Setup Wizard");
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
@@ -42,6 +42,13 @@ describe("backbone cutover audit regressions", () => {
       },
       defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
+      walletConfig: {
+        mode: "hosted",
+        walletAddress: null,
+        network: "base",
+        token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
+      },
       next: [
         "Run: cobuild wallet",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",

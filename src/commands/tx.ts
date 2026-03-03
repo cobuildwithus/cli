@@ -12,6 +12,8 @@ import {
   validateNonNegativeDecimal,
   withIdempotencyKey,
 } from "./shared.js";
+import { readStoredX402PayerConfig, resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
+import { executeLocalTx } from "../wallet/local-exec.js";
 
 const TX_USAGE =
   "Usage: cli tx --to <address> --data <hex> [--value] [--network] [--agent] [--idempotency-key]";
@@ -43,26 +45,57 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
   const agentKey = resolveAgentKey(input.agent, current.agent);
   const network = resolveNetwork(input.network, deps);
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
+  const walletConfig = readStoredX402PayerConfig({
+    deps,
+    agentKey,
+  });
+  if (!walletConfig) {
+    throw new Error(
+      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
+    );
+  }
 
   let response: unknown;
-  try {
-    response = await apiPost(
+  if (walletConfig.mode === "local") {
+    const privateKeyHex = resolveLocalPayerPrivateKey({
       deps,
-      "/api/cli/exec",
-      {
-        kind: "tx",
-        network,
+      currentConfig: current,
+      payerConfig: walletConfig,
+    });
+    try {
+      response = await executeLocalTx({
+        deps,
         agentKey,
+        privateKeyHex,
+        network,
         to: normalizedTo,
-        data: input.data,
         valueEth,
-      },
-      {
-        headers: buildIdempotencyHeaders(idempotencyKey),
-      }
-    );
-  } catch (error) {
-    throwWithIdempotencyKey(error, idempotencyKey);
+        data: input.data,
+        idempotencyKey,
+      });
+    } catch (error) {
+      throwWithIdempotencyKey(error, idempotencyKey);
+    }
+  } else {
+    try {
+      response = await apiPost(
+        deps,
+        "/api/cli/exec",
+        {
+          kind: "tx",
+          network,
+          agentKey,
+          to: normalizedTo,
+          data: input.data,
+          valueEth,
+        },
+        {
+          headers: buildIdempotencyHeaders(idempotencyKey),
+        }
+      );
+    } catch (error) {
+      throwWithIdempotencyKey(error, idempotencyKey);
+    }
   }
 
   return withIdempotencyKey(idempotencyKey, response) as TxCommandOutput;

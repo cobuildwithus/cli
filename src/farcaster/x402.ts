@@ -1,4 +1,12 @@
-import { randomBytes } from "node:crypto";
+import {
+  X402_TRANSFER_PRIMARY_TYPE,
+  buildX402AuthorizationPayload,
+  buildX402PaymentPayload,
+  buildX402TypedDataDomain,
+  buildX402TypedDataTypes,
+  decodeAndValidateX402PaymentPayload,
+  encodeX402PaymentPayload,
+} from "@cobuild/wire";
 import { privateKeyToAccount } from "viem/accounts";
 import { apiPost, asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
@@ -7,13 +15,10 @@ import {
   USDC_EIP712_DOMAIN_NAME,
   USDC_EIP712_DOMAIN_VERSION,
   X402_AUTH_TTL_SECONDS,
-  X402_AUTH_VALID_AFTER,
   X402_NETWORK,
   X402_PAY_TO_ADDRESS,
-  X402_SCHEME,
   X402_USDC_CONTRACT,
   X402_VALUE_MICRO_USDC,
-  X402_VERSION,
 } from "./constants.js";
 import type {
   HexString,
@@ -21,9 +26,14 @@ import type {
   X402PaymentHeader,
 } from "./types.js";
 
-function buildAuthorizationNonce(): HexString {
-  return (`0x${randomBytes(32).toString("hex")}` as HexString);
-}
+const X402_TYPED_DATA_DOMAIN = buildX402TypedDataDomain({
+  name: USDC_EIP712_DOMAIN_NAME,
+  version: USDC_EIP712_DOMAIN_VERSION,
+  chainId: BASE_CHAIN_ID,
+  verifyingContract: X402_USDC_CONTRACT,
+});
+
+const X402_TYPED_DATA_TYPES = buildX402TypedDataTypes();
 
 async function buildLocalX402PaymentHeader(params: {
   expectedAgentKey: string;
@@ -32,37 +42,20 @@ async function buildLocalX402PaymentHeader(params: {
 }): Promise<X402PaymentHeader> {
   const account = privateKeyToAccount(params.privateKeyHex);
   if (params.payerAddress.toLowerCase() !== account.address.toLowerCase()) {
-    throw new Error("Local payer config mismatch: payerAddress does not match private key.");
+    throw new Error("Local wallet config mismatch: walletAddress does not match private key.");
   }
-  const nonce = buildAuthorizationNonce();
   const validBefore = Math.floor(Date.now() / 1000) + X402_AUTH_TTL_SECONDS;
-  const authorization = {
+  const authorization = buildX402AuthorizationPayload({
     from: account.address,
-    to: X402_PAY_TO_ADDRESS as HexString,
-    value: X402_VALUE_MICRO_USDC,
-    validAfter: X402_AUTH_VALID_AFTER,
-    validBefore: String(validBefore),
-    nonce,
-  };
+    validBefore,
+  });
 
   const signature = await account.signTypedData({
-    domain: {
-      name: USDC_EIP712_DOMAIN_NAME,
-      version: USDC_EIP712_DOMAIN_VERSION,
-      chainId: BASE_CHAIN_ID,
-      verifyingContract: X402_USDC_CONTRACT,
-    },
+    domain: X402_TYPED_DATA_DOMAIN,
     types: {
-      TransferWithAuthorization: [
-        { name: "from", type: "address" },
-        { name: "to", type: "address" },
-        { name: "value", type: "uint256" },
-        { name: "validAfter", type: "uint256" },
-        { name: "validBefore", type: "uint256" },
-        { name: "nonce", type: "bytes32" },
-      ],
+      TransferWithAuthorization: X402_TYPED_DATA_TYPES.TransferWithAuthorization,
     },
-    primaryType: "TransferWithAuthorization",
+    primaryType: X402_TRANSFER_PRIMARY_TYPE,
     message: {
       from: authorization.from,
       to: authorization.to,
@@ -73,18 +66,14 @@ async function buildLocalX402PaymentHeader(params: {
     },
   });
 
-  const xPaymentPayload = {
-    x402Version: X402_VERSION,
-    scheme: X402_SCHEME,
-    network: X402_NETWORK,
-    payload: {
-      signature,
-      authorization,
-    },
-  };
+  const xPaymentPayload = buildX402PaymentPayload({
+    signature,
+    authorization,
+  });
+  const xPayment = encodeX402PaymentPayload(xPaymentPayload);
 
   return {
-    xPayment: Buffer.from(JSON.stringify(xPaymentPayload)).toString("base64"),
+    xPayment,
     payerAddress: params.payerAddress,
     payerAgentKey: params.expectedAgentKey,
     x402Token: X402_USDC_CONTRACT,
@@ -132,7 +121,49 @@ async function requestHostedX402PaymentHeader(params: {
   };
 }
 
-function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "hosted"): void {
+function remapWireX402ValidationError(message: string, source: "local" | "hosted"): string {
+  if (message === "x402 payment header is not valid base64 JSON") {
+    return `x402 payment header from ${source} source is not valid base64 JSON.`;
+  }
+  if (message === "x402 payment payload must be a JSON object") {
+    return `x402 payment header from ${source} source is not a JSON object.`;
+  }
+  if (message === "x402 payment payload is missing payload.authorization") {
+    return `x402 payment header from ${source} source is missing payload.authorization.`;
+  }
+  if (message === "x402 payment header is missing payload.authorization.to") {
+    return `x402 payment header from ${source} source is missing payload.authorization.to.`;
+  }
+  if (message.startsWith('x402 payment "to" address mismatch:')) {
+    return `${message} Refusing to send payment to unknown address.`;
+  }
+  if (message.startsWith("x402 payment value mismatch:")) {
+    return `${message} Refusing to send unexpected payment amount.`;
+  }
+  if (message === "x402 payment header is missing payload.authorization.validBefore") {
+    return `x402 payment header from ${source} source is missing payload.authorization.validBefore.`;
+  }
+  if (message.startsWith("x402 payment header has invalid payload.authorization.validBefore")) {
+    return message.replace(
+      "x402 payment header has invalid payload.authorization.validBefore",
+      `x402 payment header from ${source} source has invalid payload.authorization.validBefore`
+    );
+  }
+  if (message.startsWith("x402 payment header has expired")) {
+    const withSource = message.replace(
+      "x402 payment header has expired",
+      `x402 payment header from ${source} source has expired`
+    );
+    return withSource.endsWith(".") ? withSource : `${withSource}.`;
+  }
+
+  return message;
+}
+
+function assertX402PayloadShapeCompatibility(
+  xPaymentBase64: string,
+  source: "local" | "hosted"
+): void {
   let decoded: unknown;
   try {
     decoded = JSON.parse(Buffer.from(xPaymentBase64, "base64").toString("utf-8"));
@@ -145,13 +176,6 @@ function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "h
   }
 
   const payload = decoded as Record<string, unknown>;
-
-  if (payload.network !== X402_NETWORK) {
-    throw new Error(
-      `x402 payment header network mismatch: expected "${X402_NETWORK}", got "${String(payload.network)}".`
-    );
-  }
-
   const inner = payload.payload as Record<string, unknown> | undefined;
   const auth = inner?.authorization as Record<string, unknown> | undefined;
   if (!auth) {
@@ -162,36 +186,27 @@ function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "h
     throw new Error(`x402 payment header from ${source} source is missing payload.authorization.to.`);
   }
 
-  const normalizedTo = auth.to.toLowerCase();
-  if (normalizedTo !== X402_PAY_TO_ADDRESS) {
-    throw new Error(
-      `x402 payment "to" address mismatch: expected ${X402_PAY_TO_ADDRESS}, got ${normalizedTo}. Refusing to send payment to unknown address.`
-    );
-  }
-
-  const normalizedValue = String(auth.value);
-  if (normalizedValue !== X402_VALUE_MICRO_USDC) {
-    throw new Error(
-      `x402 payment value mismatch: expected ${X402_VALUE_MICRO_USDC}, got ${normalizedValue}. Refusing to send unexpected payment amount.`
-    );
-  }
-
   if (typeof auth.validBefore !== "string" && typeof auth.validBefore !== "number") {
     throw new Error(
       `x402 payment header from ${source} source is missing payload.authorization.validBefore.`
     );
   }
+}
 
-  const validBefore = Number(auth.validBefore);
-  if (!Number.isFinite(validBefore)) {
-    throw new Error(
-      `x402 payment header from ${source} source has invalid payload.authorization.validBefore (${String(auth.validBefore)}).`
-    );
-  }
+function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "hosted"): void {
+  assertX402PayloadShapeCompatibility(xPaymentBase64, source);
 
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  if (validBefore <= nowSeconds) {
-    throw new Error(`x402 payment header from ${source} source has expired (validBefore=${validBefore}).`);
+  try {
+    decodeAndValidateX402PaymentPayload(xPaymentBase64, {
+      requiredNetwork: X402_NETWORK,
+      requiredPayTo: X402_PAY_TO_ADDRESS,
+      requiredValue: X402_VALUE_MICRO_USDC,
+      requireUnexpired: true,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(remapWireX402ValidationError(message, source));
   }
 }
 

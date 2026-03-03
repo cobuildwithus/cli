@@ -33,6 +33,9 @@
     "docs:drift": "bash scripts/check-agent-docs-drift.sh",
     "docs:gardening": "bash scripts/doc-gardening.sh --fail-on-issues",
     "review:gpt": "scripts/chatgpt-oracle-review.sh",
+    "wire:status": "pnpm pkg get dependencies.@cobuild/wire",
+    "wire:use-local": "bash scripts/wire-use-local.sh",
+    "wire:use-published": "bash scripts/wire-use-published.sh",
     "zip:src": "bash scripts/package-audit-context.sh --zip",
     "verify": "pnpm typecheck && pnpm test:coverage",
     "changelog:update": "bash scripts/update-changelog.sh",
@@ -53,6 +56,7 @@
   },
   "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531",
   "dependencies": {
+    "@cobuild/wire": "link:../wire",
     "@farcaster/hub-nodejs": "^0.15.10",
     "@noble/ed25519": "^2.2.3",
     "incur": "0.1.12",

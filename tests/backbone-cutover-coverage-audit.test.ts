@@ -83,7 +83,7 @@ describe("backbone cutover coverage audit", () => {
     const signupOutput = farcasterSignup?.schema?.output as { properties?: Record<string, unknown> } | undefined;
     const postOutput = farcasterPost?.schema?.output as { properties?: Record<string, unknown> } | undefined;
 
-    expect(walletOutput?.properties).toHaveProperty("payer");
+    expect(walletOutput?.properties).toHaveProperty("walletConfig");
     expect(signupOutput?.properties).toHaveProperty("signer");
     expect(postOutput?.properties).toHaveProperty("idempotencyKey");
   });

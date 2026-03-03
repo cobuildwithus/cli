@@ -50,7 +50,7 @@ describe("farcaster payer module coverage", () => {
       }
     );
 
-    expect(lines.join("\n")).toContain("Payer address is not available yet");
+    expect(lines.join("\n")).toContain("Wallet address is not available yet");
     expect(lines.join("\n")).toContain("Hosted mode requires CLI auth");
   });
 
@@ -71,7 +71,9 @@ describe("farcaster payer module coverage", () => {
         currentConfig: baseConfig(),
         agentKey: "default",
       })
-    ).rejects.toThrow("Missing payer config");
+    ).rejects.toThrow(
+      "Missing wallet config. Run `cli wallet init --agent <key> --mode hosted|local-generate|local-key`."
+    );
   });
 
   it("validates payer setup mode and supports local-key stdin flow", async () => {

@@ -1,32 +1,31 @@
 import { Cli, z } from "incur";
 import {
   executeWalletCommand,
-  executeWalletPayerInitCommand,
-  executeWalletPayerStatusCommand,
+  executeWalletInitCommand,
+  executeWalletStatusCommand,
 } from "../../commands/wallet.js";
 import type { CliDeps } from "../../types.js";
 
 export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
-  const walletPayerOutput = z.object({
+  const walletConfigOutput = z.object({
     mode: z.enum(["hosted", "local"]),
-    payerAddress: z.string().nullable(),
+    walletAddress: z.string().nullable(),
     network: z.string(),
     token: z.string(),
-    costPerPaidCallMicroUsdc: z.string(),
+    costPerPaidCallMicroUsdc: z.string().optional(),
   });
   const walletOutput = z
     .object({
       ok: z.boolean().optional(),
       address: z.string().optional(),
       agentKey: z.string().optional(),
-      payer: walletPayerOutput.optional(),
+      walletConfig: walletConfigOutput.optional(),
     })
     .passthrough();
 
   root.command("wallet", {
-    description: "Fetch wallet details and manage payer configuration",
+    description: "Fetch wallet details and manage wallet configuration",
     args: z.object({
-      namespace: z.string().optional(),
       action: z.string().optional(),
     }),
     options: z.object({
@@ -39,10 +38,9 @@ export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
     }),
     output: walletOutput,
     run(context) {
-      const namespace = context.args.namespace?.trim().toLowerCase();
       const action = context.args.action?.trim().toLowerCase();
 
-      if (namespace === undefined && action === undefined) {
+      if (action === undefined) {
         return executeWalletCommand(
           {
             network: context.options.network,
@@ -52,8 +50,17 @@ export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
         ) as Promise<z.infer<typeof walletOutput>>;
       }
 
-      if (namespace === "payer" && action === "init") {
-        return executeWalletPayerInitCommand(
+      if (action === "status") {
+        return executeWalletStatusCommand(
+          {
+            agent: context.options.agent,
+          },
+          deps
+        ) as Promise<z.infer<typeof walletOutput>>;
+      }
+
+      if (action === "init") {
+        return executeWalletInitCommand(
           {
             agent: context.options.agent,
             mode: context.options.mode,
@@ -65,17 +72,8 @@ export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
         ) as Promise<z.infer<typeof walletOutput>>;
       }
 
-      if (namespace === "payer" && action === "status") {
-        return executeWalletPayerStatusCommand(
-          {
-            agent: context.options.agent,
-          },
-          deps
-        ) as Promise<z.infer<typeof walletOutput>>;
-      }
-
       throw new Error(
-        "Usage:\n  cli wallet [--network <network>] [--agent <key>]\n  cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]\n  cli wallet payer status [--agent <key>]"
+        "Usage:\n  cli wallet [status] [--network <network>] [--agent <key>]\n  cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]"
       );
     },
   });

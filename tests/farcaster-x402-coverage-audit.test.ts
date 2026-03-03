@@ -6,6 +6,11 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+function mockSignatureHex(label: string): string {
+  const encoded = Buffer.from(label, "utf-8").toString("hex");
+  return `0x${encoded.length > 0 ? encoded : "00"}`;
+}
+
 function mockXPayment(label: string): string {
   return Buffer.from(
     JSON.stringify({
@@ -13,7 +18,7 @@ function mockXPayment(label: string): string {
       scheme: "exact",
       network: "base",
       payload: {
-        signature: `0x${label}`,
+        signature: mockSignatureHex(label),
         authorization: {
           from: "0x0000000000000000000000000000000000000001",
           to: "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1",
@@ -79,14 +84,14 @@ describe("wallet payer coverage audit", () => {
       },
     });
 
-    await runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
+    await runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
       agentKey: "default",
-      payer: {
+      walletConfig: {
         mode: "hosted",
-        payerAddress: "0x00000000000000000000000000000000000000bb",
+        walletAddress: "0x00000000000000000000000000000000000000bb",
       },
     });
     const persisted = JSON.parse(
@@ -104,7 +109,6 @@ describe("wallet payer coverage audit", () => {
       runCli(
         [
           "wallet",
-          "payer",
           "init",
           "--mode",
           "local-key",

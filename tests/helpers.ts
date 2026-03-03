@@ -29,6 +29,28 @@ export function createHarness(options: CreateHarnessOptions = {}): TestHarness {
     files.set(configFile, options.rawConfig);
   } else if (options.config) {
     files.set(configFile, JSON.stringify(options.config, null, 2));
+    const hasAuthToken =
+      (typeof options.config.token === "string" && options.config.token.trim().length > 0) ||
+      options.config.auth?.tokenRef !== undefined;
+    if (hasAuthToken) {
+      const agentKey = options.config.agent ?? "default";
+      const walletConfigPath = `${home}/.cobuild-cli/agents/${agentKey}/wallet/payer.json`;
+      files.set(
+        walletConfigPath,
+        JSON.stringify(
+          {
+            version: 1,
+            mode: "hosted",
+            payerAddress: null,
+            network: "base",
+            token: "usdc",
+            createdAt: "2026-03-03T00:00:00.000Z",
+          },
+          null,
+          2
+        )
+      );
+    }
   }
 
   const fetchResponder =

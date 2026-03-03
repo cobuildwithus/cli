@@ -1,12 +1,12 @@
 /* v8 ignore file */
 import {
+  CLI_OAUTH_DEFAULT_SCOPE,
   createPkcePair,
   exchangeAuthorizationCode,
-  OAUTH_DEFAULT_SCOPE,
 } from "../oauth.js";
 import { buildSetupApprovalUrl, createSetupApprovalSession } from "../setup-approval.js";
 import type { CliDeps } from "../types.js";
-import { resolveInterfaceSetupCompleteUrl, type SetupPayerMode } from "./env.js";
+import { resolveInterfaceSetupCompleteUrl, type SetupWalletMode } from "./env.js";
 
 export function isAuthFailure(error: unknown): boolean {
   return error instanceof Error && /unauthorized|forbidden/i.test(error.message);
@@ -20,11 +20,18 @@ export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
 
-function redactApprovalUrlForDisplay(value: string): string {
+export function redactApprovalUrlForDisplay(value: string): string {
   try {
     const url = new URL(value);
-    if (!url.hash) return url.toString();
-    url.hash = "#<redacted>";
+    const sensitiveParams = new Set(["state", "code_challenge", "redirect_uri"]);
+    for (const key of sensitiveParams) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.set(key, "<redacted>");
+      }
+    }
+    if (url.hash) {
+      url.hash = "#<redacted>";
+    }
     return url.toString();
   } catch {
     return value;
@@ -34,9 +41,13 @@ function redactApprovalUrlForDisplay(value: string): string {
 async function maybeOpenInterface(
   openUrl: string,
   displayUrl: string,
+  showApprovalUrl: boolean,
   deps: CliDeps
 ): Promise<boolean> {
   deps.stderr(`Opening ${displayUrl} in your browser...`);
+  if (showApprovalUrl) {
+    deps.stderr(`Approval URL: ${openUrl}`);
+  }
 
   let opened = false;
   if (deps.openExternal) {
@@ -49,7 +60,12 @@ async function maybeOpenInterface(
 
   if (!opened) {
     deps.stderr("Could not open a browser automatically.");
-    deps.stderr(`Open this URL manually: ${openUrl}`);
+    if (showApprovalUrl) {
+      deps.stderr(`Open this URL manually: ${openUrl}`);
+    } else {
+      deps.stderr(`Open this URL manually: ${displayUrl}`);
+      deps.stderr("Re-run with --show-approval-url to print the full approval URL.");
+    }
     return false;
   }
 
@@ -98,7 +114,9 @@ async function maybeRefocusTerminalWindow(): Promise<void> {
 async function requestAuthorizationCodeViaBrowser(params: {
   interfaceUrl: string;
   agent: string;
-  payerMode?: SetupPayerMode;
+  scope: string;
+  walletMode?: SetupWalletMode;
+  showApprovalUrl?: boolean;
   deps: CliDeps;
 }): Promise<{
   code: string;
@@ -108,10 +126,12 @@ async function requestAuthorizationCodeViaBrowser(params: {
   const {
     interfaceUrl,
     agent,
-    payerMode,
+    scope,
+    walletMode,
+    showApprovalUrl,
     deps,
   } = params;
-  const { codeVerifier, codeChallenge } = createPkcePair();
+  const { codeVerifier, codeChallenge } = await createPkcePair();
 
   let session: Awaited<ReturnType<typeof createSetupApprovalSession>> | null = null;
   try {
@@ -119,7 +139,7 @@ async function requestAuthorizationCodeViaBrowser(params: {
       postAuthRedirectUrl: resolveInterfaceSetupCompleteUrl({
         interfaceUrl,
         agent,
-        payerMode,
+        walletMode,
       }),
     });
   } catch (error) {
@@ -133,16 +153,21 @@ async function requestAuthorizationCodeViaBrowser(params: {
       callbackUrl: session.callbackUrl,
       state: session.state,
       agent,
-      scope: OAUTH_DEFAULT_SCOPE,
+      scope,
       codeChallenge,
-      ...(payerMode ? { payerMode } : {}),
+      ...(walletMode ? { walletMode } : {}),
     });
     const approvalUrlForDisplay = redactApprovalUrlForDisplay(approvalUrl);
 
     deps.stderr("Approve CLI authorization in the browser to continue.");
-    const opened = await maybeOpenInterface(approvalUrl, approvalUrlForDisplay, deps);
+    const opened = await maybeOpenInterface(
+      approvalUrl,
+      approvalUrlForDisplay,
+      showApprovalUrl === true,
+      deps
+    );
     if (!opened) {
-      deps.stderr(`If a browser did not open, visit: ${approvalUrl}`);
+      deps.stderr("Waiting for browser authorization after manual URL handoff...");
     }
     deps.stderr("Waiting for browser authorization...");
 
@@ -166,13 +191,17 @@ export async function requestRefreshTokenViaBrowser(params: {
   interfaceUrl: string;
   chatApiUrl: string;
   agent: string;
-  payerMode?: SetupPayerMode;
+  scope?: string;
+  walletMode?: SetupWalletMode;
+  showApprovalUrl?: boolean;
   deps: CliDeps;
 }): Promise<string | null> {
   const browserAuthorization = await requestAuthorizationCodeViaBrowser({
     interfaceUrl: params.interfaceUrl,
     agent: params.agent,
-    payerMode: params.payerMode,
+    scope: params.scope ?? CLI_OAUTH_DEFAULT_SCOPE,
+    walletMode: params.walletMode,
+    showApprovalUrl: params.showApprovalUrl,
     deps: params.deps,
   });
   if (!browserAuthorization) {

@@ -7,6 +7,11 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+function mockSignatureHex(label: string): string {
+  const encoded = Buffer.from(label, "utf-8").toString("hex");
+  return `0x${encoded.length > 0 ? encoded : "00"}`;
+}
+
 /** Build a structurally valid x402 payment header that passes `validateX402PaymentPayload`. */
 function mockXPayment(
   label = "mock",
@@ -33,10 +38,10 @@ function mockXPayment(
     payload:
       overrides?.includeAuthorization === false
         ? {
-            signature: `0x${label}`,
+            signature: mockSignatureHex(label),
           }
         : {
-            signature: `0x${label}`,
+            signature: mockSignatureHex(label),
             authorization,
           },
   };
@@ -155,9 +160,9 @@ describe("farcaster command", () => {
 
   it("validates wallet payer usage for missing/unknown actions", async () => {
     const harness = createHarness();
-    await expect(runCli(["wallet", "payer"], harness.deps)).rejects.toThrow("cli wallet payer init");
+    await expect(runCli(["wallet", "payer"], harness.deps)).rejects.toThrow("cli wallet init");
     await expect(runCli(["wallet", "payer", "nope"], harness.deps)).rejects.toThrow(
-      "cli wallet payer init"
+      "cli wallet init"
     );
   });
 
@@ -169,19 +174,19 @@ describe("farcaster command", () => {
     });
 
     await runCli(
-      ["wallet", "payer", "init", "--mode", "local-generate", "--no-prompt"],
+      ["wallet", "init", "--mode", "local-generate", "--no-prompt"],
       harness.deps
     );
 
     const output = parseLastJsonOutput(harness.outputs) as {
       ok?: boolean;
       agentKey?: string;
-      payer?: { mode?: string; payerAddress?: string | null };
+      walletConfig?: { mode?: string; walletAddress?: string | null };
     };
     expect(output.ok).toBe(true);
     expect(output.agentKey).toBe("alice");
-    expect(output.payer?.mode).toBe("local");
-    expect(output.payer?.payerAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(output.walletConfig?.mode).toBe("local");
+    expect(output.walletConfig?.walletAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
 
     const payerPath = "/tmp/cli-tests/.cobuild-cli/agents/alice/wallet/payer.json";
     const payer = JSON.parse(harness.files.get(payerPath) ?? "{}") as {
@@ -239,14 +244,14 @@ describe("farcaster command", () => {
       )
     );
 
-    await runCli(["wallet", "payer", "status"], harness.deps);
+    await runCli(["wallet", "status"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
       agentKey: "default",
-      payer: {
+      walletConfig: {
         mode: "hosted",
-        payerAddress: "0x00000000000000000000000000000000000000aa",
+        walletAddress: "0x00000000000000000000000000000000000000aa",
       },
     });
 
@@ -264,7 +269,6 @@ describe("farcaster command", () => {
       runCli(
         [
           "wallet",
-          "payer",
           "init",
           "--mode",
           "hosted",
@@ -280,7 +284,6 @@ describe("farcaster command", () => {
       runCli(
         [
           "wallet",
-          "payer",
           "init",
           "--mode",
           "local-key",
@@ -294,7 +297,7 @@ describe("farcaster command", () => {
     ).rejects.toThrow("Provide only one of --private-key-stdin or --private-key-file.");
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "local-key", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "local-key", "--no-prompt"], harness.deps)
     ).rejects.toThrow(
       "local-key mode requires --private-key-stdin or --private-key-file in non-interactive mode."
     );
@@ -304,7 +307,6 @@ describe("farcaster command", () => {
       runCli(
         [
           "wallet",
-          "payer",
           "init",
           "--mode",
           "local-key",
@@ -321,7 +323,6 @@ describe("farcaster command", () => {
       runCli(
         [
           "wallet",
-          "payer",
           "init",
           "--mode",
           "local-key",
@@ -341,7 +342,6 @@ describe("farcaster command", () => {
     await runCli(
       [
         "wallet",
-        "payer",
         "init",
         "--agent",
         "stdin-agent",
@@ -354,16 +354,16 @@ describe("farcaster command", () => {
     );
 
     const output = parseLastJsonOutput(harness.outputs) as {
-      payer?: { mode?: string; payerAddress?: string | null };
+      walletConfig?: { mode?: string; walletAddress?: string | null };
     };
-    expect(output.payer?.mode).toBe("local");
-    expect(output.payer?.payerAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(output.walletConfig?.mode).toBe("local");
+    expect(output.walletConfig?.walletAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 
   it("rejects unknown payer init mode values", async () => {
     const harness = createHarness();
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "invalid", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "invalid", "--no-prompt"], harness.deps)
     ).rejects.toThrow("--mode must be one of: hosted, local-generate, local-key");
   });
 
@@ -381,7 +381,7 @@ describe("farcaster command", () => {
     });
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
     ).rejects.toThrow("Hosted payer setup requires backend wallet access: Request failed (status 500): internal error");
   });
 
@@ -405,7 +405,7 @@ describe("farcaster command", () => {
     });
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
     ).rejects.toThrow(
       "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at result.ownerAccountAddress."
     );
@@ -433,7 +433,7 @@ describe("farcaster command", () => {
     });
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
     ).rejects.toThrow(
       "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at result.wallet.address."
     );
@@ -457,7 +457,7 @@ describe("farcaster command", () => {
     });
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
     ).rejects.toThrow(
       "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at ownerAccountAddress."
     );
@@ -482,13 +482,13 @@ describe("farcaster command", () => {
       }),
     });
 
-    await runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
+    await runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
-      payer: {
+      walletConfig: {
         mode: "hosted",
-        payerAddress: "0x00000000000000000000000000000000000000bb",
+        walletAddress: "0x00000000000000000000000000000000000000bb",
       },
     });
   });
@@ -513,7 +513,7 @@ describe("farcaster command", () => {
     });
 
     await expect(
-      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+      runCli(["wallet", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
     ).rejects.toThrow(
       "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at wallet.address."
     );
@@ -521,8 +521,8 @@ describe("farcaster command", () => {
 
   it("errors when payer status is requested before payer setup", async () => {
     const harness = createHarness();
-    await expect(runCli(["wallet", "payer", "status"], harness.deps)).rejects.toThrow(
-      "No wallet payer is configured for this agent. Run `cli wallet payer init --mode hosted|local-generate|local-key`."
+    await expect(runCli(["wallet", "status"], harness.deps)).rejects.toThrow(
+      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
     );
   });
 
@@ -544,20 +544,20 @@ describe("farcaster command", () => {
       )
     );
 
-    await expect(runCli(["wallet", "payer", "status"], harness.deps)).rejects.toThrow(
-      "No wallet payer is configured for this agent. Run `cli wallet payer init --mode hosted|local-generate|local-key`."
+    await expect(runCli(["wallet", "status"], harness.deps)).rejects.toThrow(
+      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
     );
   });
 
   it("resolves local payer address in status output from stored secret", async () => {
     const harness = createHarness();
     setLocalX402PayerConfig(harness);
-    await runCli(["wallet", "payer", "status"], harness.deps);
+    await runCli(["wallet", "status"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
-      payer: {
+      walletConfig: {
         mode: "local",
-        payerAddress: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/),
+        walletAddress: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/),
       },
     });
   });
@@ -590,8 +590,8 @@ describe("farcaster command", () => {
       )
     );
 
-    await expect(runCli(["wallet", "payer", "status"], harness.deps)).rejects.toThrow(
-      "Hosted payer address is unknown and could not be fetched from backend wallet endpoint: Request failed (status 500): internal error"
+    await expect(runCli(["wallet", "status"], harness.deps)).rejects.toThrow(
+      "Hosted wallet address is unknown and could not be fetched from backend wallet endpoint: Request failed (status 500): internal error"
     );
   });
 
@@ -614,7 +614,7 @@ describe("farcaster command", () => {
     );
 
     await expect(runCli(["farcaster", "post", "--text", "Ship update"], harness.deps)).rejects.toThrow(
-      "Missing payer config. Run `cli wallet payer init --agent <key> --mode hosted|local-generate|local-key`."
+      "Missing wallet config. Run `cli wallet init --agent <key> --mode hosted|local-generate|local-key`."
     );
   });
 

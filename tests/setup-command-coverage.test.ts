@@ -17,6 +17,7 @@ describe("setup command coverage", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
+        walletMode: "hosted",
       },
       harness.deps
     );
@@ -40,7 +41,7 @@ describe("setup command coverage", () => {
     });
   });
 
-  it("configures hosted payer during setup when requested", async () => {
+  it("configures hosted wallet during setup when requested", async () => {
     const harness = createHarness({
       fetchResponder: async (input) => {
         const url = String(input);
@@ -73,14 +74,14 @@ describe("setup command coverage", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
-        payerMode: "hosted",
+        walletMode: "hosted",
       },
       harness.deps
     );
 
-    expect(result.payer).toEqual({
+    expect(result.walletConfig).toEqual({
       mode: "hosted",
-      payerAddress: "0x00000000000000000000000000000000000000aa",
+      walletAddress: "0x00000000000000000000000000000000000000aa",
       network: "base",
       token: "usdc",
       costPerPaidCallMicroUsdc: "1000",
@@ -123,7 +124,7 @@ describe("setup command coverage", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
-        payerMode: "hosted",
+        walletMode: "hosted",
       },
       harness.deps
     );
@@ -134,7 +135,7 @@ describe("setup command coverage", () => {
     ]);
   });
 
-  it("rejects invalid payer mode values before any network call", async () => {
+  it("rejects invalid wallet mode values before any network call", async () => {
     const harness = createHarness();
 
     await expect(
@@ -142,11 +143,52 @@ describe("setup command coverage", () => {
         {
           url: "https://api.example",
           token: "bbt_secret",
-          payerMode: "invalid-mode",
+          walletMode: "invalid-mode",
         },
         harness.deps
       )
-    ).rejects.toThrow("--payer-mode must be one of: hosted, local-generate, local-key, skip");
+    ).rejects.toThrow("--wallet-mode must be one of: hosted, local-generate, local-key");
     expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("supports local-generate setup without auth token bootstrap", async () => {
+    const harness = createHarness();
+
+    const result = await executeSetupCommand(
+      {
+        url: "https://api.example",
+        walletMode: "local-generate",
+      },
+      harness.deps
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      config: {
+        interfaceUrl: "https://api.example",
+      },
+      walletConfig: {
+        mode: "local",
+        network: "base",
+        token: "usdc",
+      },
+    });
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects conflicting stdin sources in setup", async () => {
+    const harness = createHarness();
+
+    await expect(
+      executeSetupCommand(
+        {
+          url: "https://api.example",
+          tokenStdin: true,
+          walletMode: "local-key",
+          walletPrivateKeyStdin: true,
+        },
+        harness.deps
+      )
+    ).rejects.toThrow("Cannot combine --token-stdin with --wallet-private-key-stdin in one setup run.");
   });
 });
