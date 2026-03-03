@@ -16,7 +16,8 @@
     "CHANGELOG.md"
   ],
   "bin": {
-    "cli": "./dist/index.js"
+    "cli": "./dist/index.js",
+    "cobuild": "./dist/index.js"
   },
   "engines": {
     "node": ">=20"

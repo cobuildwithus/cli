@@ -114,15 +114,15 @@ function toOriginIdentifier(interfaceUrl: string | undefined): string {
   }
 }
 
-export function buildPatSecretKey(interfaceUrl: string | undefined): string {
-  return `pat:${toOriginIdentifier(interfaceUrl)}`;
+export function buildRefreshSecretKey(interfaceUrl: string | undefined): string {
+  return `oauth_refresh:${toOriginIdentifier(interfaceUrl)}`;
 }
 
-export function buildPatTokenRef(config: CliConfig, interfaceUrl: string | undefined): SecretRef {
+export function buildRefreshTokenRef(config: CliConfig, interfaceUrl: string | undefined): SecretRef {
   return {
     source: "file",
     provider: resolveStructuredFileProviderAlias(config),
-    id: toFileSecretRefId(buildPatSecretKey(interfaceUrl)),
+    id: toFileSecretRefId(buildRefreshSecretKey(interfaceUrl)),
   };
 }
 

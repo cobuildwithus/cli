@@ -14,7 +14,7 @@ function createJsonResponder(body: unknown) {
 }
 
 describe("tx network defaults", () => {
-  it("uses base-sepolia when --network and COBUILD_CLI_NETWORK are missing", async () => {
+  it("uses base when --network and COBUILD_CLI_NETWORK are missing", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -31,7 +31,7 @@ describe("tx network defaults", () => {
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
       kind: "tx",
-      network: "base-sepolia",
+      network: "base",
       agentKey: "default",
       to: VALID_TO,
       data: "0xdeadbeef",

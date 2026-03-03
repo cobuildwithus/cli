@@ -54,7 +54,7 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
   try {
     response = await apiPost(
       deps,
-      "/api/buildbot/exec",
+      "/api/cli/exec",
       {
         kind: "transfer",
         network,

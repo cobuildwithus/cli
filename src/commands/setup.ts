@@ -2,14 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  clearPersistedPatToken,
+  clearPersistedRefreshToken,
   configPath,
   DEFAULT_CHAT_API_URL,
   DEFAULT_INTERFACE_URL,
-  persistPatToken,
+  persistRefreshToken,
   readConfig,
   writeConfig,
 } from "../config.js";
+import {
+  createPkcePair,
+  exchangeAuthorizationCode,
+  OAUTH_DEFAULT_SCOPE,
+} from "../oauth.js";
 import { printJson } from "../output.js";
 import { isSecretRef } from "../secrets/ref-contract.js";
 import { resolveSecretRefString } from "../secrets/runtime.js";
@@ -27,14 +32,14 @@ import {
 import { executeWalletPayerInitCommand } from "./wallet.js";
 
 const SETUP_USAGE =
-  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]";
+  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <refresh-token>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
-  "PAT authorization failed while bootstrapping wallet access.",
+  "OAuth authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
-  "Run setup again and approve a fresh token in the browser.",
+  "Run setup again and approve a fresh browser authorization.",
 ].join(" ");
 const SETUP_AUTH_FAILURE_CLEANUP_WARNING_MESSAGE = [
-  "PAT authorization failed while bootstrapping wallet access.",
+  "OAuth authorization failed while bootstrapping wallet access.",
   "Token cleanup may have failed; remove persisted credentials manually before retrying setup.",
 ].join(" ");
 const SETUP_BACKEND_FAILURE_MESSAGE = [
@@ -43,6 +48,8 @@ const SETUP_BACKEND_FAILURE_MESSAGE = [
   "(CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).",
 ].join(" ");
 const CLI_PACKAGE_NAME = "@cobuild/cli";
+const CLI_PRIMARY_COMMAND = "cobuild";
+const CLI_FALLBACK_COMMAND = "cli";
 const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
 const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
@@ -154,6 +161,22 @@ function getSetupWalletAddress(walletResponse: unknown): string | null {
   return walletRecord && typeof walletRecord.address === "string" ? walletRecord.address : null;
 }
 
+function resolveInterfaceSetupCompleteUrl(params: {
+  interfaceUrl: string;
+  agent: string;
+  payerMode?: SetupPayerMode;
+}): string {
+  const { interfaceUrl, agent, payerMode } = params;
+  const normalizedBase = interfaceUrl.endsWith("/") ? interfaceUrl : `${interfaceUrl}/`;
+  const url = new URL("home", normalizedBase);
+  url.searchParams.set("cli_setup_complete", "1");
+  url.searchParams.set("agent_key", agent);
+  if (payerMode && payerMode !== "skip") {
+    url.searchParams.set("payer_mode", payerMode);
+  }
+  return url.toString();
+}
+
 function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim().toLowerCase();
@@ -161,21 +184,6 @@ function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | un
     return normalized;
   }
   throw new Error("--payer-mode must be one of: hosted, local-generate, local-key, skip");
-}
-
-async function promptSetupPayerMode(deps: Pick<CliDeps, "stderr">): Promise<SetupPayerMode> {
-  while (true) {
-    const input = (await promptLine(
-      "Wallet payer mode (hosted/local-generate/local-key/skip)",
-      "skip"
-    ))
-      .trim()
-      .toLowerCase();
-    if (isSetupPayerMode(input)) {
-      return input;
-    }
-    deps.stderr("Invalid payer mode. Choose: hosted, local-generate, local-key, or skip.");
-  }
 }
 
 function parseSetupPayerResult(payload: unknown): SetupCommandOutput["payer"] {
@@ -451,11 +459,13 @@ function printSetupSuccessSummary(params: {
   }
   params.deps.stderr("");
   params.deps.stderr("Next:");
-  params.deps.stderr("  cli wallet");
-  params.deps.stderr("  cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)");
+  params.deps.stderr(`  ${CLI_PRIMARY_COMMAND} wallet`);
+  params.deps.stderr(
+    `  ${CLI_PRIMARY_COMMAND} send usdc 0.10 <to> (or ${CLI_PRIMARY_COMMAND} send eth 0.00001 <to>)`
+  );
   if (params.linkStatus === "not-requested") {
     params.deps.stderr(
-      "If cli is not on your PATH, run `pnpm link --global` once (or use: pnpm start -- <command>)."
+      `If ${CLI_PRIMARY_COMMAND} is not on your PATH, run \`pnpm link --global\` once (or use: \`npx -y @cobuild/cli@latest <command>\`).`
     );
   }
 }
@@ -501,18 +511,33 @@ type SetupValueSource = "flag" | "config" | "env" | "default" | "interactive";
 
 type SetupOutputMode = "legacy" | "structured";
 
-async function requestTokenViaBrowser(params: {
+async function requestAuthorizationCodeViaBrowser(params: {
   interfaceUrl: string;
   agent: string;
-  network: string;
+  payerMode?: SetupPayerMode;
   deps: CliDeps;
-}): Promise<string | null> {
-  const { interfaceUrl, agent, network, deps } = params;
-  const expectedOrigin = new URL(interfaceUrl).origin;
+}): Promise<{
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+} | null> {
+  const {
+    interfaceUrl,
+    agent,
+    payerMode,
+    deps,
+  } = params;
+  const { codeVerifier, codeChallenge } = createPkcePair();
 
   let session: Awaited<ReturnType<typeof createSetupApprovalSession>> | null = null;
   try {
-    session = await createSetupApprovalSession({ expectedOrigin });
+    session = await createSetupApprovalSession({
+      postAuthRedirectUrl: resolveInterfaceSetupCompleteUrl({
+        interfaceUrl,
+        agent,
+        payerMode,
+      }),
+    });
   } catch (error) {
     deps.stderr(`Could not initialize secure setup channel (${getErrorMessage(error)}).`);
     return null;
@@ -523,22 +548,28 @@ async function requestTokenViaBrowser(params: {
       baseUrl: interfaceUrl,
       callbackUrl: session.callbackUrl,
       state: session.state,
-      network,
       agent,
+      scope: OAUTH_DEFAULT_SCOPE,
+      codeChallenge,
+      ...(payerMode ? { payerMode } : {}),
     });
     const approvalUrlForDisplay = redactApprovalUrlForDisplay(approvalUrl);
 
-    deps.stderr("Approve token generation in the browser to continue.");
+    deps.stderr("Approve CLI authorization in the browser to continue.");
     const opened = await maybeOpenInterface(approvalUrl, approvalUrlForDisplay, deps);
     if (!opened) {
       deps.stderr(`If a browser did not open, visit: ${approvalUrl}`);
     }
-    deps.stderr("Waiting for secure approval...");
+    deps.stderr("Waiting for browser authorization...");
 
-    const token = await session.waitForToken;
+    const code = await session.waitForCode;
     deps.stderr("Approval received from browser.");
     await maybeRefocusTerminalWindow();
-    return token;
+    return {
+      code,
+      redirectUri: session.callbackUrl,
+      codeVerifier,
+    };
   } catch (error) {
     deps.stderr(`Browser approval did not complete (${getErrorMessage(error)}).`);
     return null;
@@ -561,7 +592,7 @@ async function promptLine(question: string, defaultValue?: string): Promise<stri
 
 async function promptSecret(question: string): Promise<string> {
   if (!process.stdin.isTTY) {
-    throw new Error("Cannot prompt for token without a TTY. Pass --token <pat> instead.");
+    throw new Error("Cannot prompt for token without a TTY. Pass --token <refresh-token> instead.");
   }
 
   return new Promise((resolve, reject) => {
@@ -658,6 +689,8 @@ async function runSetupCommand(
       validateSetupPayerLocalKeyFileInput(input.payerPrivateKeyFile, deps);
     }
   }
+  const shouldConfigurePayer = requestedPayerMode !== undefined && requestedPayerMode !== "skip";
+  const interactiveSetupStepCount = shouldConfigurePayer ? 4 : 3;
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
   const storedChatApiUrl = typeof current.chatApiUrl === "string" ? current.chatApiUrl.trim() : "";
@@ -704,7 +737,7 @@ async function runSetupCommand(
 
   const defaultAgent = current.agent || "default";
   let networkSource: SetupValueSource = "default";
-  let defaultNetwork = "base-sepolia";
+  let defaultNetwork = "base";
   if (typeof input.network === "string") {
     defaultNetwork = input.network;
     networkSource = "flag";
@@ -724,7 +757,7 @@ async function runSetupCommand(
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 1, 4, "Interface URL");
+    printSetupStep(deps, 1, interactiveSetupStepCount, "Interface URL");
   }
   /* c8 ignore stop */
 
@@ -776,7 +809,7 @@ async function runSetupCommand(
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 2, 4, "Personal Access Token");
+    printSetupStep(deps, 2, interactiveSetupStepCount, "Browser authorization");
   }
   /* c8 ignore stop */
 
@@ -791,28 +824,39 @@ async function runSetupCommand(
       throw new Error(`${SETUP_USAGE}\nMissing --token and no config found.`);
     }
     /* c8 ignore start */
-    const browserToken = await requestTokenViaBrowser({
+    const browserAuthorization = await requestAuthorizationCodeViaBrowser({
       interfaceUrl: url,
       agent,
-      network: defaultNetwork,
+      payerMode: shouldConfigurePayer ? requestedPayerMode : undefined,
       deps,
     });
-    if (browserToken) {
-      token = browserToken;
+    if (browserAuthorization) {
+      try {
+        const exchanged = await exchangeAuthorizationCode({
+          deps,
+          chatApiUrl,
+          code: browserAuthorization.code,
+          redirectUri: browserAuthorization.redirectUri,
+          codeVerifier: browserAuthorization.codeVerifier,
+        });
+        token = exchanged.refreshToken;
+      } catch (error) {
+        deps.stderr(`OAuth token exchange failed (${getErrorMessage(error)}).`);
+      }
     }
     if (!token) {
       deps.stderr("Falling back to manual token entry.");
       deps.stderr("Tip: paste from clipboard instead of using --token in shell history.");
-      token = await promptSecret("CLI PAT token (input hidden)");
+      token = await promptSecret("CLI refresh token (input hidden)");
     }
     /* c8 ignore stop */
   } else {
     /* c8 ignore start */
     if (interactive) {
       if (tokenFromOption !== undefined) {
-        deps.stderr("Using a PAT provided on this command.");
+        deps.stderr("Using a refresh token provided on this command.");
       } else {
-        deps.stderr("Using an existing PAT from your config.");
+        deps.stderr("Using an existing refresh token from your config.");
       }
     }
     /* c8 ignore stop */
@@ -825,12 +869,12 @@ async function runSetupCommand(
 
   /* c8 ignore start */
   if (interactive) {
-    printSetupStep(deps, 3, 4, "Save config + bootstrap wallet");
+    printSetupStep(deps, 3, interactiveSetupStepCount, "Save config + bootstrap wallet");
   }
   /* c8 ignore stop */
 
   const path = configPath(deps);
-  const nextConfig = persistPatToken({
+  const nextConfig = persistRefreshToken({
     deps,
     config: {
       ...current,
@@ -855,7 +899,7 @@ async function runSetupCommand(
     if (isAuthFailure(error)) {
       let cleanupSucceeded = true;
       try {
-        clearPersistedPatToken(deps);
+        clearPersistedRefreshToken(deps);
       } catch {
         cleanupSucceeded = false;
       }
@@ -870,43 +914,22 @@ async function runSetupCommand(
   }
 
   let payer: SetupCommandOutput["payer"] | undefined;
-  let payerStepShown = false;
-  let payerModeSelectedInteractively = false;
-  const canPromptForPayerSelection = interactive && Boolean(process.stdin.isTTY && process.stderr.isTTY);
-  if (!requestedPayerMode && canPromptForPayerSelection) {
-    /* c8 ignore start */
-    printSetupStep(deps, 4, 4, "Wallet payer (optional)");
-    payerStepShown = true;
-    requestedPayerMode = await promptSetupPayerMode(deps);
-    payerModeSelectedInteractively = true;
-    /* c8 ignore stop */
-  }
-
-  if (requestedPayerMode && requestedPayerMode !== "skip") {
-    if (interactive && !payerStepShown) {
+  if (shouldConfigurePayer) {
+    if (interactive) {
       /* c8 ignore start */
-      printSetupStep(deps, 4, 4, "Wallet payer (optional)");
+      printSetupStep(deps, 4, interactiveSetupStepCount, "Wallet payer");
       /* c8 ignore stop */
     }
-    let payerResult: unknown;
-    try {
-      payerResult = await executeWalletPayerInitCommand(
-        {
-          agent,
-          mode: requestedPayerMode,
-          privateKeyStdin: input.payerPrivateKeyStdin,
-          privateKeyFile: input.payerPrivateKeyFile,
-          noPrompt: !interactive,
-        },
-        deps
-      );
-    } catch (error) {
-      if (!payerModeSelectedInteractively) {
-        throw error;
-      }
-      deps.stderr(`Skipped optional payer setup (${getErrorMessage(error)}).`);
-    }
-
+    const payerResult = await executeWalletPayerInitCommand(
+      {
+        agent,
+        mode: requestedPayerMode,
+        privateKeyStdin: input.payerPrivateKeyStdin,
+        privateKeyFile: input.payerPrivateKeyFile,
+        noPrompt: !interactive,
+      },
+      deps
+    );
     if (payerResult !== undefined) {
       payer = parseSetupPayerResult(payerResult);
     }
@@ -924,8 +947,8 @@ async function runSetupCommand(
     wallet: walletResponse,
     ...(payer ? { payer } : {}),
     next: [
-      "Run: cli wallet",
-      "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+      `Run: ${CLI_PRIMARY_COMMAND} wallet`,
+      `Run: ${CLI_PRIMARY_COMMAND} send usdc 0.10 <to> (or ${CLI_PRIMARY_COMMAND} send eth 0.00001 <to>)`,
     ],
   };
 

@@ -22,7 +22,7 @@
 
 3. Network boundary
 
-- HTTP calls to interface `/api/buildbot/*` endpoints are privileged operations.
+- HTTP calls to interface `/api/cli/*` endpoints are privileged operations.
 
 4. Remote service boundary
 

@@ -30,7 +30,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - add codex-style changelog and notes
 - split interface and chat-api endpoints
-- add buildbot tools commands
+- add CLI tools commands
 - normalize interface urls and add defaults
 - add docs search command
 - sync gpt draft workflow
@@ -57,10 +57,10 @@ All notable changes to this project will be documented in this file.
 - add funds safety audit assertions
 - hard-cut interface-only docs tools routing
 - migrate to shared review cli
-- sync buildbot-cli tool guidance
+- sync CLI tool guidance
 - add design and product spec docs
 - expand docs command coverage
-- cut over buildbot naming and skill docs
+- cut over CLI naming and skill docs
 - add ci coverage and codeql gates
 - first commit
 - add security hardening regression tests

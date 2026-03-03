@@ -28,15 +28,15 @@ describe("setup command coverage", () => {
         chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
     });
 
     const [input, init] = harness.fetchMock.mock.calls[0] ?? [];
-    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
+    expect(String(input)).toBe("https://api.example/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
     });
   });
 
@@ -44,14 +44,14 @@ describe("setup command coverage", () => {
     const harness = createHarness({
       fetchResponder: async (input) => {
         const url = String(input);
-        if (url.endsWith("/api/buildbot/wallet")) {
+        if (url.endsWith("/api/cli/wallet")) {
           return {
             ok: true,
             status: 200,
             text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
           };
         }
-        if (url.endsWith("/api/buildbot/wallet?agentKey=default")) {
+        if (url.endsWith("/api/cli/wallet?agentKey=default")) {
           return {
             ok: true,
             status: 200,
@@ -94,14 +94,14 @@ describe("setup command coverage", () => {
       fetchResponder: async (input) => {
         const url = String(input);
         requestedUrls.push(url);
-        if (url === "https://api.example/api/buildbot/wallet") {
+        if (url === "https://api.example/api/cli/wallet") {
           return {
             ok: true,
             status: 200,
             text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
           };
         }
-        if (url === "https://api.example/api/buildbot/wallet?agentKey=default") {
+        if (url === "https://api.example/api/cli/wallet?agentKey=default") {
           return {
             ok: true,
             status: 200,
@@ -129,8 +129,8 @@ describe("setup command coverage", () => {
     );
 
     expect(requestedUrls).toEqual([
-      "https://api.example/api/buildbot/wallet",
-      "https://api.example/api/buildbot/wallet?agentKey=default",
+      "https://api.example/api/cli/wallet",
+      "https://api.example/api/cli/wallet?agentKey=default",
     ]);
   });
 

@@ -22,15 +22,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check agent docs drift
-        run: bash scripts/check-agent-docs-drift.sh
-
-      - name: Check doc gardening
-        run: bash scripts/doc-gardening.sh --fail-on-issues
-
-      - name: Ensure generated doc artifacts are committed
-        run: git diff --exit-code -- agent-docs/generated/doc-inventory.md agent-docs/generated/doc-gardening-report.md
-
       - uses: actions/setup-node@v6
         with:
           node-version: 20

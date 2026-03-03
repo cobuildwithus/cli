@@ -14,7 +14,7 @@ function createJsonResponder(body: unknown) {
 }
 
 describe("send network defaults", () => {
-  it("uses base-sepolia when --network and COBUILD_CLI_NETWORK are missing", async () => {
+  it("uses base when --network and COBUILD_CLI_NETWORK are missing", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -33,7 +33,7 @@ describe("send network defaults", () => {
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
       kind: "transfer",
-      network: "base-sepolia",
+      network: "base",
       agentKey: "stored-agent",
       token: "usdc",
       amount: "1.0",

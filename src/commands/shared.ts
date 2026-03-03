@@ -101,7 +101,7 @@ export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pi
 
 export function resolveNetwork(inputNetwork: string | undefined, deps: Pick<CliDeps, "env">): string {
   const envNetwork = getEnv(deps).COBUILD_CLI_NETWORK;
-  return inputNetwork || envNetwork || "base-sepolia";
+  return inputNetwork || envNetwork || "base";
 }
 
 export function parseIntegerOption(value: string | undefined, optionName: string): number | undefined {

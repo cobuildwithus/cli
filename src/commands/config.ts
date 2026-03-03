@@ -1,9 +1,9 @@
 import {
-  clearPersistedPatToken,
+  clearPersistedRefreshToken,
   configPath,
   DEFAULT_CHAT_API_URL,
   DEFAULT_INTERFACE_URL,
-  persistPatToken,
+  persistRefreshToken,
   readConfig,
   resolveMaskedToken,
   writeConfig,
@@ -19,7 +19,7 @@ import {
 import { isSecretRef } from "../secrets/ref-contract.js";
 
 const CONFIG_SET_USAGE =
-  "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]";
+  "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <refresh-token>|--token-file <path>|--token-stdin [--agent <key>]";
 
 export interface ConfigSetCommandInput {
   url?: string;
@@ -153,14 +153,14 @@ export async function executeConfigSetCommand(
   }
 
   if (shouldClearPersistedAuth) {
-    clearPersistedPatToken(deps);
+    clearPersistedRefreshToken(deps);
   }
 
   next = withDefaultUrls(next);
 
   if (tokenFromOption !== undefined) {
     const interfaceUrl = resolveInterfaceUrl(typeof next.url === "string" ? next.url : undefined);
-    next = persistPatToken({
+    next = persistRefreshToken({
       deps,
       config: next,
       token: tokenFromOption,

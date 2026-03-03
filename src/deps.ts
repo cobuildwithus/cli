@@ -17,7 +17,7 @@ interface OpenExternalCommand {
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
 const nodeFetch: FetchLike = async (input, init) => {
-  return fetch(input, init);
+  return fetch(input, init as RequestInit);
 };
 
 export function isAllowedExternalUrl(url: string): boolean {

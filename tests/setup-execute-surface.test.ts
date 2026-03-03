@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { executeSetupCommand } from "../src/commands/setup.js";
+import { DEFAULT_CHAT_API_URL } from "../src/config.js";
 import { createHarness } from "./helpers.js";
 
 describe("setup execute surface", () => {
@@ -24,6 +25,7 @@ describe("setup execute surface", () => {
       ok: true,
       config: {
         interfaceUrl: "https://api.example",
+        chatApiUrl: DEFAULT_CHAT_API_URL,
         agent: "default",
       },
       wallet: { ok: true, address: "0xabc" },

@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  clearPersistedPatToken,
+  clearPersistedRefreshToken,
   configPath,
   DEFAULT_CHAT_API_URL,
   DEFAULT_INTERFACE_URL,
   maskToken,
-  persistPatToken,
+  persistRefreshToken,
   readConfig,
   requireConfig,
   resolveMaskedToken,
@@ -151,7 +151,7 @@ describe("config", () => {
     });
 
     const missingToken = createHarness({ config: { url: "https://api.example" } });
-    expect(() => requireConfig(missingToken.deps)).toThrow(/Missing PAT token/);
+    expect(() => requireConfig(missingToken.deps)).toThrow(/Missing CLI auth token/);
   });
 
   it("returns required config when present", () => {
@@ -221,7 +221,7 @@ describe("config", () => {
         tokenRef: {
           source: "file",
           provider: "default",
-          id: "/pat:https:~1~1api.example",
+          id: "/oauth_refresh:https:~1~1api.example",
         },
       },
       secrets: {
@@ -243,7 +243,7 @@ describe("config", () => {
     const secretsFile = harness.files.get("/tmp/cli-tests/.cobuild-cli/secrets.json");
     expect(secretsFile).toBeTruthy();
     expect(JSON.parse(secretsFile ?? "{}")).toEqual({
-      "pat:https://api.example": "bbt_legacy_secret",
+      "oauth_refresh:https://api.example": "bbt_legacy_secret",
     });
   });
 
@@ -271,7 +271,7 @@ describe("config", () => {
         tokenRef: {
           source: "file",
           provider: "default",
-          id: "/pat:https:~1~1interface.example",
+          id: "/oauth_refresh:https:~1~1interface.example",
         },
       },
     });
@@ -330,7 +330,7 @@ describe("config", () => {
         tokenRef: {
           source: "file",
           provider: "default",
-          id: "/pat:https:~1~1api.example",
+          id: "/oauth_refresh:https:~1~1api.example",
         },
       },
     });
@@ -349,14 +349,14 @@ describe("config", () => {
     const secretsPath = "/tmp/cli-tests/.cobuild-cli/secrets.json";
 
     expect(() =>
-      persistPatToken({
+      persistRefreshToken({
         deps: harness.deps,
         config: {},
         token: "   ",
       })
     ).toThrow("Token cannot be empty");
 
-    const next = persistPatToken({
+    const next = persistRefreshToken({
       deps: harness.deps,
       config: {
         url: "https://api.example",
@@ -365,10 +365,10 @@ describe("config", () => {
     });
     writeConfig(harness.deps, next);
     expect(JSON.parse(harness.files.get(secretsPath) ?? "{}")).toEqual({
-      "pat:https://api.example": "bbt_secret",
+      "oauth_refresh:https://api.example": "bbt_secret",
     });
 
-    clearPersistedPatToken(harness.deps);
+    clearPersistedRefreshToken(harness.deps);
     const cleared = JSON.parse(harness.files.get(harness.configFile) ?? "{}") as Record<string, unknown>;
     expect(cleared.token).toBeUndefined();
     expect(cleared.auth).toBeUndefined();
@@ -377,7 +377,7 @@ describe("config", () => {
 
   it("persists PAT refs to a JSON provider when defaults.file points to singleValue", () => {
     const harness = createHarness();
-    const next = persistPatToken({
+    const next = persistRefreshToken({
       deps: harness.deps,
       config: {
         url: "https://api.example",
@@ -405,14 +405,14 @@ describe("config", () => {
     expect(next.auth?.tokenRef).toEqual({
       source: "file",
       provider: "default",
-      id: "/pat:https:~1~1api.example",
+      id: "/oauth_refresh:https:~1~1api.example",
     });
   });
 
   it("rejects PAT persistence when only singleValue file providers are available", () => {
     const harness = createHarness();
     expect(() =>
-      persistPatToken({
+      persistRefreshToken({
         deps: harness.deps,
         config: {
           url: "https://api.example",

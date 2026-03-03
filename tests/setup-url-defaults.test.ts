@@ -4,14 +4,16 @@ import { createHarness } from "./helpers.js";
 
 function expectedPersistedSetupConfig(url: string) {
   const encodedOrigin = new URL(url).origin.replaceAll("~", "~0").replaceAll("/", "~1");
+  const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(url);
   return {
     url,
+    chatApiUrl: isLoopback ? "http://localhost:4000" : "https://chat-api.co.build",
     agent: "default",
     auth: {
       tokenRef: {
         source: "file",
         provider: "default",
-        id: `/pat:${encodedOrigin}`,
+        id: `/oauth_refresh:${encodedOrigin}`,
       },
     },
     secrets: {
@@ -48,7 +50,7 @@ describe("setup URL defaults and normalization", () => {
     await runCli(["setup", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("https://co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("https://co.build")
     );
@@ -62,7 +64,7 @@ describe("setup URL defaults and normalization", () => {
     await runCli(["setup", "--dev", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000")
     );
@@ -76,7 +78,7 @@ describe("setup URL defaults and normalization", () => {
     await runCli(["setup", "--url", "localhost:3000", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000")
     );
@@ -93,7 +95,7 @@ describe("setup URL defaults and normalization", () => {
     );
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000/co.build")
     );
@@ -107,7 +109,7 @@ describe("setup URL defaults and normalization", () => {
     await runCli(["setup", "--url", "co.build", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("https://co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("https://co.build")
     );

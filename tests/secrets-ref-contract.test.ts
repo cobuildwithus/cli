@@ -7,8 +7,8 @@ import {
   SINGLE_VALUE_FILE_REF_ID,
   buildFarcasterSignerRef,
   buildFarcasterSignerSecretKey,
-  buildPatSecretKey,
-  buildPatTokenRef,
+  buildRefreshSecretKey,
+  buildRefreshTokenRef,
   fromFileSecretRefId,
   isSecretRef,
   isValidFileSecretRefId,
@@ -76,9 +76,9 @@ describe("secrets ref-contract", () => {
   });
 
   it("round-trips file ref ids and rejects invalid ids on decode", () => {
-    const id = toFileSecretRefId("pat:https://api.example");
-    expect(id).toBe("/pat:https:~1~1api.example");
-    expect(fromFileSecretRefId(id)).toBe("pat:https://api.example");
+    const id = toFileSecretRefId("oauth_refresh:https://api.example");
+    expect(id).toBe("/oauth_refresh:https:~1~1api.example");
+    expect(fromFileSecretRefId(id)).toBe("oauth_refresh:https://api.example");
     expect(fromFileSecretRefId("not-a-pointer")).toBeNull();
   });
 
@@ -91,13 +91,13 @@ describe("secrets ref-contract", () => {
       },
     };
 
-    expect(buildPatSecretKey("https://api.example/path")).toBe("pat:https://api.example");
-    expect(buildPatSecretKey("not-a-url")).toBe("pat:default");
-    expect(buildPatSecretKey(undefined)).toBe("pat:default");
-    expect(buildPatTokenRef(config, "https://api.example")).toEqual({
+    expect(buildRefreshSecretKey("https://api.example/path")).toBe("oauth_refresh:https://api.example");
+    expect(buildRefreshSecretKey("not-a-url")).toBe("oauth_refresh:default");
+    expect(buildRefreshSecretKey(undefined)).toBe("oauth_refresh:default");
+    expect(buildRefreshTokenRef(config, "https://api.example")).toEqual({
       source: "file",
       provider: "vault",
-      id: "/pat:https:~1~1api.example",
+      id: "/oauth_refresh:https:~1~1api.example",
     });
 
     expect(buildFarcasterSignerSecretKey("agent-one")).toBe("farcaster:ed25519:agent-one:signer");
@@ -135,10 +135,10 @@ describe("secrets ref-contract", () => {
       },
     };
 
-    expect(buildPatTokenRef(config, "https://api.example")).toEqual({
+    expect(buildRefreshTokenRef(config, "https://api.example")).toEqual({
       source: "file",
       provider: "default",
-      id: "/pat:https:~1~1api.example",
+      id: "/oauth_refresh:https:~1~1api.example",
     });
     expect(buildFarcasterSignerRef(config, "agent-one")).toEqual({
       source: "file",
@@ -168,7 +168,7 @@ describe("secrets ref-contract", () => {
       },
     };
 
-    expect(() => buildPatTokenRef(config, "https://api.example")).toThrow(
+    expect(() => buildRefreshTokenRef(config, "https://api.example")).toThrow(
       'Secret provider "default" uses mode "singleValue" and cannot store structured SecretRef ids.'
     );
     expect(() => buildFarcasterSignerRef(config, "agent-one")).toThrow(

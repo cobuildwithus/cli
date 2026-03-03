@@ -82,11 +82,11 @@ describe("funds safety coverage audit", () => {
     });
 
     await expect(
-      apiPost(harness.deps, "/api/buildbot/wallet", {}, { headers: { "Content-Type": "text/plain" } })
+      apiPost(harness.deps, "/api/cli/wallet", {}, { headers: { "Content-Type": "text/plain" } })
     ).rejects.toThrow("Custom headers must not override reserved header: Content-Type");
 
     await expect(
-      apiPost(harness.deps, "/api/buildbot/wallet", {}, { headers: { Authorization: "Bearer other" } })
+      apiPost(harness.deps, "/api/cli/wallet", {}, { headers: { Authorization: "Bearer other" } })
     ).rejects.toThrow("Custom headers must not override reserved header: Authorization");
 
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ describe("funds safety coverage audit", () => {
           }),
       });
 
-      const request = apiPost(harness.deps, "/api/buildbot/wallet", {});
+      const request = apiPost(harness.deps, "/api/cli/wallet", {});
       const rejection = expect(request).rejects.toThrow("Request timed out after 30000ms");
       await vi.advanceTimersByTimeAsync(30_000);
       await rejection;

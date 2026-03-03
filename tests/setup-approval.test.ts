@@ -1,460 +1,224 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { OAUTH_CLIENT_ID, OAUTH_DEFAULT_SCOPE } from "../src/oauth.js";
 import {
   buildSetupApprovalUrl,
   createSetupApprovalSession,
   isValidSetupState,
 } from "../src/setup-approval.js";
 
-const TEST_ORIGIN = "http://localhost:3000";
+async function closeSessionSilently(session: Awaited<ReturnType<typeof createSetupApprovalSession>>) {
+  try {
+    await session.close();
+  } catch {
+    // no-op
+  }
+}
 
-describe("setup approval flow", () => {
-  it("builds approval URL for /home with setup params", () => {
+describe("setup approval", () => {
+  const sessions = new Set<Awaited<ReturnType<typeof createSetupApprovalSession>>>();
+
+  afterEach(async () => {
+    await Promise.all(Array.from(sessions).map(async (session) => await closeSessionSilently(session)));
+    sessions.clear();
+  });
+
+  it("builds an OAuth authorize URL with PKCE parameters", () => {
+    const callbackUrl = "http://127.0.0.1:43111/auth/callback";
     const url = buildSetupApprovalUrl({
-      baseUrl: TEST_ORIGIN,
-      callbackUrl: "http://127.0.0.1:4123/api/buildbot/cli/callback/state123_state123_state123_state123",
-      state: "state123_state123_state123_state123",
-      network: "base-sepolia",
+      baseUrl: "https://co.build",
+      callbackUrl,
+      state: "a".repeat(32),
       agent: "default",
+      scope: OAUTH_DEFAULT_SCOPE,
+      codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
+      label: "cli-default",
+      payerMode: "hosted",
     });
 
     const parsed = new URL(url);
+    expect(parsed.origin).toBe("https://co.build");
     expect(parsed.pathname).toBe("/home");
-    expect(parsed.searchParams.get("buildBotSetup")).toBe("1");
-    const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ""));
-    expect(fragment.get("buildBotCallback")).toContain("127.0.0.1");
-    const callbackUrl = new URL(fragment.get("buildBotCallback") ?? "");
-    expect(callbackUrl.pathname.startsWith("/api/buildbot/cli/callback/")).toBe(true);
-    expect(fragment.get("buildBotState")).toBe("state123_state123_state123_state123");
-    expect(parsed.searchParams.get("buildBotNetwork")).toBe("base-sepolia");
-    expect(parsed.searchParams.get("buildBotAgent")).toBe("default");
+    expect(parsed.searchParams.get("oauth_authorize")).toBe("1");
+    expect(parsed.searchParams.get("response_type")).toBe("code");
+    expect(parsed.searchParams.get("client_id")).toBe(OAUTH_CLIENT_ID);
+    expect(parsed.searchParams.get("redirect_uri")).toBe(callbackUrl);
+    expect(parsed.searchParams.get("state")).toBe("a".repeat(32));
+    expect(parsed.searchParams.get("scope")).toBe(OAUTH_DEFAULT_SCOPE);
+    expect(parsed.searchParams.get("agent_key")).toBe("default");
+    expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(parsed.searchParams.get("label")).toBe("cli-default");
+    expect(parsed.searchParams.get("payer_mode")).toBe("hosted");
   });
 
-  it("validates setup state format", () => {
+  it("rejects invalid setup state values", () => {
     expect(isValidSetupState("short")).toBe(false);
-    expect(isValidSetupState("state123_state123_state123_state123")).toBe(true);
-  });
-
-  it("throws when approval URL state is invalid", () => {
     expect(() =>
       buildSetupApprovalUrl({
-        baseUrl: TEST_ORIGIN,
-        callbackUrl: "http://127.0.0.1:1234/api/buildbot/cli/callback/abc",
-        state: "bad",
-        network: "base-sepolia",
+        baseUrl: "https://co.build",
+        callbackUrl: "http://127.0.0.1:12345/auth/callback",
+        state: "bad state",
         agent: "default",
+        scope: OAUTH_DEFAULT_SCOPE,
+        codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
       })
     ).toThrow("Invalid setup state");
   });
 
-  it("rejects invalid session state input", async () => {
+  it("adds a default session label when one is not provided", () => {
+    const url = buildSetupApprovalUrl({
+      baseUrl: "https://co.build",
+      callbackUrl: "http://127.0.0.1:43210/auth/callback",
+      state: "b".repeat(32),
+      agent: "default",
+      scope: OAUTH_DEFAULT_SCOPE,
+      codeChallenge: "Z8R1pYwAqfejb9Lk7V3G5KjN9V2n8cQtq7mQh4v2XEc",
+    });
+
+    const parsed = new URL(url);
+    const label = parsed.searchParams.get("label");
+    expect(label).toBeTruthy();
+    expect((label ?? "").length).toBeLessThanOrEqual(128);
+  });
+
+  it("accepts callback GET and resolves authorization code", async () => {
+    const session = await createSetupApprovalSession({
+      state: "S".repeat(32),
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+
+    const callback = new URL(session.callbackUrl);
+    const code = "OAUTH_AUTHORIZATION_CODE_1234567890";
+    callback.searchParams.set("state", session.state);
+    callback.searchParams.set("code", code);
+
+    const response = await fetch(callback, { method: "GET" });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("CLI authorization complete");
+
+    await expect(session.waitForCode).resolves.toBe(code);
+  });
+
+  it("rejects callback requests with mismatched state", async () => {
+    const session = await createSetupApprovalSession({
+      state: "T".repeat(32),
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+
+    const callback = new URL(session.callbackUrl);
+    callback.searchParams.set("state", "U".repeat(32));
+    callback.searchParams.set("code", "OAUTH_AUTHORIZATION_CODE_1234567890");
+
+    const response = await fetch(callback, { method: "GET" });
+    expect(response.status).toBe(400);
+    const html = await response.text();
+    expect(html).toContain("State did not match");
+
+    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Setup approval session closed");
+  });
+
+  it("rejects non-GET callback methods", async () => {
+    const session = await createSetupApprovalSession({
+      state: "V".repeat(32),
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+
+    const response = await fetch(session.callbackUrl, { method: "POST" });
+    expect(response.status).toBe(405);
+    const html = await response.text();
+    expect(html).toContain("Method not allowed");
+
+    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Setup approval session closed");
+  });
+
+  it("returns 404 for non-callback paths", async () => {
+    const session = await createSetupApprovalSession({
+      state: "X".repeat(32),
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+
+    const wrongPath = new URL(session.callbackUrl);
+    wrongPath.pathname = "/not-found";
+    const response = await fetch(wrongPath, { method: "GET" });
+    expect(response.status).toBe(404);
+    const html = await response.text();
+    expect(html).toContain("Not found.");
+
+    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Setup approval session closed");
+  });
+
+  it("rejects missing/invalid authorization codes", async () => {
+    const session = await createSetupApprovalSession({
+      state: "Y".repeat(32),
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+
+    const callback = new URL(session.callbackUrl);
+    callback.searchParams.set("state", session.state);
+    callback.searchParams.set("code", "bad");
+    const response = await fetch(callback, { method: "GET" });
+    expect(response.status).toBe(400);
+    const html = await response.text();
+    expect(html).toContain("Authorization code was missing or invalid.");
+
+    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Setup approval session closed");
+  });
+
+  it("renders post-auth redirect markup safely when configured", async () => {
+    const session = await createSetupApprovalSession({
+      state: "Z".repeat(32),
+      timeoutMs: 5_000,
+      postAuthRedirectUrl: "https://co.build/home?x=1&y=<unsafe>",
+    });
+    sessions.add(session);
+
+    const callback = new URL(session.callbackUrl);
+    const code = "OAUTH_AUTHORIZATION_CODE_1234567890";
+    callback.searchParams.set("state", session.state);
+    callback.searchParams.set("code", code);
+    const response = await fetch(callback, { method: "GET" });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Returning you to Cobuild...");
+    expect(html).toContain("Continue to Cobuild");
+    expect(html).toContain("x=1&amp;y=&lt;unsafe&gt;");
+  });
+
+  it("creates a default random state when one is not provided", async () => {
+    const session = await createSetupApprovalSession({
+      timeoutMs: 5_000,
+    });
+    sessions.add(session);
+    expect(isValidSetupState(session.state)).toBe(true);
+    expect(session.callbackUrl).toContain("http://127.0.0.1:");
+    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Setup approval session closed");
+  });
+
+  it("throws when createSetupApprovalSession receives invalid state", async () => {
     await expect(
       createSetupApprovalSession({
-        expectedOrigin: TEST_ORIGIN,
-        state: "bad",
+        state: "bad state",
       })
     ).rejects.toThrow("Invalid setup state");
   });
 
-  it("accepts browser callback only from expected origin with matching state", async () => {
-    const state = "state123_state123_state123_state123";
+  it("times out if browser callback never arrives", async () => {
     const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
+      state: "W".repeat(32),
+      timeoutMs: 25,
     });
+    sessions.add(session);
 
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(204);
-    expect(optionsResponse.headers.get("access-control-allow-origin")).toBe(TEST_ORIGIN);
-
-    const callbackResponse = await fetch(session.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "bbt_secure_token",
-      }),
-    });
-
-    expect(callbackResponse.status).toBe(200);
-    await expect(session.waitForToken).resolves.toBe("bbt_secure_token");
-    await session.close();
-  });
-
-  it("accepts loopback host aliases when protocol and port match", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const aliasedOrigin = "http://127.0.0.1:3000";
-
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: aliasedOrigin,
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(204);
-    expect(optionsResponse.headers.get("access-control-allow-origin")).toBe(aliasedOrigin);
-
-    const callbackResponse = await fetch(session.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: aliasedOrigin,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "bbt_secure_token",
-      }),
-    });
-
-    expect(callbackResponse.status).toBe(200);
-    await expect(session.waitForToken).resolves.toBe("bbt_secure_token");
-    await session.close();
-  });
-
-  it("rejects OPTIONS preflight from unexpected origin", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "http://evil.local",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects loopback origin with mismatched port", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "http://127.0.0.1:3001",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects malformed origin headers during preflight", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "::not-a-valid-origin::",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects loopback alias when protocol differs", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const optionsResponse = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://127.0.0.1:3000",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-
-    expect(optionsResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("requires exact host match for non-loopback expected origins", async () => {
-    const state = "state123_state123_state123_state123";
-    const expectedOrigin = "https://co.build";
-    const session = await createSetupApprovalSession({
-      expectedOrigin,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const allowedPreflight = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: expectedOrigin,
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-    expect(allowedPreflight.status).toBe(204);
-    expect(allowedPreflight.headers.get("access-control-allow-origin")).toBe(expectedOrigin);
-
-    const deniedPreflight = await fetch(session.callbackUrl, {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://www.co.build",
-        "Access-Control-Request-Method": "POST",
-      },
-    });
-    expect(deniedPreflight.status).toBe(403);
-
-    const callbackResponse = await fetch(session.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: expectedOrigin,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "bbt_secure_token",
-      }),
-    });
-
-    expect(callbackResponse.status).toBe(200);
-    await expect(session.waitForToken).resolves.toBe("bbt_secure_token");
-    await session.close();
-  });
-
-  it("returns 405 for unsupported methods", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const response = await fetch(session.callbackUrl, {
-      method: "GET",
-      headers: {
-        Origin: TEST_ORIGIN,
-      },
-    });
-
-    expect(response.status).toBe(405);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("returns 404 for callback paths that do not match the setup state", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const wrongUrl = new URL(session.callbackUrl);
-    wrongUrl.pathname = "/api/buildbot/cli/callback/other_state";
-
-    const response = await fetch(wrongUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ state, token: "bbt_secure_token" }),
-    });
-
-    expect(response.status).toBe(404);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects callback from unexpected origin", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const callbackResponse = await fetch(session.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: "http://evil.local",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "bbt_secure_token",
-      }),
-    });
-
-    expect(callbackResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects callback when browser origin header is missing", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-
-    const callbackResponse = await fetch(session.callbackUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "bbt_secure_token",
-      }),
-    });
-
-    expect(callbackResponse.status).toBe(403);
-    await session.close();
-    await expect(session.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("rejects malformed callback payloads", async () => {
-    const state = "state123_state123_state123_state123";
-
-    const missingBodySession = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const missingBodyResponse = await fetch(missingBodySession.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-    });
-    expect(missingBodyResponse.status).toBe(400);
-    await missingBodySession.close();
-    await expect(missingBodySession.waitForToken).rejects.toThrow("Setup approval session closed");
-
-    const badJsonSession = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const badJsonResponse = await fetch(badJsonSession.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: "{bad json",
-    });
-    expect(badJsonResponse.status).toBe(400);
-    await badJsonSession.close();
-    await expect(badJsonSession.waitForToken).rejects.toThrow("Setup approval session closed");
-
-    const nonObjectBodySession = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const nonObjectBodyResponse = await fetch(nonObjectBodySession.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(123),
-    });
-    expect(nonObjectBodyResponse.status).toBe(400);
-    await nonObjectBodySession.close();
-    await expect(nonObjectBodySession.waitForToken).rejects.toThrow(
-      "Setup approval session closed"
-    );
-
-    const wrongStateSession = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const wrongStateResponse = await fetch(wrongStateSession.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state: "state123_state123_state123_state124",
-        token: "bbt_secure_token",
-      }),
-    });
-    expect(wrongStateResponse.status).toBe(400);
-    await wrongStateSession.close();
-    await expect(wrongStateSession.waitForToken).rejects.toThrow("Setup approval session closed");
-
-    const badTokenSession = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 2_000,
-    });
-    const badTokenResponse = await fetch(badTokenSession.callbackUrl, {
-      method: "POST",
-      headers: {
-        Origin: TEST_ORIGIN,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state,
-        token: "not_a_build_bot_token",
-      }),
-    });
-    expect(badTokenResponse.status).toBe(400);
-    await badTokenSession.close();
-    await expect(badTokenSession.waitForToken).rejects.toThrow("Setup approval session closed");
-  });
-
-  it("times out when no approval is received", async () => {
-    const state = "state123_state123_state123_state123";
-    const session = await createSetupApprovalSession({
-      expectedOrigin: TEST_ORIGIN,
-      state,
-      timeoutMs: 20,
-    });
-
-    await expect(session.waitForToken).rejects.toThrow("Timed out waiting for browser approval");
-    await session.close();
+    await expect(session.waitForCode).rejects.toThrow("Timed out waiting for browser approval");
   });
 });

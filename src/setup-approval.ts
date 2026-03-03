@@ -1,29 +1,29 @@
 import { randomBytes } from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import { buildCliAuthorizeUrl, type CliSetupPayerModeHint } from "./oauth.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
-const CALLBACK_PATH_PREFIX = "/api/buildbot/cli/callback/";
 const DEFAULT_TIMEOUT_MS = 5 * 60_000;
-const MAX_BODY_BYTES = 64 * 1024;
 const SETUP_STATE_PATTERN = /^[A-Za-z0-9_-]{32,200}$/;
-const LOOPBACK_ORIGIN_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
-type ApprovalPayload = {
-  state?: unknown;
-  token?: unknown;
-};
+const AUTH_CODE_PATTERN = /^[A-Za-z0-9._~-]{20,1024}$/;
+const CALLBACK_PATH = "/auth/callback";
 
 export type SetupApprovalSession = {
   state: string;
   callbackUrl: string;
-  waitForToken: Promise<string>;
+  waitForCode: Promise<string>;
   close: () => Promise<void>;
 };
 
 export type SetupApprovalSessionParams = {
-  expectedOrigin: string;
   timeoutMs?: number;
   state?: string;
+  postAuthRedirectUrl?: string;
 };
 
 function createSetupState(): string {
@@ -34,145 +34,8 @@ export function isValidSetupState(value: string): boolean {
   return SETUP_STATE_PATTERN.test(value);
 }
 
-function normalizeOriginHost(value: string): string {
-  const lower = value.toLowerCase();
-  return lower === "[::1]" ? "::1" : lower;
-}
-
-function resolvedOriginPort(url: URL): string {
-  if (url.port) return url.port;
-  return url.protocol === "https:" ? "443" : "80";
-}
-
-function isLoopbackOriginHost(value: string): boolean {
-  return LOOPBACK_ORIGIN_HOSTS.has(normalizeOriginHost(value));
-}
-
-function resolveAllowedOrigin(
-  receivedOrigin: string | null,
-  expectedOrigin: URL
-): string | null {
-  if (!receivedOrigin) return null;
-
-  let received: URL;
-  try {
-    received = new URL(receivedOrigin);
-  } catch {
-    return null;
-  }
-
-  if (received.protocol !== expectedOrigin.protocol) return null;
-  if (resolvedOriginPort(received) !== resolvedOriginPort(expectedOrigin)) return null;
-
-  const expectedHost = normalizeOriginHost(expectedOrigin.hostname);
-  const receivedHost = normalizeOriginHost(received.hostname);
-
-  if (isLoopbackOriginHost(expectedHost)) {
-    return isLoopbackOriginHost(receivedHost) ? received.origin : null;
-  }
-
-  return received.origin === expectedOrigin.origin ? received.origin : null;
-}
-
-export function buildSetupApprovalUrl(params: {
-  baseUrl: string;
-  callbackUrl: string;
-  state: string;
-  network: string;
-  agent: string;
-}): string {
-  if (!isValidSetupState(params.state)) {
-    throw new Error("Invalid setup state");
-  }
-
-  const url = new URL("/home", params.baseUrl);
-  url.searchParams.set("buildBotSetup", "1");
-  url.searchParams.set("buildBotNetwork", params.network);
-  url.searchParams.set("buildBotAgent", params.agent);
-  const fragmentParams = new URLSearchParams();
-  fragmentParams.set("buildBotCallback", params.callbackUrl);
-  fragmentParams.set("buildBotState", params.state);
-  url.hash = fragmentParams.toString();
-  return url.toString();
-}
-
-function writeJson(
-  res: ServerResponse<IncomingMessage>,
-  status: number,
-  body: Record<string, unknown>,
-  origin?: string
-): void {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  };
-
-  if (origin) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers["Vary"] = "Origin";
-  }
-
-  res.writeHead(status, headers);
-  res.end(JSON.stringify(body));
-}
-
-function writePreflight(
-  res: ServerResponse<IncomingMessage>,
-  status: number,
-  origin?: string
-): void {
-  const headers: Record<string, string> = {
-    "Cache-Control": "no-store",
-  };
-
-  if (origin) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers["Vary"] = "Origin";
-    headers["Access-Control-Allow-Methods"] = "POST, OPTIONS";
-    headers["Access-Control-Allow-Headers"] = "Content-Type";
-    headers["Access-Control-Max-Age"] = "60";
-  }
-
-  res.writeHead(status, headers);
-  res.end();
-}
-
-async function readJsonBody(
-  req: IncomingMessage
-): Promise<{ ok: true; payload: ApprovalPayload } | { ok: false; status: number; error: string }> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-
-  try {
-    for await (const chunk of req) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      total += buffer.length;
-      if (total > MAX_BODY_BYTES) {
-        return { ok: false, status: 413, error: "Payload too large" };
-      }
-      chunks.push(buffer);
-    }
-  } catch {
-    return { ok: false, status: 400, error: "Failed to read request body" };
-  }
-
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
-  if (!raw) {
-    return { ok: false, status: 400, error: "Missing request body" };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return { ok: false, status: 400, error: "Invalid JSON body" };
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return { ok: false, status: 400, error: "Invalid JSON body" };
-  }
-
-  return { ok: true, payload: parsed as ApprovalPayload };
+function isValidAuthorizationCode(value: string): boolean {
+  return AUTH_CODE_PATTERN.test(value);
 }
 
 function closeServer(server: Server): Promise<void> {
@@ -191,10 +54,91 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
+function writeHtml(res: ServerResponse<IncomingMessage>, status: number, html: string): void {
+  res.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(html);
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function successPageHtml(postAuthRedirectUrl?: string): string {
+  const escapedRedirectUrl = postAuthRedirectUrl ? escapeHtml(postAuthRedirectUrl) : undefined;
+  const redirectMeta = postAuthRedirectUrl
+    ? `<meta http-equiv="refresh" content="1;url=${escapedRedirectUrl}"/>`
+    : "";
+  const redirectScript = postAuthRedirectUrl
+    ? `<script>setTimeout(function(){window.location.assign(${JSON.stringify(postAuthRedirectUrl)});}, 200);</script>`
+    : "";
+  const redirectMessage = postAuthRedirectUrl
+    ? [
+      "<p>Returning you to Cobuild...</p>",
+      `<p><a href="${escapedRedirectUrl}">Continue to Cobuild</a></p>`,
+    ].join("")
+    : "";
+
+  return [
+    "<!doctype html>",
+    `<html><head><meta charset="utf-8"/>${redirectMeta}<title>CLI setup complete</title></head>`,
+    "<body style=\"font-family: sans-serif; padding: 24px;\">",
+    "<h1>CLI authorization complete</h1>",
+    "<p>You can return to your terminal and finish setup.</p>",
+    redirectMessage,
+    redirectScript,
+    "</body></html>",
+  ].join("");
+}
+
+function errorPageHtml(message: string): string {
+  const escapedMessage = escapeHtml(message);
+  return [
+    "<!doctype html>",
+    "<html><head><meta charset=\"utf-8\"/><title>CLI setup failed</title></head>",
+    "<body style=\"font-family: sans-serif; padding: 24px;\">",
+    "<h1>CLI authorization failed</h1>",
+    `<p>${escapedMessage}</p>`,
+    "</body></html>",
+  ].join("");
+}
+
+export function buildSetupApprovalUrl(params: {
+  baseUrl: string;
+  callbackUrl: string;
+  state: string;
+  agent: string;
+  codeChallenge: string;
+  scope: string;
+  label?: string;
+  payerMode?: CliSetupPayerModeHint;
+}): string {
+  if (!isValidSetupState(params.state)) {
+    throw new Error("Invalid setup state");
+  }
+
+  return buildCliAuthorizeUrl({
+    interfaceUrl: params.baseUrl,
+    redirectUri: params.callbackUrl,
+    state: params.state,
+    scope: params.scope,
+    codeChallenge: params.codeChallenge,
+    agentKey: params.agent,
+    ...(params.label ? { label: params.label } : {}),
+    ...(params.payerMode ? { payerMode: params.payerMode } : {}),
+  });
+}
+
 export async function createSetupApprovalSession(
-  params: SetupApprovalSessionParams
+  params: SetupApprovalSessionParams = {}
 ): Promise<SetupApprovalSession> {
-  const expectedOrigin = new URL(params.expectedOrigin);
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const state = params.state ?? createSetupState();
 
@@ -202,30 +146,28 @@ export async function createSetupApprovalSession(
     throw new Error("Invalid setup state");
   }
 
-  const callbackPath = `${CALLBACK_PATH_PREFIX}${state}`;
   const server = createServer();
-
   let settled = false;
   let closed = false;
-  let resolveToken: ((token: string) => void) | null = null;
-  let rejectToken: ((error: Error) => void) | null = null;
+  let resolveCode: ((code: string) => void) | null = null;
+  let rejectCode: ((error: Error) => void) | null = null;
 
-  const waitForToken = new Promise<string>((resolve, reject) => {
-    resolveToken = resolve;
-    rejectToken = reject;
+  const waitForCode = new Promise<string>((resolve, reject) => {
+    resolveCode = resolve;
+    rejectCode = reject;
   });
 
   const finishWithError = (error: Error) => {
     if (settled) return;
     settled = true;
-    rejectToken?.(error);
+    rejectCode?.(error);
     void close();
   };
 
-  const finishWithToken = (token: string) => {
+  const finishWithCode = (code: string) => {
     if (settled) return;
     settled = true;
-    resolveToken?.(token);
+    resolveCode?.(code);
     void close();
   };
 
@@ -241,66 +183,39 @@ export async function createSetupApprovalSession(
     await closeServer(server);
     if (!settled) {
       settled = true;
-      rejectToken?.(new Error("Setup approval session closed"));
+      rejectCode?.(new Error("Setup approval session closed"));
     }
   };
 
   server.on("request", (req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${LOOPBACK_HOST}`);
-      const originHeader = typeof req.headers.origin === "string" ? req.headers.origin : null;
-      const allowedOrigin = resolveAllowedOrigin(originHeader, expectedOrigin);
 
-      if (url.pathname !== callbackPath) {
-        writeJson(res, 404, { ok: false, error: "Not found" });
+      if (url.pathname !== CALLBACK_PATH) {
+        writeHtml(res, 404, errorPageHtml("Not found."));
+        return;
+      }
+      if (req.method !== "GET") {
+        writeHtml(res, 405, errorPageHtml("Method not allowed."));
         return;
       }
 
-      if (req.method === "OPTIONS") {
-        if (!allowedOrigin) {
-          writePreflight(res, 403);
-          return;
-        }
-        writePreflight(res, 204, allowedOrigin);
+      const receivedState = url.searchParams.get("state");
+      const code = url.searchParams.get("code");
+      if (!receivedState || receivedState !== state) {
+        writeHtml(res, 400, errorPageHtml("State did not match this setup session."));
+        return;
+      }
+      if (!code || !isValidAuthorizationCode(code)) {
+        writeHtml(res, 400, errorPageHtml("Authorization code was missing or invalid."));
         return;
       }
 
-      if (req.method !== "POST") {
-        writeJson(
-          res,
-          405,
-          { ok: false, error: "Method not allowed" },
-          allowedOrigin ?? undefined
-        );
-        return;
-      }
-
-      if (!allowedOrigin) {
-        writeJson(res, 403, { ok: false, error: "Forbidden origin" });
-        return;
-      }
-
-      const body = await readJsonBody(req);
-      if (!body.ok) {
-        writeJson(res, body.status, { ok: false, error: body.error }, allowedOrigin);
-        return;
-      }
-
-      if (body.payload.state !== state) {
-        writeJson(res, 400, { ok: false, error: "Invalid setup state" }, allowedOrigin);
-        return;
-      }
-
-      if (typeof body.payload.token !== "string" || !body.payload.token.startsWith("bbt_")) {
-        writeJson(res, 400, { ok: false, error: "Invalid token payload" }, allowedOrigin);
-        return;
-      }
-
-      writeJson(res, 200, { ok: true }, allowedOrigin);
-      finishWithToken(body.payload.token);
+      writeHtml(res, 200, successPageHtml(params.postAuthRedirectUrl));
+      finishWithCode(code);
     })().catch((error) => {
       const message = error instanceof Error ? error.message : "Unexpected callback error";
-      writeJson(res, 500, { ok: false, error: message });
+      writeHtml(res, 500, errorPageHtml(message));
       finishWithError(new Error(message));
     });
   });
@@ -322,13 +237,14 @@ export async function createSetupApprovalSession(
   const address = server.address();
   if (!address || typeof address === "string") {
     await close();
-    throw new Error("Failed to bind local approval callback server");
+    throw new Error("Failed to bind setup approval server");
   }
 
+  const callbackUrl = `http://${LOOPBACK_HOST}:${address.port}${CALLBACK_PATH}`;
   return {
     state,
-    callbackUrl: `http://${LOOPBACK_HOST}:${address.port}${callbackPath}`,
-    waitForToken,
+    callbackUrl,
+    waitForCode,
     close,
   };
 }

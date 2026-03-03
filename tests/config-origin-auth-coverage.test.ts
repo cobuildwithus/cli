@@ -6,13 +6,13 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
-function expectedPatTokenRef(interfaceUrl: string) {
+function expectedRefreshTokenRef(interfaceUrl: string) {
   const origin = new URL(interfaceUrl).origin;
   const encoded = origin.replaceAll("~", "~0").replaceAll("/", "~1");
   return {
     source: "file",
     provider: "default",
-    id: `/pat:${encoded}`,
+    id: `/oauth_refresh:${encoded}`,
   };
 }
 
@@ -31,7 +31,7 @@ describe("config origin auth coverage", () => {
       interfaceUrl: "https://api.example/v2",
       chatApiUrl: "https://api.example/v2",
       token: "bbt_secr...",
-      tokenRef: expectedPatTokenRef("https://api.example/v2"),
+      tokenRef: expectedRefreshTokenRef("https://api.example/v2"),
       agent: null,
       path: harness.configFile,
     });
@@ -51,7 +51,7 @@ describe("config origin auth coverage", () => {
       interfaceUrl: "https://api.example",
       chatApiUrl: "https://chat.example",
       token: "bbt_secr...",
-      tokenRef: expectedPatTokenRef("https://api.example"),
+      tokenRef: expectedRefreshTokenRef("https://api.example"),
       agent: null,
       path: harness.configFile,
     });

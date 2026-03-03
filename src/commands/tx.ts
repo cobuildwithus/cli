@@ -48,7 +48,7 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
   try {
     response = await apiPost(
       deps,
-      "/api/buildbot/exec",
+      "/api/cli/exec",
       {
         kind: "tx",
         network,

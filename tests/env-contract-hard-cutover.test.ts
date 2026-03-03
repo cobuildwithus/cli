@@ -18,33 +18,33 @@ function parseLastJsonOutput(outputs: string[]): unknown {
 }
 
 describe("env contract hard cutover", () => {
-  it("setup ignores deprecated BUILD_BOT_URL and BUILD_BOT_NETWORK environment inputs", async () => {
+  it("setup ignores deprecated CLI_URL and CLI_NETWORK environment inputs", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
     harness.deps.env = {
-      BUILD_BOT_URL: "https://legacy.example",
-      BUILD_BOT_NETWORK: "base",
+      CLI_URL: "https://legacy.example",
+      CLI_NETWORK: "base",
     };
     harness.deps.isInteractive = () => false;
 
     await runCli(["setup", "--token", "bbt_secret"], harness.deps);
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("https://co.build/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
     });
   });
 
-  it("setup enables JSON mode from COBUILD_CLI_OUTPUT and ignores BUILD_BOT_OUTPUT", async () => {
+  it("setup enables JSON mode from COBUILD_CLI_OUTPUT and ignores CLI_OUTPUT", async () => {
     const jsonHarness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
     jsonHarness.deps.env = {
       COBUILD_CLI_OUTPUT: "json",
-      BUILD_BOT_OUTPUT: "json",
+      CLI_OUTPUT: "json",
     };
     jsonHarness.deps.isInteractive = () => true;
 
@@ -62,11 +62,11 @@ describe("env contract hard cutover", () => {
         agent: "default",
         path: jsonHarness.configFile,
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: cli wallet",
-        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+        "Run: cobuild wallet",
+        "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
 
@@ -74,7 +74,7 @@ describe("env contract hard cutover", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
     legacyOnlyHarness.deps.env = {
-      BUILD_BOT_OUTPUT: "json",
+      CLI_OUTPUT: "json",
     };
     legacyOnlyHarness.deps.isInteractive = () => true;
 
@@ -92,16 +92,16 @@ describe("env contract hard cutover", () => {
         agent: "default",
         path: legacyOnlyHarness.configFile,
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: cli wallet",
-        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+        "Run: cobuild wallet",
+        "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
   });
 
-  it("send ignores deprecated BUILD_BOT_NETWORK when COBUILD_CLI_NETWORK is unset", async () => {
+  it("send ignores deprecated CLI_NETWORK when COBUILD_CLI_NETWORK is unset", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -110,9 +110,9 @@ describe("env contract hard cutover", () => {
       fetchResponder: createJsonResponder({ ok: true }),
     });
     const previousCliNetwork = process.env.COBUILD_CLI_NETWORK;
-    const previousLegacyNetwork = process.env.BUILD_BOT_NETWORK;
+    const previousLegacyNetwork = process.env.CLI_NETWORK;
     delete process.env.COBUILD_CLI_NETWORK;
-    process.env.BUILD_BOT_NETWORK = "base";
+    process.env.CLI_NETWORK = "base";
 
     try {
       await runCli(["send", "usdc", "1.0", VALID_TO], harness.deps);
@@ -123,19 +123,19 @@ describe("env contract hard cutover", () => {
         process.env.COBUILD_CLI_NETWORK = previousCliNetwork;
       }
       if (previousLegacyNetwork === undefined) {
-        delete process.env.BUILD_BOT_NETWORK;
+        delete process.env.CLI_NETWORK;
       } else {
-        process.env.BUILD_BOT_NETWORK = previousLegacyNetwork;
+        process.env.CLI_NETWORK = previousLegacyNetwork;
       }
     }
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      network: "base-sepolia",
+      network: "base",
     });
   });
 
-  it("tx ignores deprecated BUILD_BOT_NETWORK when COBUILD_CLI_NETWORK is unset", async () => {
+  it("tx ignores deprecated CLI_NETWORK when COBUILD_CLI_NETWORK is unset", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -144,9 +144,9 @@ describe("env contract hard cutover", () => {
       fetchResponder: createJsonResponder({ ok: true }),
     });
     const previousCliNetwork = process.env.COBUILD_CLI_NETWORK;
-    const previousLegacyNetwork = process.env.BUILD_BOT_NETWORK;
+    const previousLegacyNetwork = process.env.CLI_NETWORK;
     delete process.env.COBUILD_CLI_NETWORK;
-    process.env.BUILD_BOT_NETWORK = "base";
+    process.env.CLI_NETWORK = "base";
 
     try {
       await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef"], harness.deps);
@@ -157,15 +157,15 @@ describe("env contract hard cutover", () => {
         process.env.COBUILD_CLI_NETWORK = previousCliNetwork;
       }
       if (previousLegacyNetwork === undefined) {
-        delete process.env.BUILD_BOT_NETWORK;
+        delete process.env.CLI_NETWORK;
       } else {
-        process.env.BUILD_BOT_NETWORK = previousLegacyNetwork;
+        process.env.CLI_NETWORK = previousLegacyNetwork;
       }
     }
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      network: "base-sepolia",
+      network: "base",
     });
   });
 });

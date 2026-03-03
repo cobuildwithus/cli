@@ -24,12 +24,12 @@ function expectedDefaultSecretsConfig() {
   } as const;
 }
 
-function expectedPatTokenRef(interfaceUrl: string | null) {
+function expectedRefreshTokenRef(interfaceUrl: string | null) {
   if (!interfaceUrl) {
     return {
       source: "file",
       provider: "default",
-      id: "/pat:default",
+      id: "/oauth_refresh:default",
     } as const;
   }
   const origin = new URL(interfaceUrl).origin;
@@ -37,7 +37,7 @@ function expectedPatTokenRef(interfaceUrl: string | null) {
   return {
     source: "file",
     provider: "default",
-    id: `/pat:${encoded}`,
+    id: `/oauth_refresh:${encoded}`,
   } as const;
 }
 
@@ -185,7 +185,7 @@ describe("setup/config trust-boundary hardening", () => {
       chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
-        tokenRef: expectedPatTokenRef("https://interface.example"),
+        tokenRef: expectedRefreshTokenRef("https://interface.example"),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -245,7 +245,7 @@ describe("setup/config trust-boundary hardening", () => {
       chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
-        tokenRef: expectedPatTokenRef("https://api.example"),
+        tokenRef: expectedRefreshTokenRef("https://api.example"),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -269,7 +269,7 @@ describe("setup/config trust-boundary hardening", () => {
       chatApiUrl: DEFAULT_CHAT_API_URL,
       agent: "default",
       auth: {
-        tokenRef: expectedPatTokenRef("https://api.example"),
+        tokenRef: expectedRefreshTokenRef("https://api.example"),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -305,7 +305,7 @@ describe("setup/config trust-boundary hardening", () => {
     await expect(
       runCli(["setup", "--url", "https://api.example", "--token", "bbt_secret"], harness.deps)
     ).rejects.toThrow(
-      "PAT authorization failed while bootstrapping wallet access. Token cleanup may have failed; remove persisted credentials manually before retrying setup."
+      "OAuth authorization failed while bootstrapping wallet access. Token cleanup may have failed; remove persisted credentials manually before retrying setup."
     );
   });
 
@@ -316,7 +316,7 @@ describe("setup/config trust-boundary hardening", () => {
         url: "https://api.example",
         agent: "default",
         auth: {
-          tokenRef: expectedPatTokenRef("https://api.example"),
+          tokenRef: expectedRefreshTokenRef("https://api.example"),
         },
         secrets: expectedDefaultSecretsConfig(),
       },
@@ -327,7 +327,7 @@ describe("setup/config trust-boundary hardening", () => {
       secretsPath,
       JSON.stringify(
         {
-          "pat:https://api.example": "bbt_saved_secret",
+          "oauth_refresh:https://api.example": "bbt_saved_secret",
         },
         null,
         2
@@ -517,7 +517,7 @@ describe("setup/config trust-boundary hardening", () => {
       url: DEFAULT_INTERFACE_URL,
       chatApiUrl: DEFAULT_INTERFACE_URL,
       auth: {
-        tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+        tokenRef: expectedRefreshTokenRef(DEFAULT_INTERFACE_URL),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -527,7 +527,7 @@ describe("setup/config trust-boundary hardening", () => {
       interfaceUrl: DEFAULT_INTERFACE_URL,
       chatApiUrl: DEFAULT_INTERFACE_URL,
       token: "bbt_from...",
-      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      tokenRef: expectedRefreshTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,
       path: harness.configFile,
     });
@@ -555,7 +555,7 @@ describe("setup/config trust-boundary hardening", () => {
       url: DEFAULT_INTERFACE_URL,
       chatApiUrl: DEFAULT_INTERFACE_URL,
       auth: {
-        tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+        tokenRef: expectedRefreshTokenRef(DEFAULT_INTERFACE_URL),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -565,7 +565,7 @@ describe("setup/config trust-boundary hardening", () => {
       interfaceUrl: DEFAULT_INTERFACE_URL,
       chatApiUrl: DEFAULT_INTERFACE_URL,
       token: "bbt_from...",
-      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      tokenRef: expectedRefreshTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,
       path: harness.configFile,
     });

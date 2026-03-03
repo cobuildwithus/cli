@@ -4,5 +4,8 @@ coverage/
 .DS_Store
 audit-packages/
 cache/
+.codex_tmp/
+codex_temp/
+codex_temp*
 .env
 .env.*

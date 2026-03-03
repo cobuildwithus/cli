@@ -53,7 +53,6 @@ export interface CliAuthConfig {
 export interface CliConfig {
   url?: string;
   chatApiUrl?: string;
-  chatApiUrlEnabled?: boolean;
   token?: string;
   agent?: string;
   auth?: CliAuthConfig;

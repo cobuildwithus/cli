@@ -1,12 +1,15 @@
 import path from "node:path";
 import type { CliConfig, CliDeps } from "./types.js";
-import { buildPatTokenRef, isSecretRef } from "./secrets/ref-contract.js";
+import { buildRefreshTokenRef, isSecretRef } from "./secrets/ref-contract.js";
 import {
   deleteSecretRefString,
   resolveSecretRefString,
   setSecretRefString,
   withDefaultSecretProviders,
 } from "./secrets/runtime.js";
+
+export const DEFAULT_INTERFACE_URL = "https://co.build";
+export const DEFAULT_CHAT_API_URL = "https://chat-api.co.build";
 
 function stripLegacyPlaintextToken(config: CliConfig): CliConfig {
   if (!Object.prototype.hasOwnProperty.call(config, "token")) {
@@ -103,16 +106,16 @@ export interface RequiredConfig {
 }
 
 function resolveChatApiBaseUrl(config: CliConfig, interfaceUrl: string): string {
-  if (config.chatApiUrlEnabled !== true) {
+  if (typeof config.chatApiUrl === "string" && config.chatApiUrl.trim().length > 0) {
+    return config.chatApiUrl.trim();
+  }
+  if (typeof config.url === "string" && config.url.trim().length > 0) {
     return interfaceUrl;
   }
-  if (typeof config.chatApiUrl !== "string" || config.chatApiUrl.trim().length === 0) {
-    return interfaceUrl;
-  }
-  return config.chatApiUrl.trim();
+  return DEFAULT_CHAT_API_URL;
 }
 
-export function persistPatToken(params: {
+export function persistRefreshToken(params: {
   deps: Pick<CliDeps, "fs" | "homedir">;
   config: CliConfig;
   token: string;
@@ -124,7 +127,7 @@ export function persistPatToken(params: {
   }
 
   const configWithProviders = withDefaultSecretProviders(params.config, params.deps);
-  const tokenRef = buildPatTokenRef(
+  const tokenRef = buildRefreshTokenRef(
     configWithProviders,
     params.interfaceUrl ?? configWithProviders.url
   );
@@ -146,7 +149,7 @@ export function persistPatToken(params: {
   return stripLegacyPlaintextToken(next);
 }
 
-export function clearPersistedPatToken(deps: Pick<CliDeps, "fs" | "homedir">): void {
+export function clearPersistedRefreshToken(deps: Pick<CliDeps, "fs" | "homedir">): void {
   const current = readConfig(deps);
   const hasLegacyToken = typeof current.token === "string" && current.token.trim().length > 0;
   const hasTokenRef = isSecretRef(current.auth?.tokenRef);
@@ -208,7 +211,7 @@ function resolveRequiredToken(deps: Pick<CliDeps, "fs" | "homedir" | "env">, cfg
   if (typeof cfg.token === "string" && cfg.token.trim().length > 0) {
     const normalizedLegacyToken = cfg.token.trim();
     try {
-      const migrated = persistPatToken({
+      const migrated = persistRefreshToken({
         deps,
         config: cfg,
         token: normalizedLegacyToken,
@@ -222,18 +225,14 @@ function resolveRequiredToken(deps: Pick<CliDeps, "fs" | "homedir" | "env">, cfg
   }
 
   throw new Error(
-    "Missing PAT token. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
+    "Missing CLI auth token. Run: cli setup (recommended) or cli config set --url <url> --token <refresh-token>"
   );
 }
 
 export function requireConfig(deps: Pick<CliDeps, "fs" | "homedir" | "env">): RequiredConfig {
   const cfg = readConfig(deps);
-  const interfaceUrl = typeof cfg.url === "string" ? cfg.url.trim() : "";
-  if (!interfaceUrl) {
-    throw new Error(
-      "Missing interface API base URL. Run: cli setup (recommended) or cli config set --url <url> --token <token>"
-    );
-  }
+  const interfaceUrl =
+    typeof cfg.url === "string" && cfg.url.trim().length > 0 ? cfg.url.trim() : DEFAULT_INTERFACE_URL;
   return {
     url: interfaceUrl,
     chatApiUrl: resolveChatApiBaseUrl(cfg, interfaceUrl),
