@@ -27,7 +27,7 @@ import {
 import { executeFarcasterX402InitCommand } from "./farcaster.js";
 
 const SETUP_USAGE =
-  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] [--json] [--link]";
+  "Usage: cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]";
 const SETUP_AUTH_FAILURE_MESSAGE = [
   "PAT authorization failed while bootstrapping wallet access.",
   "The saved token was cleared to avoid reusing it.",
@@ -47,9 +47,9 @@ const SETUP_PNPM_PATH_HINT =
   "Auto-link skipped: unable to locate a trusted pnpm entrypoint for this shell session. Run manually: pnpm link --global";
 const DEFAULT_DEV_INTERFACE_URL = "http://localhost:3000";
 const DEFAULT_DEV_CHAT_API_URL = "http://localhost:4000";
-type SetupX402Mode = "hosted" | "local-generate" | "local-key" | "skip";
+type SetupPayerMode = "hosted" | "local-generate" | "local-key" | "skip";
 
-function isSetupX402Mode(value: string): value is SetupX402Mode {
+function isSetupPayerMode(value: string): value is SetupPayerMode {
   return value === "hosted" || value === "local-generate" || value === "local-key" || value === "skip";
 }
 
@@ -62,9 +62,9 @@ export interface SetupCommandInput {
   tokenStdin?: boolean;
   agent?: string;
   network?: string;
-  x402Mode?: string;
-  x402PrivateKeyStdin?: boolean;
-  x402PrivateKeyFile?: string;
+  payerMode?: string;
+  payerPrivateKeyStdin?: boolean;
+  payerPrivateKeyFile?: string;
   json?: boolean;
   link?: boolean;
 }
@@ -79,7 +79,7 @@ export interface SetupCommandOutput {
   };
   defaultNetwork: string;
   wallet: unknown;
-  x402?: {
+  payer?: {
     mode: "hosted" | "local";
     payerAddress: string | null;
     network: string;
@@ -154,47 +154,47 @@ function getSetupWalletAddress(walletResponse: unknown): string | null {
   return walletRecord && typeof walletRecord.address === "string" ? walletRecord.address : null;
 }
 
-function normalizeSetupX402Mode(value: string | undefined): SetupX402Mode | undefined {
+function normalizeSetupPayerMode(value: string | undefined): SetupPayerMode | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim().toLowerCase();
-  if (isSetupX402Mode(normalized)) {
+  if (isSetupPayerMode(normalized)) {
     return normalized;
   }
-  throw new Error("--x402-mode must be one of: hosted, local-generate, local-key, skip");
+  throw new Error("--payer-mode must be one of: hosted, local-generate, local-key, skip");
 }
 
-async function promptSetupX402Mode(deps: Pick<CliDeps, "stderr">): Promise<SetupX402Mode> {
+async function promptSetupPayerMode(deps: Pick<CliDeps, "stderr">): Promise<SetupPayerMode> {
   while (true) {
     const input = (await promptLine(
-      "Farcaster x402 mode (hosted/local-generate/local-key/skip)",
+      "Farcaster payer mode (hosted/local-generate/local-key/skip)",
       "skip"
     ))
       .trim()
       .toLowerCase();
-    if (isSetupX402Mode(input)) {
+    if (isSetupPayerMode(input)) {
       return input;
     }
-    deps.stderr("Invalid x402 mode. Choose: hosted, local-generate, local-key, or skip.");
+    deps.stderr("Invalid payer mode. Choose: hosted, local-generate, local-key, or skip.");
   }
 }
 
-function parseSetupX402Result(payload: unknown): SetupCommandOutput["x402"] {
+function parseSetupPayerResult(payload: unknown): SetupCommandOutput["payer"] {
   const root = asRecord(payload);
-  const x402 = asRecord(root.x402);
-  if (!x402) {
-    throw new Error("x402 setup did not return x402 metadata.");
+  const payer = asRecord(root.payer);
+  if (!payer) {
+    throw new Error("Payer setup did not return payer metadata.");
   }
 
-  const mode = x402.mode;
+  const mode = payer.mode;
   if (mode !== "hosted" && mode !== "local") {
-    throw new Error("x402 setup returned an invalid mode.");
+    throw new Error("Payer setup returned an invalid mode.");
   }
 
-  const payerAddress = typeof x402.payerAddress === "string" ? x402.payerAddress : null;
-  const network = typeof x402.network === "string" ? x402.network : "base";
-  const token = typeof x402.token === "string" ? x402.token : "usdc";
+  const payerAddress = typeof payer.payerAddress === "string" ? payer.payerAddress : null;
+  const network = typeof payer.network === "string" ? payer.network : "base";
+  const token = typeof payer.token === "string" ? payer.token : "usdc";
   const costPerPaidCallMicroUsdc =
-    typeof x402.costPerPaidCallMicroUsdc === "string" ? x402.costPerPaidCallMicroUsdc : "1000";
+    typeof payer.costPerPaidCallMicroUsdc === "string" ? payer.costPerPaidCallMicroUsdc : "1000";
 
   return {
     mode,
@@ -203,6 +203,20 @@ function parseSetupX402Result(payload: unknown): SetupCommandOutput["x402"] {
     token,
     costPerPaidCallMicroUsdc,
   };
+}
+
+function validateSetupPayerLocalKeyFileInput(filePath: string, deps: Pick<CliDeps, "fs">): void {
+  let raw: string;
+  try {
+    raw = deps.fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    throw new Error(
+      `Could not read payer private key file: ${filePath} (${error instanceof Error ? error.message : String(error)})`
+    );
+  }
+  if (!raw.trim()) {
+    throw new Error(`Payer private key file is empty: ${filePath}`);
+  }
 }
 
 type GlobalLinkStatus = "not-requested" | "linked" | "failed" | "skipped";
@@ -419,7 +433,7 @@ function printSetupSuccessSummary(params: {
   configPath: string;
   defaultNetwork: string;
   walletAddress: string | null;
-  x402?: SetupCommandOutput["x402"];
+  payer?: SetupCommandOutput["payer"];
   linkStatus: GlobalLinkStatus;
 }): void {
   params.deps.stderr("");
@@ -429,10 +443,10 @@ function printSetupSuccessSummary(params: {
     params.deps.stderr(`Wallet address: ${params.walletAddress}`);
   }
   params.deps.stderr(`Default network: ${params.defaultNetwork}`);
-  if (params.x402) {
-    params.deps.stderr(`x402 payer mode: ${params.x402.mode}`);
-    if (params.x402.payerAddress) {
-      params.deps.stderr(`x402 payer address: ${params.x402.payerAddress}`);
+  if (params.payer) {
+    params.deps.stderr(`Farcaster payer mode: ${params.payer.mode}`);
+    if (params.payer.payerAddress) {
+      params.deps.stderr(`Farcaster payer address: ${params.payer.payerAddress}`);
     }
   }
   params.deps.stderr("");
@@ -615,20 +629,35 @@ async function runSetupCommand(
   if (tokenSourceCount > 1) {
     throw new Error(`${SETUP_USAGE}\nProvide only one of --token, --token-file, or --token-stdin.`);
   }
-  if (input.x402PrivateKeyStdin && input.x402PrivateKeyFile) {
-    throw new Error(`${SETUP_USAGE}\nProvide only one of --x402-private-key-stdin or --x402-private-key-file.`);
+  if (input.payerPrivateKeyStdin && input.payerPrivateKeyFile) {
+    throw new Error(`${SETUP_USAGE}\nProvide only one of --payer-private-key-stdin or --payer-private-key-file.`);
   }
 
-  let requestedX402Mode = normalizeSetupX402Mode(input.x402Mode);
-  if (requestedX402Mode !== "local-key" && (input.x402PrivateKeyStdin || input.x402PrivateKeyFile)) {
+  let requestedPayerMode = normalizeSetupPayerMode(input.payerMode);
+  if (requestedPayerMode !== "local-key" && (input.payerPrivateKeyStdin || input.payerPrivateKeyFile)) {
     throw new Error(
-      `${SETUP_USAGE}\n--x402-private-key-stdin/--x402-private-key-file require --x402-mode local-key.`
+      `${SETUP_USAGE}\n--payer-private-key-stdin/--payer-private-key-file require --payer-mode local-key.`
+    );
+  }
+  if (input.tokenStdin && input.payerPrivateKeyStdin) {
+    throw new Error(
+      `${SETUP_USAGE}\nCannot combine --token-stdin with --payer-private-key-stdin in one setup run.`
     );
   }
 
   const current = readConfig(deps);
   const jsonMode = isJsonModeEnabled(input.json, deps);
   const interactive = isInteractive(deps) && !jsonMode;
+  if (requestedPayerMode === "local-key") {
+    if (!interactive && !input.payerPrivateKeyStdin && !input.payerPrivateKeyFile) {
+      throw new Error(
+        `${SETUP_USAGE}\n--payer-mode local-key requires --payer-private-key-stdin or --payer-private-key-file in non-interactive mode.`
+      );
+    }
+    if (input.payerPrivateKeyFile) {
+      validateSetupPayerLocalKeyFileInput(input.payerPrivateKeyFile, deps);
+    }
+  }
 
   const storedUrl = typeof current.url === "string" ? current.url.trim() : "";
   const storedChatApiUrl = typeof current.chatApiUrl === "string" ? current.chatApiUrl.trim() : "";
@@ -840,49 +869,46 @@ async function runSetupCommand(
     throw error;
   }
 
-  let x402: SetupCommandOutput["x402"] | undefined;
-  let x402StepShown = false;
-  let x402ModeSelectedInteractively = false;
-  const canPromptForX402Selection = interactive && Boolean(process.stdin.isTTY && process.stderr.isTTY);
-  if (!requestedX402Mode && canPromptForX402Selection) {
+  let payer: SetupCommandOutput["payer"] | undefined;
+  let payerStepShown = false;
+  let payerModeSelectedInteractively = false;
+  const canPromptForPayerSelection = interactive && Boolean(process.stdin.isTTY && process.stderr.isTTY);
+  if (!requestedPayerMode && canPromptForPayerSelection) {
     /* c8 ignore start */
-    printSetupStep(deps, 4, 4, "Farcaster x402 payer (optional)");
-    x402StepShown = true;
-    requestedX402Mode = await promptSetupX402Mode(deps);
-    x402ModeSelectedInteractively = true;
+    printSetupStep(deps, 4, 4, "Farcaster payer (optional)");
+    payerStepShown = true;
+    requestedPayerMode = await promptSetupPayerMode(deps);
+    payerModeSelectedInteractively = true;
     /* c8 ignore stop */
   }
 
-  if (requestedX402Mode && requestedX402Mode !== "skip") {
-    if (interactive && !x402StepShown) {
+  if (requestedPayerMode && requestedPayerMode !== "skip") {
+    if (interactive && !payerStepShown) {
       /* c8 ignore start */
-      printSetupStep(deps, 4, 4, "Farcaster x402 payer (optional)");
+      printSetupStep(deps, 4, 4, "Farcaster payer (optional)");
       /* c8 ignore stop */
     }
-    let x402Result: unknown;
+    let payerResult: unknown;
     try {
-      x402Result = await executeFarcasterX402InitCommand(
+      payerResult = await executeFarcasterX402InitCommand(
         {
           agent,
-          mode: requestedX402Mode,
-          privateKeyStdin: input.x402PrivateKeyStdin,
-          privateKeyFile: input.x402PrivateKeyFile,
+          mode: requestedPayerMode,
+          privateKeyStdin: input.payerPrivateKeyStdin,
+          privateKeyFile: input.payerPrivateKeyFile,
           noPrompt: !interactive,
         },
         deps
       );
     } catch (error) {
-      if (!x402ModeSelectedInteractively) {
+      if (!payerModeSelectedInteractively) {
         throw error;
       }
-      deps.stderr(`Skipped optional x402 setup (${getErrorMessage(error)}).`);
-      deps.stderr(
-        `Run later: cli farcaster x402 init --agent ${agent} --mode hosted|local-generate|local-key`
-      );
+      deps.stderr(`Skipped optional payer setup (${getErrorMessage(error)}).`);
     }
 
-    if (x402Result !== undefined) {
-      x402 = parseSetupX402Result(x402Result);
+    if (payerResult !== undefined) {
+      payer = parseSetupPayerResult(payerResult);
     }
   }
 
@@ -896,11 +922,10 @@ async function runSetupCommand(
     },
     defaultNetwork,
     wallet: walletResponse,
-    ...(x402 ? { x402 } : {}),
+    ...(payer ? { payer } : {}),
     next: [
       "Run: cli wallet",
       "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
-      ...(x402 ? [`Run: cli farcaster x402 status --agent ${agent}`] : []),
     ],
   };
 
@@ -919,7 +944,7 @@ async function runSetupCommand(
       configPath: path,
       defaultNetwork,
       walletAddress: getSetupWalletAddress(walletResponse),
-      x402,
+      payer,
       linkStatus,
     });
   }

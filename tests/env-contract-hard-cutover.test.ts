@@ -49,7 +49,7 @@ describe("env contract hard cutover", () => {
     jsonHarness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
       jsonHarness.deps
     );
 
@@ -79,7 +79,7 @@ describe("env contract hard cutover", () => {
     legacyOnlyHarness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
       legacyOnlyHarness.deps
     );
 

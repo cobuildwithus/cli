@@ -86,16 +86,16 @@ It defaults to:
 - interface URL: `https://co.build` (or `http://localhost:3000` with `--dev`)
 
 ```bash
-cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] [--json] [--link]
+cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]
 ```
 
 - Browser approval flow:
   - Opens `/home` in your interface app and waits for one-time localhost callback approval.
   - Falls back to hidden manual token prompt only if approval fails or times out.
-- Optional x402 payer setup (same setup command):
-  - `--x402-mode hosted` uses backend wallet access for Farcaster `X-PAYMENT`.
-  - `--x402-mode local-generate` creates and stores a local payer key.
-  - `--x402-mode local-key` uses `--x402-private-key-stdin` or `--x402-private-key-file`.
+- Optional Farcaster payer setup (same setup command):
+  - `--payer-mode hosted` uses backend wallet access for paid Farcaster requests.
+  - `--payer-mode local-generate` creates and stores a local payer key.
+  - `--payer-mode local-key` uses `--payer-private-key-stdin` or `--payer-private-key-file`.
 - Machine output:
   - Command result payloads are emitted on stdout as JSON.
   - Setup wizard/progress/prompts are emitted on stderr so stdout remains parseable.

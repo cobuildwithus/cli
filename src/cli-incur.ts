@@ -295,7 +295,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     }),
     defaultNetwork: z.string(),
     wallet: z.unknown(),
-    x402: z
+    payer: z
       .object({
         mode: z.enum(["hosted", "local"]),
         payerAddress: z.string().nullable(),
@@ -430,11 +430,11 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       },
     });
 
-  const farcasterX402 = Cli.create("x402", {
-    description: "Configure and inspect Farcaster x402 payer",
+  const farcasterPayer = Cli.create("payer", {
+    description: "Configure and inspect Farcaster payer",
   })
     .command("init", {
-      description: "Initialize hosted/local x402 payer mode",
+      description: "Initialize hosted/local payer mode",
       options: z.object({
         agent: z.string().optional(),
         mode: z.string().optional(),
@@ -456,7 +456,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       },
     })
     .command("status", {
-      description: "Show x402 payer status for an agent",
+      description: "Show payer status for an agent",
       options: z.object({
         agent: z.string().optional(),
       }),
@@ -519,7 +519,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         );
       },
     })
-    .command(farcasterX402);
+    .command(farcasterPayer);
 
   const root = Cli.create("cli", {
     description: "Cobuild CLI",
@@ -637,9 +637,9 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         tokenStdin: z.boolean().optional(),
         agent: z.string().optional(),
         network: z.string().optional(),
-        x402Mode: z.string().optional(),
-        x402PrivateKeyStdin: z.boolean().optional(),
-        x402PrivateKeyFile: z.string().optional(),
+        payerMode: z.string().optional(),
+        payerPrivateKeyStdin: z.boolean().optional(),
+        payerPrivateKeyFile: z.string().optional(),
         setupJson: z.boolean().optional(),
         link: z.boolean().optional(),
       }),
@@ -655,9 +655,9 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
             tokenStdin: context.options.tokenStdin,
             agent: context.options.agent,
             network: context.options.network,
-            x402Mode: context.options.x402Mode,
-            x402PrivateKeyStdin: context.options.x402PrivateKeyStdin,
-            x402PrivateKeyFile: context.options.x402PrivateKeyFile,
+            payerMode: context.options.payerMode,
+            payerPrivateKeyStdin: context.options.payerPrivateKeyStdin,
+            payerPrivateKeyFile: context.options.payerPrivateKeyFile,
             json: context.options.setupJson,
             link: context.options.link,
           },

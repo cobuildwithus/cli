@@ -40,7 +40,7 @@ describe("setup command coverage", () => {
     });
   });
 
-  it("configures hosted x402 payer during setup when requested", async () => {
+  it("configures hosted payer during setup when requested", async () => {
     const harness = createHarness({
       fetchResponder: async (input) => {
         const url = String(input);
@@ -73,12 +73,12 @@ describe("setup command coverage", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
-        x402Mode: "hosted",
+        payerMode: "hosted",
       },
       harness.deps
     );
 
-    expect(result.x402).toEqual({
+    expect(result.payer).toEqual({
       mode: "hosted",
       payerAddress: "0x00000000000000000000000000000000000000aa",
       network: "base",
@@ -88,7 +88,7 @@ describe("setup command coverage", () => {
     expect(harness.fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("boots wallet before hosted x402 payer lookup", async () => {
+  it("boots wallet before hosted payer lookup", async () => {
     const requestedUrls: string[] = [];
     const harness = createHarness({
       fetchResponder: async (input) => {
@@ -123,7 +123,7 @@ describe("setup command coverage", () => {
       {
         url: "https://api.example",
         token: "bbt_secret",
-        x402Mode: "hosted",
+        payerMode: "hosted",
       },
       harness.deps
     );
@@ -134,7 +134,7 @@ describe("setup command coverage", () => {
     ]);
   });
 
-  it("rejects invalid x402 mode values before any network call", async () => {
+  it("rejects invalid payer mode values before any network call", async () => {
     const harness = createHarness();
 
     await expect(
@@ -142,11 +142,11 @@ describe("setup command coverage", () => {
         {
           url: "https://api.example",
           token: "bbt_secret",
-          x402Mode: "invalid-mode",
+          payerMode: "invalid-mode",
         },
         harness.deps
       )
-    ).rejects.toThrow("--x402-mode must be one of: hosted, local-generate, local-key, skip");
+    ).rejects.toThrow("--payer-mode must be one of: hosted, local-generate, local-key, skip");
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 });

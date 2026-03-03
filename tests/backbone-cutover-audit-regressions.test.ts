@@ -24,7 +24,7 @@ describe("backbone cutover audit regressions", () => {
     harness.deps.isInteractive = () => true;
 
     await runCli(
-      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--x402-mode", "skip"],
+      ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
       harness.deps
     );
 

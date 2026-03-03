@@ -37,13 +37,13 @@ cli mcp add
 Run:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>]
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>]
 ```
 
 For deterministic agent automation, run setup in machine mode:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] --json
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] --json
 ```
 
 `--json` can also be placed before the command (`cli --json setup ...`) and is remapped to setup machine mode.
@@ -52,7 +52,7 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 For local developer installs, add `--link` to setup to run `pnpm link --global` and make `cli` available on PATH:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--x402-mode hosted|local-generate|local-key|skip] [--x402-private-key-stdin|--x402-private-key-file <path>] --link
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] --link
 ```
 
 ## Resolution Rules
@@ -60,11 +60,11 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 `setup` value precedence:
 
 - URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
-- Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` -> fallback to interface URL.
+- Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` (when interface origin is unchanged) -> fallback to CLI defaults (`https://chat-api.co.build`, or `http://localhost:4000` for loopback interface hosts).
 - Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
 - Token: exactly one of `--token|--token-file|--token-stdin` -> saved config secret ref (`auth.tokenRef`) -> interactive browser/manual flow.
-- x402 mode (optional): `--x402-mode` -> interactive prompt in setup when TTY is available -> default skip in non-interactive mode.
-- x402 local-key source: exactly one of `--x402-private-key-stdin|--x402-private-key-file`, and only with `--x402-mode local-key`.
+- payer mode (optional): `--payer-mode` -> interactive prompt in setup when TTY is available -> default skip in non-interactive mode.
+- payer local-key source: exactly one of `--payer-private-key-stdin|--payer-private-key-file`, and only with `--payer-mode local-key`.
 
 Runtime precedence:
 
@@ -103,7 +103,7 @@ Group command notes:
 
 ## Output Contract
 
-- `setup` returns an object with `config`, `defaultNetwork`, `wallet`, optional `x402`, and `next` on stdout.
+- `setup` returns an object with `config`, `defaultNetwork`, `wallet`, optional `payer`, and `next` on stdout.
 - Setup wizard/progress/prompts are written to stderr (stdout remains machine-readable JSON).
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.

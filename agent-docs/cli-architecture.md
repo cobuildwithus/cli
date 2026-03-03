@@ -24,8 +24,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 ### `setup`
 
-- `setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>]`
-- Persists config and performs wallet bootstrap call.
+- `setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>]`
+- Persists config, performs wallet bootstrap call, and can configure Farcaster payer mode in the same setup flow.
 - If token is absent and a TTY is available, opens interface `/home` and waits for secure browser approval over a one-time localhost callback session.
 - Setup approval URL keeps callback/state in the URL fragment and redacts fragment values in terminal display output.
 - Default interface URL is `https://co.build` when no URL is configured; `--dev` defaults to `http://localhost:3000`.
@@ -42,10 +42,10 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 - `farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]`
 - `farcaster post --text <text> [--agent <key>] [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]`
-- `farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
-- `farcaster x402 status [--agent <key>]`
+- `farcaster payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
+- `farcaster payer status [--agent <key>]`
 - `signup` calls `/api/buildbot/farcaster/signup` and persists Ed25519 signer key material via SecretRef.
-- `x402 init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
+- `payer init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
 - `post` submits directly to Neynar hub and selects x402 payment source per agent:
   - `hosted` mode calls `/api/buildbot/farcaster/x402-payment`.
   - `local` mode signs USDC typed data locally and emits `X-PAYMENT` without backend signing.

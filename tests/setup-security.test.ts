@@ -112,7 +112,7 @@ describe("setup/config trust-boundary hardening", () => {
     };
     harness.deps.isInteractive = () => true;
 
-    await runCli(["setup", "--x402-mode", "skip"], harness.deps);
+    await runCli(["setup", "--payer-mode", "skip"], harness.deps);
 
     expect(harness.errors).toContain("Using interface URL from COBUILD_CLI_URL: https://env.example");
     expect(harness.errors).toContain("Using default network from COBUILD_CLI_NETWORK: base");
@@ -357,18 +357,18 @@ describe("setup/config trust-boundary hardening", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
-  it("setup rejects x402 private key sources without --x402-mode local-key", async () => {
+  it("setup rejects payer private key sources without --payer-mode local-key", async () => {
     const harness = createHarness();
 
     await expect(
       runCli(
-        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--x402-private-key-stdin"],
+        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--payer-private-key-stdin"],
         harness.deps
       )
-    ).rejects.toThrow("--x402-private-key-stdin/--x402-private-key-file require --x402-mode local-key.");
+    ).rejects.toThrow("--payer-private-key-stdin/--payer-private-key-file require --payer-mode local-key.");
   });
 
-  it("setup rejects multiple x402 private key input sources", async () => {
+  it("setup rejects multiple payer private key input sources", async () => {
     const harness = createHarness();
 
     await expect(
@@ -379,15 +379,52 @@ describe("setup/config trust-boundary hardening", () => {
           "https://api.example",
           "--token",
           "bbt_a",
-          "--x402-mode",
+          "--payer-mode",
           "local-key",
-          "--x402-private-key-stdin",
-          "--x402-private-key-file",
+          "--payer-private-key-stdin",
+          "--payer-private-key-file",
           "/tmp/key.txt",
         ],
         harness.deps
       )
-    ).rejects.toThrow("Provide only one of --x402-private-key-stdin or --x402-private-key-file.");
+    ).rejects.toThrow("Provide only one of --payer-private-key-stdin or --payer-private-key-file.");
+  });
+
+  it("setup rejects local-key mode without a key source in non-interactive mode", async () => {
+    const harness = createHarness();
+    harness.deps.isInteractive = () => false;
+
+    await expect(
+      runCli(
+        ["setup", "--url", "https://api.example", "--token", "bbt_a", "--payer-mode", "local-key"],
+        harness.deps
+      )
+    ).rejects.toThrow(
+      "--payer-mode local-key requires --payer-private-key-stdin or --payer-private-key-file in non-interactive mode."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("setup pre-validates payer private key files before wallet bootstrap", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--token",
+          "bbt_a",
+          "--payer-mode",
+          "local-key",
+          "--payer-private-key-file",
+          "/tmp/missing-x402.key",
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow("Could not read payer private key file: /tmp/missing-x402.key");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("setup --link skips auto-link when npm_execpath is not a trusted pnpm entrypoint", async () => {

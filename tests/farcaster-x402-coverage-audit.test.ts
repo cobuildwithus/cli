@@ -51,7 +51,7 @@ function setHostedX402PayerConfig(
   );
 }
 
-describe("farcaster x402 coverage audit", () => {
+describe("farcaster payer coverage audit", () => {
   it("initializes hosted payer from wallet.address payloads", async () => {
     const harness = createHarness({
       config: {
@@ -79,12 +79,12 @@ describe("farcaster x402 coverage audit", () => {
       },
     });
 
-    await runCli(["farcaster", "x402", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
+    await runCli(["farcaster", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
       agentKey: "default",
-      x402: {
+      payer: {
         mode: "hosted",
         payerAddress: "0x00000000000000000000000000000000000000bb",
       },
@@ -104,7 +104,7 @@ describe("farcaster x402 coverage audit", () => {
       runCli(
         [
           "farcaster",
-          "x402",
+          "payer",
           "init",
           "--mode",
           "local-key",

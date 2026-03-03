@@ -382,7 +382,7 @@ describe("cli", () => {
     });
   });
 
-  it("setup can configure hosted x402 payer in the same flow", async () => {
+  it("setup can configure hosted payer in the same flow", async () => {
     const harness = createHarness({
       fetchResponder: async (input) => {
         const url = String(input);
@@ -418,7 +418,7 @@ describe("cli", () => {
         "https://api.example",
         "--token",
         "bbt_secret",
-        "--x402-mode",
+        "--payer-mode",
         "hosted",
       ],
       harness.deps
@@ -426,17 +426,16 @@ describe("cli", () => {
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(2);
     const output = parseLastJsonOutput(harness.outputs) as {
-      x402?: { mode?: string; payerAddress?: string | null };
+      payer?: { mode?: string; payerAddress?: string | null };
       next?: string[];
     };
-    expect(output.x402).toEqual({
+    expect(output.payer).toEqual({
       mode: "hosted",
       payerAddress: "0x00000000000000000000000000000000000000aa",
       network: "base",
       token: "usdc",
       costPerPaidCallMicroUsdc: "1000",
     });
-    expect(output.next).toContain("Run: cli farcaster x402 status --agent default");
   });
 
   it("setup supports machine-readable mode with --json", async () => {

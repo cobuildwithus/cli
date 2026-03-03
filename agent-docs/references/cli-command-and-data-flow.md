@@ -28,7 +28,7 @@
 
 ## Setup Flow
 
-1. Parse `setup` options (`--url`, `--chat-api-url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`, optional x402 payer setup flags).
+1. Parse `setup` options (`--url`, `--chat-api-url`, `--dev`, `--token|--token-file|--token-stdin`, `--agent`, `--network`, optional payer setup flags).
 2. Resolve defaults from config + environment (`COBUILD_CLI_URL`, `COBUILD_CLI_NETWORK`) plus built-in fallback (`https://co.build`, or `http://localhost:3000` with `--dev`).
 3. In non-interactive first-time setup, fail closed when URL comes only from `COBUILD_CLI_URL` (require explicit `--url`).
 4. Prompt for missing URL when interactive, using resolved default value.
@@ -41,7 +41,7 @@
 8. If browser approval fails/times out, fall back to hidden token prompt.
 9. Persist config locally.
 10. Bootstrap wallet via `/api/buildbot/wallet`.
-11. Optionally configure Farcaster x402 payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
+11. Optionally configure Farcaster payer mode in the same setup flow (`hosted`, `local-generate`, `local-key`, or `skip`).
 12. Emit structured setup result on stdout and emit wizard/progress/prompt text on stderr.
 
 ## Config and Agent Resolution Flow
@@ -73,14 +73,14 @@
 5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
 6. Normalize output to stable `{ query, count, results }` shape and print JSON.
 
-## Farcaster x402 Init/Status Flow
+## Farcaster Payer Init/Status Flow
 
-1. Parse `farcaster x402 init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+1. Parse `farcaster payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
 2. Resolve agent key from `--agent` or config default.
 3. Resolve mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
 4. Persist per-agent payer metadata at `~/.cobuild-cli/agents/<agent>/farcaster/x402-payer.json`.
 5. In local mode, persist payer private key via SecretRef file provider by default.
-6. `farcaster x402 status` reads payer metadata and reports payer address/network/token/cost.
+6. `farcaster payer status` reads payer metadata and reports payer address/network/token/cost.
 
 ## Farcaster Post Flow
 

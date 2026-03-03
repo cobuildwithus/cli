@@ -22,17 +22,17 @@ import {
 } from "../secrets/ref-contract.js";
 import { resolveSecretRefString, setSecretRefString, withDefaultSecretProviders } from "../secrets/runtime.js";
 import {
+  normalizeEvmAddress,
   resolveAgentKey,
   resolveExecIdempotencyKey,
   throwWithIdempotencyKey,
-  validateEvmAddress,
 } from "./shared.js";
 
 const FARCASTER_USAGE = `Usage:
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
-  cli farcaster x402 init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-  cli farcaster x402 status [--agent <key>]`;
+  cli farcaster payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
+  cli farcaster payer status [--agent <key>]`;
 const SIGNER_FILE_NAME = "ed25519-signer.json";
 const X402_PAYER_FILE_NAME = "x402-payer.json";
 const NEYNAR_HUB_SUBMIT_URL = "https://hub-api.neynar.com/v1/submitMessage";
@@ -383,7 +383,7 @@ function createMaskingWriter(onWrite: (chunk: string) => void): MaskingWriter {
 async function promptSelectX402Mode(
   deps: Pick<CliDeps, "stderr">
 ): Promise<X402InitMode> {
-  deps.stderr("How should this agent pay Farcaster x402 fees?");
+  deps.stderr("How should this agent pay Farcaster fees?");
   deps.stderr("  1) hosted (recommended)");
   deps.stderr("  2) local-generate");
   deps.stderr("  3) local-key");
@@ -653,18 +653,18 @@ function readStoredX402PayerConfig(params: {
   try {
     raw = params.deps.fs.readFileSync(payerPath, "utf8");
   } catch {
-    throw new Error("Failed to read x402 payer config.");
+    throw new Error("Failed to read payer config.");
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("x402 payer config is invalid JSON.");
+    throw new Error("Payer config is invalid JSON.");
   }
 
   if (!isStoredX402PayerConfig(parsed)) {
-    throw new Error("x402 payer config has invalid shape.");
+    throw new Error("Payer config has invalid shape.");
   }
 
   return parsed;
@@ -767,7 +767,7 @@ async function saveHostedX402Payer(params: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Hosted x402 setup requires backend wallet access: ${message}`);
+    throw new Error(`Hosted payer setup requires backend wallet access: ${message}`);
   }
   writeStoredX402PayerConfig({
     deps: params.deps,
@@ -793,7 +793,7 @@ function resolveLocalPayerPrivateKey(params: {
   payerConfig: StoredX402PayerConfig;
 }): HexString {
   if (params.payerConfig.mode !== "local" || !isSecretRef(params.payerConfig.payerRef)) {
-    throw new Error("Local x402 payer config is missing payerRef.");
+    throw new Error("Local payer config is missing payerRef.");
   }
   const configWithProviders = withDefaultSecretProviders(params.currentConfig, params.deps);
   const privateKey = resolveSecretRefString({
@@ -819,7 +819,7 @@ async function resolvePayerSetupMode(params: {
 
   if (params.noPrompt || !isInteractive(params.deps)) {
     throw new Error(
-      "Missing --mode in non-interactive mode. Run: cli farcaster x402 init --mode hosted|local-generate|local-key"
+      "Missing --mode in non-interactive mode. Run: cli farcaster payer init --mode hosted|local-generate|local-key"
     );
   }
 
@@ -890,12 +890,12 @@ function printX402FundingHints(
   setup: X402PayerSetupResult
 ): void {
   deps.stderr("");
-  deps.stderr(`x402 payer mode: ${setup.mode}`);
+  deps.stderr(`Payer mode: ${setup.mode}`);
   if (setup.payerAddress) {
     deps.stderr(`Payer address: ${setup.payerAddress}`);
     deps.stderr("Fund with USDC on Base. Suggested buffer: 0.10 USDC (~100 paid calls).");
   } else {
-    deps.stderr("Payer address is not available yet. Run `cli farcaster x402 status` after wallet bootstrap.");
+    deps.stderr("Payer address is not available yet. Run `cli farcaster payer status` after wallet bootstrap.");
   }
   if (setup.mode === "local") {
     deps.stderr("Local payer keys are stored in local file-backed secrets. Keep this wallet as low-balance hot funds.");
@@ -919,11 +919,11 @@ async function ensurePayerConfigForPost(params: {
 
   if (!isInteractive(params.deps)) {
     throw new Error(
-      "Missing x402 payer config. Run `cli farcaster x402 init --agent <key> --mode hosted|local-generate|local-key`."
+      "Missing payer config. Run `cli farcaster payer init --agent <key> --mode hosted|local-generate|local-key`."
     );
   }
 
-  params.deps.stderr("No x402 payer configured for this agent. Starting setup...");
+  params.deps.stderr("No payer configured for this agent. Starting setup...");
   const setup = await runX402InitWorkflow({
     deps: params.deps,
     currentConfig: params.currentConfig,
@@ -940,7 +940,7 @@ async function ensurePayerConfigForPost(params: {
     agentKey: params.agentKey,
   });
   if (!created) {
-    throw new Error("Failed to persist x402 payer config.");
+    throw new Error("Failed to persist payer config.");
   }
   return created;
 }
@@ -1788,10 +1788,8 @@ export async function executeFarcasterSignupCommand(
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
 
-  const recovery = input.recovery?.trim();
-  if (recovery) {
-    validateEvmAddress(recovery, "--recovery");
-  }
+  const recoveryInput = input.recovery?.trim();
+  const recovery = recoveryInput ? normalizeEvmAddress(recoveryInput, "--recovery") : null;
 
   const extraStorage = parseExtraStorage(input.extraStorage);
   const outDir = normalizeDirectoryOption(input.outDir, "--out-dir");
@@ -1845,55 +1843,7 @@ export async function executeFarcasterSignupCommand(
       signerPrivateKey,
       result,
     });
-    const output = withSignerInfo(payload, signerPublicKey, true) as Record<string, unknown>;
-    let payerConfig: StoredX402PayerConfig | null = null;
-    let payerConfigReadFailed = false;
-    try {
-      payerConfig = readStoredX402PayerConfig({
-        deps,
-        agentKey,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      deps.stderr(`x402 payer setup skipped: ${message}`);
-      output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
-      payerConfigReadFailed = true;
-    }
-
-    if (payerConfigReadFailed) {
-      return output;
-    }
-
-    if (!payerConfig) {
-      if (isInteractive(deps)) {
-        try {
-          const setup = await runX402InitWorkflow({
-            deps,
-            currentConfig: current,
-            agentKey,
-            modeArg: undefined,
-            noPrompt: false,
-            privateKeyStdin: false,
-            privateKeyFile: undefined,
-          });
-          printX402FundingHints(deps, setup);
-          output.x402 = {
-            mode: setup.mode,
-            payerAddress: setup.payerAddress,
-            network: X402_NETWORK,
-            token: X402_TOKEN_SYMBOL,
-            costPerPaidCallMicroUsdc: X402_VALUE_MICRO_USDC,
-          };
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          deps.stderr(`x402 payer setup skipped: ${message}`);
-          output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
-        }
-      } else {
-        output.next = `cli farcaster x402 init --agent ${agentKey} --mode hosted|local-generate|local-key`;
-      }
-    }
-    return output;
+    return withSignerInfo(payload, signerPublicKey, true);
   }
 
   return withSignerInfo(payload, signerPublicKey, false);
@@ -1919,7 +1869,7 @@ export async function executeFarcasterX402InitCommand(
   return {
     ok: true,
     agentKey,
-    x402: {
+    payer: {
       mode: setup.mode,
       payerAddress: setup.payerAddress,
       network: X402_NETWORK,
@@ -1941,7 +1891,7 @@ export async function executeFarcasterX402StatusCommand(
   });
   if (!stored) {
     throw new Error(
-      "No x402 payer is configured for this agent. Run `cli farcaster x402 init --mode hosted|local-generate|local-key`."
+      "No payer is configured for this agent. Run `cli farcaster payer init --mode hosted|local-generate|local-key`."
     );
   }
 
@@ -1962,7 +1912,7 @@ export async function executeFarcasterX402StatusCommand(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Hosted x402 payer address is unknown and could not be fetched from backend wallet endpoint: ${message}`
+        `Hosted payer address is unknown and could not be fetched from backend wallet endpoint: ${message}`
       );
     }
   }
@@ -1981,7 +1931,7 @@ export async function executeFarcasterX402StatusCommand(
   return {
     ok: true,
     agentKey,
-    x402: {
+    payer: {
       mode: stored.mode,
       payerAddress,
       network: stored.network,
