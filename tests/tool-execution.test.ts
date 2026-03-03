@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { executeCanonicalToolOnly } from "../src/commands/tool-execution.js";
 import { createHarness } from "./helpers.js";
+import { ApiRequestError } from "../src/transport.js";
 
 describe("tool execution helper", () => {
   it("rejects empty canonical tool names", async () => {
@@ -175,7 +176,42 @@ describe("tool execution helper", () => {
         canonicalToolNames: ["docsSearch"],
         input: { query: "setup" },
       })
-    ).rejects.toThrow("Request failed (status 404): Not found");
+    ).rejects.toThrow("Canonical /v1 tool routes are unavailable.");
+  });
+
+  it("throws cutover guidance after exhausting all candidates with 404 execution errors", async () => {
+    const attemptedToolNames: string[] = [];
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          attemptedToolNames.push(body.name);
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["docsSearch", "file_search"],
+        input: { query: "setup" },
+      })
+    ).rejects.toThrow("Canonical /v1 tool routes are unavailable.");
+    expect(attemptedToolNames).toEqual(["docsSearch", "file_search"]);
   });
 
   it("throws non-retryable discovery errors and skips canonical execution", async () => {
@@ -247,6 +283,48 @@ describe("tool execution helper", () => {
     expect(attemptedToolNames).toEqual(["docsSearch", "file_search"]);
   });
 
+  it("retries with the next canonical candidate on 422 execution errors", async () => {
+    const attemptedToolNames: string[] = [];
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify([]),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          attemptedToolNames.push(body.name);
+          if (body.name === "docsSearch") {
+            return {
+              ok: false,
+              status: 422,
+              text: async () => JSON.stringify({ ok: false, error: "bad input" }),
+            };
+          }
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ result: { fid: 7, fname: "alice" } }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["docsSearch", "file_search"],
+        input: { query: "setup" },
+      })
+    ).resolves.toEqual({ fid: 7, fname: "alice" });
+    expect(attemptedToolNames).toEqual(["docsSearch", "file_search"]);
+  });
+
   it("throws non-retryable canonical execution errors without trying additional candidates", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
@@ -282,5 +360,89 @@ describe("tool execution helper", () => {
         String(input).endsWith("/v1/tool-executions")
       )
     ).toHaveLength(1);
+  });
+
+  it("does not retry canonical execution on 401 and preserves ApiRequestError details", async () => {
+    const attemptedToolNames: string[] = [];
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify([]),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          attemptedToolNames.push(body.name);
+          return {
+            ok: false,
+            status: 401,
+            text: async () => JSON.stringify({ ok: false, error: "Unauthorized" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    const thrown = await executeCanonicalToolOnly(harness.deps, {
+      canonicalToolNames: ["docsSearch", "file_search"],
+      input: { query: "setup" },
+    }).catch((error) => error);
+
+    expect(thrown).toBeInstanceOf(ApiRequestError);
+    expect(thrown).toMatchObject({
+      status: 401,
+      detail: "Unauthorized",
+      message: "Request failed (status 401): Unauthorized",
+    });
+    expect(attemptedToolNames).toEqual(["docsSearch"]);
+  });
+
+  it("returns last retryable ApiRequestError when discovery is 404 but execution includes non-404 retryable failures", async () => {
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          if (body.name === "docsSearch") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Not found" }),
+            };
+          }
+          return {
+            ok: false,
+            status: 400,
+            text: async () => JSON.stringify({ ok: false, error: "invalid input" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    const thrown = await executeCanonicalToolOnly(harness.deps, {
+      canonicalToolNames: ["docsSearch", "file_search"],
+      input: { query: "setup" },
+    }).catch((error) => error);
+
+    expect(thrown).toBeInstanceOf(ApiRequestError);
+    expect(thrown).toMatchObject({
+      status: 400,
+      detail: "invalid input",
+      message: "Request failed (status 400): invalid input",
+    });
   });
 });
