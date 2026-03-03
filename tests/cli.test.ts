@@ -2116,6 +2116,21 @@ describe("cli", () => {
     ).rejects.toThrow("Idempotency key must be a UUID v4");
   });
 
+  it("send rejects invalid generated idempotency keys before making a request", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+    harness.deps.randomUUID = () => "not-a-uuid";
+
+    await expect(runCli(["send", "usdc", "1.0", VALID_TO], harness.deps)).rejects.toThrow(
+      "Idempotency key must be a UUID v4 (e.g. 8e03978e-40d5-43e8-bc93-6894a57f9324)"
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("send posts transfer payload and adds generated idempotency key", async () => {
     const harness = createHarness({
       config: {
@@ -2242,6 +2257,21 @@ describe("cli", () => {
         harness.deps
       )
     ).rejects.toThrow("Idempotency key must be a UUID v4");
+  });
+
+  it("tx rejects invalid generated idempotency keys before making a request", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+    harness.deps.randomUUID = () => "not-a-uuid";
+
+    await expect(runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef"], harness.deps)).rejects.toThrow(
+      "Idempotency key must be a UUID v4 (e.g. 8e03978e-40d5-43e8-bc93-6894a57f9324)"
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("runCliFromProcess includes send idempotency key when request fails", async () => {
