@@ -411,6 +411,58 @@ describe("farcaster command", () => {
     );
   });
 
+  it("rejects hosted payer init when backend wallet payload has invalid result.wallet.address", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            result: {
+              wallet: {
+                address: "invalid-address",
+              },
+            },
+          }),
+      }),
+    });
+
+    await expect(
+      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+    ).rejects.toThrow(
+      "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at result.wallet.address."
+    );
+  });
+
+  it("rejects hosted payer init when backend wallet payload has invalid ownerAccountAddress", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            ownerAccountAddress: "invalid-address",
+          }),
+      }),
+    });
+
+    await expect(
+      runCli(["wallet", "payer", "init", "--mode", "hosted", "--no-prompt"], harness.deps)
+    ).rejects.toThrow(
+      "Hosted payer setup requires backend wallet access: Backend wallet response returned invalid EVM address at ownerAccountAddress."
+    );
+  });
+
   it("errors when payer status is requested before payer setup", async () => {
     const harness = createHarness();
     await expect(runCli(["wallet", "payer", "status"], harness.deps)).rejects.toThrow(
