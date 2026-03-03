@@ -13,12 +13,12 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
-function expectedPatTokenRef(interfaceUrl: string | null) {
+function expectedRefreshTokenRef(interfaceUrl: string | null) {
   if (!interfaceUrl) {
     return {
       source: "file",
       provider: "default",
-      id: "/pat:default",
+      id: "/oauth_refresh:default",
     };
   }
   const origin = new URL(interfaceUrl).origin;
@@ -26,7 +26,7 @@ function expectedPatTokenRef(interfaceUrl: string | null) {
   return {
     source: "file",
     provider: "default",
-    id: `/pat:${encoded}`,
+    id: `/oauth_refresh:${encoded}`,
   };
 }
 
@@ -53,7 +53,7 @@ function expectedPersistedSetupConfig(url: string, chatApiUrl: string = DEFAULT_
     chatApiUrl,
     agent: "default",
     auth: {
-      tokenRef: expectedPatTokenRef(url),
+      tokenRef: expectedRefreshTokenRef(url),
     },
     secrets: expectedDefaultSecretsConfig(),
   };
@@ -130,7 +130,7 @@ describe("cli", () => {
       interfaceUrl: "https://api.example",
       chatApiUrl: "https://api.example",
       token: "abcdefgh...",
-      tokenRef: expectedPatTokenRef("https://api.example"),
+      tokenRef: expectedRefreshTokenRef("https://api.example"),
       agent: "ops",
       path: harness.configFile,
     });
@@ -157,7 +157,7 @@ describe("cli", () => {
       interfaceUrl: "https://api.example",
       chatApiUrl: "https://api.example",
       token: "abcdefgh...",
-      tokenRef: expectedPatTokenRef("https://api.example"),
+      tokenRef: expectedRefreshTokenRef("https://api.example"),
       agent: "-ops",
       path: harness.configFile,
     });
@@ -185,7 +185,7 @@ describe("cli", () => {
       interfaceUrl: "https://interface.example",
       chatApiUrl: "https://chat.example",
       token: "bbt_secr...",
-      tokenRef: expectedPatTokenRef("https://interface.example"),
+      tokenRef: expectedRefreshTokenRef("https://interface.example"),
       agent: null,
       path: harness.configFile,
     });
@@ -248,7 +248,7 @@ describe("cli", () => {
       interfaceUrl: "https://co.build",
       chatApiUrl: "https://chat.example",
       token: "bbt_secr...",
-      tokenRef: expectedPatTokenRef("https://co.build"),
+      tokenRef: expectedRefreshTokenRef("https://co.build"),
       agent: null,
       path: harness.configFile,
     });
@@ -263,7 +263,7 @@ describe("cli", () => {
       harness.deps
     );
     expect(JSON.parse(harness.files.get(secretsPath) ?? "{}")).toEqual({
-      "pat:https://api.example": "bbt_secret",
+      "oauth_refresh:https://api.example": "bbt_secret",
     });
     await runCli(["config", "set", "--url", "https://other.example"], harness.deps);
     await runCli(["config", "show"], harness.deps);
@@ -288,7 +288,7 @@ describe("cli", () => {
   it("config set requires at least one value", async () => {
     const harness = createHarness();
     await expect(runCli(["config", "set"], harness.deps)).rejects.toThrow(
-      "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <pat>|--token-file <path>|--token-stdin [--agent <key>]"
+      "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <refresh-token>|--token-file <path>|--token-stdin [--agent <key>]"
     );
   });
 
@@ -328,7 +328,7 @@ describe("cli", () => {
       interfaceUrl: "https://api.example",
       chatApiUrl: "https://api.example",
       token: "next-tok...",
-      tokenRef: expectedPatTokenRef("https://api.example"),
+      tokenRef: expectedRefreshTokenRef("https://api.example"),
       agent: "agent-a",
       path: harness.configFile,
     });
@@ -413,8 +413,8 @@ describe("cli", () => {
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: cli wallet",
-        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+        "Run: cobuild wallet",
+        "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
   });
@@ -506,8 +506,8 @@ describe("cli", () => {
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: cli wallet",
-        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+        "Run: cobuild wallet",
+        "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
   });
@@ -542,8 +542,8 @@ describe("cli", () => {
       defaultNetwork: "base-sepolia",
       wallet: { ok: true, address: "0xabc" },
       next: [
-        "Run: cli wallet",
-        "Run: cli send usdc 0.10 <to> (or cli send eth 0.00001 <to>)",
+        "Run: cobuild wallet",
+        "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
   });
@@ -571,7 +571,7 @@ describe("cli", () => {
       chatApiUrl: "https://chat.example",
       agent: "default",
       auth: {
-        tokenRef: expectedPatTokenRef("https://interface.example"),
+        tokenRef: expectedRefreshTokenRef("https://interface.example"),
       },
       secrets: expectedDefaultSecretsConfig(),
     });
@@ -615,7 +615,7 @@ describe("cli", () => {
         harness.deps
       )
     ).rejects.toThrow(
-      "PAT authorization failed while bootstrapping wallet access. The saved token was cleared to avoid reusing it. Run setup again and approve a fresh token in the browser."
+      "OAuth authorization failed while bootstrapping wallet access. The saved token was cleared to avoid reusing it. Run setup again and approve a fresh browser authorization."
     );
 
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
@@ -1356,6 +1356,118 @@ describe("cli", () => {
     });
   });
 
+  it("tools get-wallet-balances posts default agent/network payload and normalizes output", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: createJsonResponder({
+        data: {
+          agentKey: "stored-agent",
+          network: "base",
+          walletAddress: "0xabc",
+          balances: {
+            eth: { wei: "1000000000000000", formatted: "0.001" },
+            usdc: { raw: "2500000", decimals: 6, formatted: "2.5" },
+          },
+        },
+      }),
+    });
+    harness.deps.env = {};
+
+    await expect(runCli(["tools", "get-wallet-balances", "extra"], harness.deps)).rejects.toThrow(
+      "Invalid input: expected never, received string"
+    );
+
+    await runCli(["tools", "get-wallet-balances"], harness.deps);
+    const [input, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(String(input)).toBe("https://interface.example/v1/tool-executions");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "get-wallet-balances",
+      input: {
+        agentKey: "stored-agent",
+        network: "base",
+      },
+    });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: {
+        agentKey: "stored-agent",
+        network: "base",
+        walletAddress: "0xabc",
+        balances: {
+          eth: { wei: "1000000000000000", formatted: "0.001" },
+          usdc: { raw: "2500000", decimals: 6, formatted: "2.5" },
+        },
+      },
+    });
+  });
+
+  it("tools get-wallet-balances falls back to env network and default agent when unset", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        data: { walletAddress: "0xenv" },
+      }),
+    });
+    harness.deps.env = { COBUILD_CLI_NETWORK: "base-sepolia" };
+
+    await runCli(["tools", "get-wallet-balances"], harness.deps);
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "get-wallet-balances",
+      input: {
+        agentKey: "default",
+        network: "base-sepolia",
+      },
+    });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: { walletAddress: "0xenv" },
+    });
+  });
+
+  it("tools get-wallet-balances allows agent/network overrides", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        data: { walletAddress: "0xabc" },
+      }),
+    });
+
+    await runCli(
+      ["tools", "get-wallet-balances", "--agent", "override", "--network", "base-sepolia"],
+      harness.deps
+    );
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "get-wallet-balances",
+      input: {
+        agentKey: "override",
+        network: "base-sepolia",
+      },
+    });
+  });
+
   it("tools get-user normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
@@ -1575,6 +1687,62 @@ describe("cli", () => {
     });
   });
 
+  it("tools get-wallet-balances retries alias candidates when the primary tool name is unavailable", async () => {
+    const attemptedNames: string[] = [];
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body)) as { name?: string };
+          attemptedNames.push(String(body.name));
+          if (body.name === "get-wallet-balances") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Tool not found" }),
+            };
+          }
+          if (body.name === "getWalletBalances") {
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ data: { walletAddress: "0xabc" } }),
+            };
+          }
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ ok: false, error: "Unexpected alias" }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+    harness.deps.env = {};
+
+    await runCli(["tools", "get-wallet-balances"], harness.deps);
+    expect(attemptedNames).toEqual(["get-wallet-balances", "getWalletBalances"]);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: { walletAddress: "0xabc" },
+    });
+  });
+
   it("docs errors when canonical tool routes are unavailable", async () => {
     const harness = createHarness({
       config: {
@@ -1654,6 +1822,10 @@ describe("cli", () => {
       {
         args: ["tools", "get-treasury-stats"],
         legacyPath: "/api/cli/tools/get-treasury-stats",
+      },
+      {
+        args: ["tools", "get-wallet-balances"],
+        legacyPath: "/api/cli/tools/get-wallet-balances",
       },
     ];
 
@@ -2047,7 +2219,7 @@ describe("cli", () => {
 
     expect(JSON.parse(String(init?.body))).toEqual({
       kind: "tx",
-      network: "base-sepolia",
+      network: "base",
       agentKey: "manual-agent",
       to: VALID_TO,
       data: "0xdeadbeef",

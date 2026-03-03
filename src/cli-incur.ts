@@ -13,6 +13,7 @@ import { executeSetupCommand } from "./commands/setup.js";
 import {
   executeToolsCastPreviewCommand,
   executeToolsGetCastCommand,
+  executeToolsGetWalletBalancesCommand,
   executeToolsGetUserCommand,
   executeToolsTreasuryStatsCommand,
 } from "./commands/tools.js";
@@ -331,6 +332,10 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     data: z.unknown(),
     ok: z.boolean().optional(),
   }).passthrough();
+  const walletBalancesOutput = z.object({
+    data: z.unknown(),
+    ok: z.boolean().optional(),
+  }).passthrough();
   const walletPayerOutput = z.object({
     mode: z.enum(["hosted", "local"]),
     payerAddress: z.string().nullable(),
@@ -487,6 +492,26 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       output: treasuryStatsOutput,
       run() {
         return executeToolsTreasuryStatsCommand(deps);
+      },
+    })
+    .command("get-wallet-balances", {
+      description: "Fetch wallet ETH and USDC balances",
+      args: z.object({
+        extra: z.never().optional(),
+      }),
+      options: z.object({
+        agent: z.string().optional(),
+        network: z.string().optional(),
+      }),
+      output: walletBalancesOutput,
+      run(context) {
+        return executeToolsGetWalletBalancesCommand(
+          {
+            agent: context.options.agent,
+            network: context.options.network,
+          },
+          deps
+        );
       },
     });
 

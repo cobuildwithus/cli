@@ -1,12 +1,15 @@
 import { asRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
+import { readConfig } from "../config.js";
+import { resolveAgentKey, resolveNetwork } from "./shared.js";
 import { executeCanonicalToolOnly } from "./tool-execution.js";
 
 const TOOLS_USAGE = `Usage:
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
   cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
-  cli tools get-treasury-stats`;
+  cli tools get-treasury-stats
+  cli tools get-wallet-balances [--agent <key>] [--network <network>]`;
 const GET_USER_CANONICAL_TOOL_NAMES = ["getUser", "get-user"];
 const GET_CAST_CANONICAL_TOOL_NAMES = ["getCast", "get-cast"];
 const CAST_PREVIEW_CANONICAL_TOOL_NAMES = ["castPreview", "cast-preview"];
@@ -14,6 +17,11 @@ const TREASURY_STATS_CANONICAL_TOOL_NAMES = [
   "get-treasury-stats",
   "getTreasuryStats",
   "treasuryStats",
+];
+const WALLET_BALANCES_CANONICAL_TOOL_NAMES = [
+  "get-wallet-balances",
+  "getWalletBalances",
+  "walletBalances",
 ];
 
 function inferCastIdentifierType(identifier: string): "hash" | "url" {
@@ -77,6 +85,16 @@ export interface ToolsCastPreviewOutput extends Record<string, unknown> {
 }
 
 export interface ToolsTreasuryStatsOutput extends Record<string, unknown> {
+  data: unknown;
+  ok?: boolean;
+}
+
+export interface ToolsGetWalletBalancesInput {
+  agent?: string;
+  network?: string;
+}
+
+export interface ToolsGetWalletBalancesOutput extends Record<string, unknown> {
   data: unknown;
   ok?: boolean;
 }
@@ -147,4 +165,21 @@ export async function executeToolsTreasuryStatsCommand(
     input: {},
   });
   return normalizeKeyedResponse(response, "data") as ToolsTreasuryStatsOutput;
+}
+
+export async function executeToolsGetWalletBalancesCommand(
+  input: ToolsGetWalletBalancesInput,
+  deps: CliDeps
+): Promise<ToolsGetWalletBalancesOutput> {
+  const current = readConfig(deps);
+  const request = {
+    agentKey: resolveAgentKey(input.agent, current.agent),
+    network: resolveNetwork(input.network, deps),
+  };
+
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: WALLET_BALANCES_CANONICAL_TOOL_NAMES,
+    input: request,
+  });
+  return normalizeKeyedResponse(response, "data") as ToolsGetWalletBalancesOutput;
 }

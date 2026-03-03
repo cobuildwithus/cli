@@ -82,6 +82,7 @@ cli tools get-user <fname>
 cli tools get-cast <identifier> [--type <hash|url>]
 cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
 cli tools get-treasury-stats
+cli tools get-wallet-balances [--agent <key>] [--network <network>]
 cli send usdc <amount> <to> --network <network> --agent <agent>
 cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <agent>
 ```
@@ -98,7 +99,7 @@ Group command notes:
 ## Command Routing
 
 - `docs` calls canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
-- `tools get-user|get-cast|cast-preview|get-treasury-stats` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
+- `tools get-user|get-cast|cast-preview|get-treasury-stats|get-wallet-balances` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
 - `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
 - `config set --chat-api-url` (or `setup --chat-api-url`) is the preferred way to point canonical `/v1/*` calls at a separate Chat API origin.
 - Hosted `https://co.build` may still route `/v1/*` to Chat API at the edge; self-hosted installs can use either edge rewrites or explicit `chatApiUrl` config.

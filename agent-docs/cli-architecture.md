@@ -63,6 +63,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `tools get-cast <identifier> [--type <hash|url>]`
 - `tools cast-preview --text <text> [--embed <url>] [--parent <value>]`
 - `tools get-treasury-stats`
+- `tools get-wallet-balances [--agent <key>] [--network <network>]`
 - Calls canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through configured chat-api routing (`chatApiUrl` when set, otherwise `url`).
 - Intended for read-only access to canonical tool routes.
 

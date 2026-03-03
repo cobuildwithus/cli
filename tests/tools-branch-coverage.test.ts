@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   executeToolsCastPreviewCommand,
   executeToolsGetCastCommand,
+  executeToolsGetWalletBalancesCommand,
   executeToolsGetUserCommand,
   executeToolsTreasuryStatsCommand,
 } from "../src/commands/tools.js";
@@ -185,6 +186,132 @@ describe("tools branch coverage", () => {
       ok: true,
       data: { snapshots: 2 },
     });
+  });
+
+  it("wallet balances resolves default agent/network and normalizes responses", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({ data: { walletAddress: "0xabc", balances: { eth: {}, usdc: {} } } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+        };
+      },
+    });
+    harness.deps.env = {};
+
+    const output = await executeToolsGetWalletBalancesCommand({}, harness.deps);
+    expect(output).toEqual({
+      ok: true,
+      data: { walletAddress: "0xabc", balances: { eth: {}, usdc: {} } },
+    });
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "get-wallet-balances",
+        input: {
+          agentKey: "stored-agent",
+          network: "base",
+        },
+      },
+    ]);
+  });
+
+  it("wallet balances preserves explicit ok responses with overrides", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true, data: { walletAddress: "0xdef" } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+        };
+      },
+    });
+
+    const output = await executeToolsGetWalletBalancesCommand(
+      { agent: "override", network: "base-sepolia" },
+      harness.deps
+    );
+    expect(output).toEqual({
+      ok: true,
+      data: { walletAddress: "0xdef" },
+    });
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "get-wallet-balances",
+        input: {
+          agentKey: "override",
+          network: "base-sepolia",
+        },
+      },
+    ]);
+  });
+
+  it("wallet balances falls back to env network/default agent and wraps payloads without data", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({ walletAddress: "0xenv", balances: { eth: {}, usdc: {} } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+        };
+      },
+    });
+    harness.deps.env = { COBUILD_CLI_NETWORK: "base-sepolia" };
+
+    const output = await executeToolsGetWalletBalancesCommand({}, harness.deps);
+    expect(output).toEqual({
+      ok: true,
+      data: { walletAddress: "0xenv", balances: { eth: {}, usdc: {} } },
+    });
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "get-wallet-balances",
+        input: {
+          agentKey: "default",
+          network: "base-sepolia",
+        },
+      },
+    ]);
   });
 
   it("preserves explicit ok boolean responses for treasury stats", async () => {
