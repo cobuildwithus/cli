@@ -1,4 +1,4 @@
-import { ApiRequestError, apiGet, apiPost, asRecord } from "../transport.js";
+import { ApiRequestError, apiGet, apiPost, asRecord, isRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
 
 const CANONICAL_TOOLS_DISCOVERY_PATH = "/v1/tools";
@@ -19,10 +19,6 @@ interface CanonicalDiscoveryResult {
 
 function normalizeToolName(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function extractCatalogToolName(value: unknown): string | null {
@@ -47,34 +43,38 @@ function prioritizedCanonicalToolNames(
   configuredCandidates: string[],
   discoveredCatalog: unknown
 ): string[] {
-  const normalizedCandidateMap = new Map<string, string>();
+  const normalizedCandidateKeys = new Set<string>();
+  const configured = [] as string[];
+  const configuredExactSet = new Set<string>();
   for (const candidate of configuredCandidates) {
     const trimmed = candidate.trim();
     if (!trimmed) continue;
-    const key = normalizeToolName(trimmed);
-    if (!normalizedCandidateMap.has(key)) {
-      normalizedCandidateMap.set(key, trimmed);
+    normalizedCandidateKeys.add(normalizeToolName(trimmed));
+    if (!configuredExactSet.has(trimmed)) {
+      configured.push(trimmed);
+      configuredExactSet.add(trimmed);
     }
   }
 
+  const discoveredExactSet = new Set<string>();
   const discovered = extractToolCatalogEntries(discoveredCatalog)
     .map(extractCatalogToolName)
     .filter((name): name is string => typeof name === "string")
     .reduce<string[]>((acc, name) => {
       const key = normalizeToolName(name);
-      if (normalizedCandidateMap.has(key)) {
+      if (normalizedCandidateKeys.has(key) && !discoveredExactSet.has(name)) {
         acc.push(name);
+        discoveredExactSet.add(name);
       }
       return acc;
     }, []);
 
-  const ordered = [...discovered, ...normalizedCandidateMap.values()];
+  const ordered = [...discovered, ...configured];
   const unique = new Set<string>();
   const deduped: string[] = [];
   for (const candidate of ordered) {
-    const key = normalizeToolName(candidate);
-    if (unique.has(key)) continue;
-    unique.add(key);
+    if (unique.has(candidate)) continue;
+    unique.add(candidate);
     deduped.push(candidate);
   }
   return deduped;

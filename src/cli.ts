@@ -12,7 +12,13 @@ class IncurExitSignal extends Error {
 }
 
 function stripTrailingNewline(value: string): string {
-  return value.endsWith("\n") ? value.slice(0, -1) : value;
+  if (value.endsWith("\r\n")) {
+    return value.slice(0, -2);
+  }
+  if (value.endsWith("\n")) {
+    return value.slice(0, -1);
+  }
+  return value;
 }
 
 function normalizeCommandNotFoundMessage(message: string): string {
@@ -126,6 +132,11 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
     ? {
         ...deps,
         isInteractive: () => false,
+        readStdin: async () => {
+          throw new Error(
+            "stdin is reserved for MCP; use explicit flags or file options instead of --*-stdin."
+          );
+        },
       }
     : deps;
   const cli = createCobuildIncurCli(cliDeps, { mcpMode: mcpRequested });
@@ -135,9 +146,7 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
     ? undefined
     : (chunk: string) => {
         const message = stripTrailingNewline(chunk);
-        if (message.length > 0) {
-          outputBuffer.push(message);
-        }
+        outputBuffer.push(message);
       };
 
   try {

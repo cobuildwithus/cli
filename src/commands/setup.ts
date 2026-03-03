@@ -92,7 +92,7 @@ export interface SetupCommandOutput {
 /* c8 ignore start */
 function isInteractive(deps: Pick<CliDeps, "isInteractive">): boolean {
   if (deps.isInteractive) return deps.isInteractive();
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  return Boolean(process.stdin.isTTY && process.stderr.isTTY);
 }
 
 function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {

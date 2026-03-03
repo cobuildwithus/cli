@@ -52,6 +52,32 @@ function safeOrigin(rawUrl: string): string | undefined {
   }
 }
 
+function hasConfiguredUrl(url: string | undefined): boolean {
+  return typeof url === "string" && url.trim().length > 0;
+}
+
+function resolveInterfaceUrl(url: string | undefined): string {
+  if (hasConfiguredUrl(url)) {
+    return url!.trim();
+  }
+  return DEFAULT_INTERFACE_URL;
+}
+
+function withDefaultUrls<T extends { url?: string; chatApiUrl?: string }>(
+  config: T
+): T & { url: string; chatApiUrl: string } {
+  const configuredInterfaceUrl = typeof config.url === "string" ? config.url : undefined;
+  const interfaceUrl = resolveInterfaceUrl(configuredInterfaceUrl);
+  const configuredChatApiUrl = typeof config.chatApiUrl === "string" ? config.chatApiUrl.trim() : "";
+  return {
+    ...config,
+    url: interfaceUrl,
+    chatApiUrl:
+      configuredChatApiUrl ||
+      (hasConfiguredUrl(configuredInterfaceUrl) ? interfaceUrl : DEFAULT_CHAT_API_URL),
+  };
+}
+
 export async function executeConfigSetCommand(
   input: ConfigSetCommandInput,
   deps: CliDeps
@@ -89,6 +115,12 @@ export async function executeConfigSetCommand(
   }
 
   const current = readConfig(deps);
+  if (tokenFromOption !== undefined && !hasConfiguredUrl(current.url) && typeof input.url !== "string") {
+    throw new Error(
+      `${CONFIG_SET_USAGE}\nPass --url the first time you set a token so it can be bound to the correct interface origin.`
+    );
+  }
+
   let next = { ...current };
   let shouldClearPersistedAuth = false;
   let normalizedInterfaceUrl: string | undefined;
@@ -99,10 +131,18 @@ export async function executeConfigSetCommand(
   if (typeof input.chatApiUrl === "string") {
     next.chatApiUrl = normalizeApiUrl(input.chatApiUrl, "Chat API URL");
   }
+  if (normalizedInterfaceUrl !== undefined && typeof input.chatApiUrl !== "string") {
+    const currentInterfaceUrl = resolveInterfaceUrl(current.url);
+    const currentChatApiUrl =
+      typeof current.chatApiUrl === "string" ? current.chatApiUrl.trim() : "";
+    if (!currentChatApiUrl || currentChatApiUrl === currentInterfaceUrl) {
+      next.chatApiUrl = normalizedInterfaceUrl;
+    }
+  }
 
   if (normalizedInterfaceUrl !== undefined && tokenFromOption === undefined) {
     const currentUrl =
-      typeof current.url === "string" && current.url.trim().length > 0 ? current.url : DEFAULT_INTERFACE_URL;
+      hasConfiguredUrl(current.url) ? current.url!.trim() : DEFAULT_INTERFACE_URL;
     const nextOrigin = safeOrigin(normalizedInterfaceUrl);
     const currentOrigin = safeOrigin(currentUrl);
     if (nextOrigin !== undefined && nextOrigin !== currentOrigin) {
@@ -116,9 +156,10 @@ export async function executeConfigSetCommand(
     clearPersistedPatToken(deps);
   }
 
+  next = withDefaultUrls(next);
+
   if (tokenFromOption !== undefined) {
-    const interfaceUrl =
-      typeof next.url === "string" && next.url.trim().length > 0 ? next.url : DEFAULT_INTERFACE_URL;
+    const interfaceUrl = resolveInterfaceUrl(typeof next.url === "string" ? next.url : undefined);
     next = persistPatToken({
       deps,
       config: next,
@@ -139,14 +180,9 @@ export async function executeConfigSetCommand(
 
 export function executeConfigShowCommand(deps: CliDeps): ConfigShowCommandOutput {
   const current = readConfig(deps);
-  const interfaceUrl =
-    typeof current.url === "string" && current.url.trim().length > 0 ? current.url : DEFAULT_INTERFACE_URL;
-  const chatApiUrl =
-    typeof current.chatApiUrl === "string" && current.chatApiUrl.trim().length > 0
-      ? current.chatApiUrl
-      : typeof current.url === "string" && current.url.trim().length > 0
-        ? interfaceUrl
-        : DEFAULT_CHAT_API_URL;
+  const normalized = withDefaultUrls(current);
+  const interfaceUrl = String(normalized.url);
+  const chatApiUrl = String(normalized.chatApiUrl);
   return {
     interfaceUrl,
     chatApiUrl,

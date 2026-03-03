@@ -194,20 +194,36 @@ describe("cli", () => {
   it("config set allows --chat-api-url without an existing interface url", async () => {
     const harness = createHarness();
 
-    await runCli(
-      ["config", "set", "--chat-api-url", "https://chat.example", "--token", "bbt_secret"],
-      harness.deps
-    );
+    await runCli(["config", "set", "--chat-api-url", "https://chat.example"], harness.deps);
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: DEFAULT_INTERFACE_URL,
       chatApiUrl: "https://chat.example",
-      token: "bbt_secr...",
-      tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      token: null,
+      tokenRef: null,
       agent: null,
       path: harness.configFile,
     });
+  });
+
+  it("config set requires --url when setting a token for the first time", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(["config", "set", "--token", "bbt_secret"], harness.deps)
+    ).rejects.toThrow("Pass --url the first time you set a token so it can be bound to the correct interface origin.");
+  });
+
+  it("config set rejects first-time token binding when only --chat-api-url is provided", async () => {
+    const harness = createHarness();
+
+    await expect(
+      runCli(
+        ["config", "set", "--chat-api-url", "https://chat.example", "--token", "bbt_secret"],
+        harness.deps
+      )
+    ).rejects.toThrow("Pass --url the first time you set a token so it can be bound to the correct interface origin.");
   });
 
   it("config set normalizes interface and chat API urls", async () => {
@@ -340,6 +356,27 @@ describe("cli", () => {
     });
   });
 
+  it("config set persists default interface and chat API urls when updating agent only", async () => {
+    const harness = createHarness();
+
+    await runCli(["config", "set", "--agent", "ops"], harness.deps);
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toMatchObject({
+      url: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
+      agent: "ops",
+    });
+    await runCli(["config", "show"], harness.deps);
+
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      interfaceUrl: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
+      token: null,
+      tokenRef: null,
+      agent: "ops",
+      path: harness.configFile,
+    });
+  });
+
   it("setup saves config and initializes wallet", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
@@ -359,7 +396,7 @@ describe("cli", () => {
     );
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
+    expect(String(input)).toBe("https://api.example/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
       defaultNetwork: "base-sepolia",
@@ -386,14 +423,14 @@ describe("cli", () => {
     const harness = createHarness({
       fetchResponder: async (input) => {
         const url = String(input);
-        if (url === "https://api.example/api/buildbot/wallet") {
+        if (url === "https://api.example/api/cli/wallet") {
           return {
             ok: true,
             status: 200,
             text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
           };
         }
-        if (url === "https://api.example/api/buildbot/wallet?agentKey=default") {
+        if (url === "https://api.example/api/cli/wallet?agentKey=default") {
           return {
             ok: true,
             status: 200,
@@ -553,7 +590,7 @@ describe("cli", () => {
     await runCli(["setup", "--url", "http://localhost:3000"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
     );
@@ -624,7 +661,7 @@ describe("cli", () => {
     await runCli(["setup", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("https://co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("https://co.build")
     );
@@ -638,7 +675,7 @@ describe("cli", () => {
     await runCli(["setup", "--dev", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
     );
@@ -652,7 +689,7 @@ describe("cli", () => {
     await runCli(["setup", "--url", "localhost:3000", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000", DEFAULT_DEV_CHAT_API_URL)
     );
@@ -669,7 +706,7 @@ describe("cli", () => {
     );
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("http://localhost:3000/co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("http://localhost:3000/co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("http://localhost:3000/co.build", DEFAULT_DEV_CHAT_API_URL)
     );
@@ -683,7 +720,7 @@ describe("cli", () => {
     await runCli(["setup", "--url", "co.build", "--token", "bbt_secret"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://co.build/api/buildbot/wallet");
+    expect(String(input)).toBe("https://co.build/api/cli/wallet");
     expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual(
       expectedPersistedSetupConfig("https://co.build")
     );
@@ -739,7 +776,7 @@ describe("cli", () => {
     await runCli(["wallet", "--network", "base-sepolia"], harness.deps);
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/buildbot/wallet");
+    expect(String(input)).toBe("https://api.example/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       defaultNetwork: "base-sepolia",
       agentKey: "stored-agent",
@@ -780,7 +817,7 @@ describe("cli", () => {
     await runCli(["wallet"], harness.deps);
 
     const [input] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://interface.example/api/buildbot/wallet");
+    expect(String(input)).toBe("https://interface.example/api/cli/wallet");
   });
 
   it("docs requires a query", async () => {
@@ -1483,6 +1520,61 @@ describe("cli", () => {
     });
   });
 
+  it("tools get-treasury-stats retries alias candidates when the primary tool name is unavailable", async () => {
+    const attemptedNames: string[] = [];
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body)) as { name?: string; input?: unknown };
+          attemptedNames.push(String(body.name));
+          if (body.name === "get-treasury-stats") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Tool not found" }),
+            };
+          }
+          if (body.name === "getTreasuryStats") {
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ data: { asOf: "2026-03-01T00:00:00.000Z" } }),
+            };
+          }
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ ok: false, error: "Unexpected alias" }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "get-treasury-stats"], harness.deps);
+    expect(attemptedNames).toEqual(["get-treasury-stats", "getTreasuryStats"]);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: { asOf: "2026-03-01T00:00:00.000Z" },
+    });
+  });
+
   it("docs errors when canonical tool routes are unavailable", async () => {
     const harness = createHarness({
       config: {
@@ -1544,7 +1636,7 @@ describe("cli", () => {
 
     expect(
       harness.fetchMock.mock.calls.some(([input]) =>
-        String(input).endsWith("/api/buildbot/tools/get-user")
+        String(input).endsWith("/api/cli/tools/get-user")
       )
     ).toBe(false);
   });
@@ -1553,15 +1645,15 @@ describe("cli", () => {
     const scenarios: Array<{ args: string[]; legacyPath: string }> = [
       {
         args: ["tools", "get-cast", "0xabc"],
-        legacyPath: "/api/buildbot/tools/get-cast",
+        legacyPath: "/api/cli/tools/get-cast",
       },
       {
         args: ["tools", "cast-preview", "--text", "hello"],
-        legacyPath: "/api/buildbot/tools/cast-preview",
+        legacyPath: "/api/cli/tools/cast-preview",
       },
       {
         args: ["tools", "get-treasury-stats"],
-        legacyPath: "/api/buildbot/tools/get-treasury-stats",
+        legacyPath: "/api/cli/tools/get-treasury-stats",
       },
     ];
 
@@ -1640,7 +1732,7 @@ describe("cli", () => {
     await runCli(["farcaster", "signup"], harness.deps);
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/buildbot/farcaster/signup");
+    expect(String(input)).toBe("https://api.example/api/cli/farcaster/signup");
     const body = JSON.parse(String(init?.body)) as {
       signerPublicKey: string;
       recoveryAddress?: string;
@@ -1877,7 +1969,7 @@ describe("cli", () => {
     );
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/buildbot/exec");
+    expect(String(input)).toBe("https://api.example/api/cli/exec");
     expect(init?.headers).toMatchObject({
       "X-Idempotency-Key": GENERATED_UUID,
       "Idempotency-Key": GENERATED_UUID,
@@ -1947,7 +2039,7 @@ describe("cli", () => {
     );
 
     const [input, init] = harness.fetchMock.mock.calls[0];
-    expect(String(input)).toBe("https://api.example/api/buildbot/exec");
+    expect(String(input)).toBe("https://api.example/api/cli/exec");
     expect(init?.headers).toMatchObject({
       "X-Idempotency-Key": EXPLICIT_UUID,
       "Idempotency-Key": EXPLICIT_UUID,

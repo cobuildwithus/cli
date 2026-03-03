@@ -29,6 +29,25 @@ describe("cli runtime coverage", () => {
     createSpy.mockRestore();
   });
 
+  it("preserves blank lines and normalizes CRLF when buffering stdout", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli").mockReturnValue({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.('{"ok":true}\r\n');
+        options?.stdout?.("\n");
+        options?.stdout?.("line-two\r\n");
+        options?.exit?.(0);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+
+    await runCli(["wallet"], harness.deps);
+
+    expect(harness.outputs).toEqual(['{"ok":true}', "", "line-two"]);
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
   it("collapses docs and tools multi-word positionals during Incur preprocessing", () => {
     expect(
       cliIncur.preprocessIncurArgv(["docs", "--limit", "5", "how", "to", "send", "usdc"])
@@ -132,6 +151,7 @@ describe("cli runtime coverage", () => {
       },
     } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
     await expect(runCli(["wallet"], harness.deps)).rejects.toThrow("{\"ok\":false}");
+    expect(harness.outputs).toEqual([]);
 
     preprocessSpy.mockRestore();
     createSpy.mockRestore();
@@ -150,8 +170,14 @@ describe("cli runtime coverage", () => {
 
     expect(preprocessSpy).toHaveBeenCalledWith(["--mcp"]);
     expect(createSpy).toHaveBeenCalledWith(expect.objectContaining(harness.deps), { mcpMode: true });
-    const mcpDeps = createSpy.mock.calls[0]?.[0] as { isInteractive?: () => boolean };
+    const mcpDeps = createSpy.mock.calls[0]?.[0] as {
+      isInteractive?: () => boolean;
+      readStdin?: () => Promise<string>;
+    };
     expect(mcpDeps.isInteractive?.()).toBe(false);
+    await expect(mcpDeps.readStdin!()).rejects.toThrow(
+      "stdin is reserved for MCP; use explicit flags or file options instead of --*-stdin."
+    );
     expect(harness.outputs).toEqual([]);
 
     preprocessSpy.mockRestore();

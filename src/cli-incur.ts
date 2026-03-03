@@ -331,6 +331,62 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     data: z.unknown(),
     ok: z.boolean().optional(),
   }).passthrough();
+  const walletPayerOutput = z.object({
+    mode: z.enum(["hosted", "local"]),
+    payerAddress: z.string().nullable(),
+    network: z.string(),
+    token: z.string(),
+    costPerPaidCallMicroUsdc: z.string(),
+  });
+  const walletOutput = z
+    .object({
+      ok: z.boolean().optional(),
+      address: z.string().optional(),
+      agentKey: z.string().optional(),
+      payer: walletPayerOutput.optional(),
+    })
+    .passthrough();
+  const farcasterSignerOutput = z.object({
+    publicKey: z.string(),
+    saved: z.boolean(),
+    file: z.string(),
+  });
+  const farcasterSignupOutput = z
+    .object({
+      ok: z.boolean().optional(),
+      result: z.unknown().optional(),
+      signer: farcasterSignerOutput.optional(),
+    })
+    .passthrough();
+  const farcasterPostOutput = z
+    .object({
+      ok: z.boolean().optional(),
+      replayed: z.boolean().optional(),
+      resumedPending: z.boolean().optional(),
+      idempotencyKey: z.string(),
+      result: z.object({
+        fid: z.number().optional(),
+        text: z.string().optional(),
+        parentAuthorFid: z.number().optional(),
+        parentHashHex: z.string().optional(),
+        castHashHex: z.string().optional(),
+        hubResponseStatus: z.number().optional(),
+        hubResponse: z.unknown().optional(),
+        payerAddress: z.string().nullable().optional(),
+        payerAgentKey: z.string().optional(),
+        x402Token: z.string().nullable().optional(),
+        x402Amount: z.string().nullable().optional(),
+        x402Network: z.string().nullable().optional(),
+        verification: z
+          .object({
+            enabled: z.literal(true),
+            included: z.literal(true),
+            attempts: z.number(),
+          })
+          .optional(),
+      }).passthrough(),
+    })
+    .passthrough();
   const sendOrTxOutput = z.object({
     idempotencyKey: z.string(),
   }).passthrough();
@@ -445,6 +501,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         extraStorage: z.string().optional(),
         outDir: z.string().optional(),
       }),
+      output: farcasterSignupOutput,
       run(context) {
         return executeFarcasterSignupCommand(
           {
@@ -454,7 +511,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
             outDir: context.options.outDir,
           },
           deps
-        );
+        ) as Promise<z.infer<typeof farcasterSignupOutput>>;
       },
     })
     .command("post", {
@@ -468,6 +525,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         idempotencyKey: z.string().optional(),
         verify: z.enum(["none", "once", "poll"]).optional(),
       }),
+      output: farcasterPostOutput,
       run(context) {
         return executeFarcasterPostCommand(
           {
@@ -480,7 +538,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
             verify: context.options.verify,
           },
           deps
-        );
+        ) as Promise<z.infer<typeof farcasterPostOutput>>;
       },
     });
 
@@ -513,7 +571,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         privateKeyFile: z.string().optional(),
         prompt: z.boolean().optional(),
       }),
-      output: z.unknown(),
+      output: walletOutput,
       run(context) {
         const namespace = context.args.namespace?.trim().toLowerCase();
         const action = context.args.action?.trim().toLowerCase();
@@ -525,7 +583,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
               agent: context.options.agent,
             },
             deps
-          );
+          ) as Promise<z.infer<typeof walletOutput>>;
         }
 
         if (namespace === "payer" && action === "init") {
@@ -538,7 +596,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
               noPrompt: context.options.prompt === false,
             },
             deps
-          );
+          ) as Promise<z.infer<typeof walletOutput>>;
         }
 
         if (namespace === "payer" && action === "status") {
@@ -547,7 +605,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
               agent: context.options.agent,
             },
             deps
-          );
+          ) as Promise<z.infer<typeof walletOutput>>;
         }
 
         throw new Error(

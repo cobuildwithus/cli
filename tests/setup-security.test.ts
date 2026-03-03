@@ -53,6 +53,26 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+function overrideIsTty(stream: object, value: boolean): () => void {
+  const target = stream as { isTTY?: boolean };
+  const hadOwnProperty = Object.prototype.hasOwnProperty.call(target, "isTTY");
+  const previousValue = target.isTTY;
+  Object.defineProperty(target, "isTTY", {
+    value,
+    configurable: true,
+  });
+  return () => {
+    if (hadOwnProperty) {
+      Object.defineProperty(target, "isTTY", {
+        value: previousValue,
+        configurable: true,
+      });
+      return;
+    }
+    delete target.isTTY;
+  };
+}
+
 describe("setup/config trust-boundary hardening", () => {
   it("setup --link resolves package root from CLI module path and avoids PATH-based pnpm lookup", async () => {
     const harness = createHarness({
@@ -121,6 +141,28 @@ describe("setup/config trust-boundary hardening", () => {
       agentKey: "default",
       defaultNetwork: "base",
     });
+  });
+
+  it("setup fallback interactivity uses stderr TTY even when stdout is not a TTY", async () => {
+    const harness = createHarness({
+      fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
+    });
+
+    const restoreStdin = overrideIsTty(process.stdin, true);
+    const restoreStdout = overrideIsTty(process.stdout, false);
+    const restoreStderr = overrideIsTty(process.stderr, true);
+    try {
+      await runCli(
+        ["setup", "--url", "https://api.example", "--token", "bbt_secret", "--payer-mode", "skip"],
+        harness.deps
+      );
+    } finally {
+      restoreStderr();
+      restoreStdout();
+      restoreStdin();
+    }
+
+    expect(harness.errors).toContain("CLI Setup Wizard");
   });
 
   it("setup ignores deprecated COBUILD_CLI_CHAT_API_URL environment input", async () => {
@@ -451,17 +493,39 @@ describe("setup/config trust-boundary hardening", () => {
     );
   });
 
-  it("config set accepts token via --token-file", async () => {
+  it("config set rejects token via --token-file when no interface URL is configured yet", async () => {
     const harness = createHarness();
     const tokenFile = "/tmp/cli-token.txt";
     harness.files.set(tokenFile, "bbt_from_file\n");
 
+    await expect(runCli(["config", "set", "--token-file", tokenFile], harness.deps)).rejects.toThrow(
+      "Pass --url the first time you set a token so it can be bound to the correct interface origin."
+    );
+  });
+
+  it("config set accepts token via --token-file when interface URL already exists", async () => {
+    const harness = createHarness({
+      config: {
+        url: DEFAULT_INTERFACE_URL,
+      },
+    });
+    const tokenFile = "/tmp/cli-token.txt";
+    harness.files.set(tokenFile, "bbt_from_file\n");
+
     await runCli(["config", "set", "--token-file", tokenFile], harness.deps);
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_INTERFACE_URL,
+      auth: {
+        tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      },
+      secrets: expectedDefaultSecretsConfig(),
+    });
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: DEFAULT_INTERFACE_URL,
-      chatApiUrl: DEFAULT_CHAT_API_URL,
+      chatApiUrl: DEFAULT_INTERFACE_URL,
       token: "bbt_from...",
       tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,
@@ -469,16 +533,37 @@ describe("setup/config trust-boundary hardening", () => {
     });
   });
 
-  it("config set accepts token via --token-stdin", async () => {
+  it("config set rejects token via --token-stdin when no interface URL is configured yet", async () => {
     const harness = createHarness();
     harness.deps.readStdin = async () => "bbt_from_stdin\n";
 
+    await expect(runCli(["config", "set", "--token-stdin"], harness.deps)).rejects.toThrow(
+      "Pass --url the first time you set a token so it can be bound to the correct interface origin."
+    );
+  });
+
+  it("config set accepts token via --token-stdin when interface URL already exists", async () => {
+    const harness = createHarness({
+      config: {
+        url: DEFAULT_INTERFACE_URL,
+      },
+    });
+    harness.deps.readStdin = async () => "bbt_from_stdin\n";
+
     await runCli(["config", "set", "--token-stdin"], harness.deps);
+    expect(JSON.parse(harness.files.get(harness.configFile) ?? "{}")).toEqual({
+      url: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_INTERFACE_URL,
+      auth: {
+        tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
+      },
+      secrets: expectedDefaultSecretsConfig(),
+    });
     await runCli(["config", "show"], harness.deps);
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       interfaceUrl: DEFAULT_INTERFACE_URL,
-      chatApiUrl: DEFAULT_CHAT_API_URL,
+      chatApiUrl: DEFAULT_INTERFACE_URL,
       token: "bbt_from...",
       tokenRef: expectedPatTokenRef(DEFAULT_INTERFACE_URL),
       agent: null,

@@ -53,6 +53,41 @@ describe("backbone cutover coverage audit", () => {
     expect(commandNames).not.toContain("setup");
   });
 
+  it("includes output schemas for wallet and farcaster command surfaces", async () => {
+    const harness = createHarness();
+    const cli = createCobuildIncurCli(harness.deps);
+    const llmsOutput: string[] = [];
+
+    await cli.serve(["--llms", "--format", "json"], {
+      env: harness.deps.env,
+      stdout: (chunk) => {
+        llmsOutput.push(chunk);
+      },
+    });
+
+    const manifest = JSON.parse(llmsOutput.join("")) as {
+      commands?: Array<{
+        name?: string;
+        schema?: {
+          output?: unknown;
+        };
+      }>;
+    };
+
+    const commands = Array.isArray(manifest.commands) ? manifest.commands : [];
+    const wallet = commands.find((entry) => entry.name === "wallet");
+    const farcasterSignup = commands.find((entry) => entry.name === "farcaster signup");
+    const farcasterPost = commands.find((entry) => entry.name === "farcaster post");
+
+    const walletOutput = wallet?.schema?.output as { properties?: Record<string, unknown> } | undefined;
+    const signupOutput = farcasterSignup?.schema?.output as { properties?: Record<string, unknown> } | undefined;
+    const postOutput = farcasterPost?.schema?.output as { properties?: Record<string, unknown> } | undefined;
+
+    expect(walletOutput?.properties).toHaveProperty("payer");
+    expect(signupOutput?.properties).toHaveProperty("signer");
+    expect(postOutput?.properties).toHaveProperty("idempotencyKey");
+  });
+
   it("rejects setup in MCP runtime because it is not registered", async () => {
     const harness = createHarness();
     const cli = createCobuildIncurCli(harness.deps, { mcpMode: true });

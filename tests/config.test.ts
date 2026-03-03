@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   clearPersistedPatToken,
   configPath,
+  DEFAULT_CHAT_API_URL,
+  DEFAULT_INTERFACE_URL,
   maskToken,
   persistPatToken,
   readConfig,
@@ -54,13 +56,11 @@ describe("config", () => {
         token: "bbt_123",
         agent: "alpha",
         chatApiUrl: "https://chat.example",
-        chatApiUrlEnabled: true,
       } as unknown as ReturnType<typeof readConfig>
     );
 
     const raw = files.get(configFile) ?? "{}";
     expect(raw).toContain('"chatApiUrl": "https://chat.example"');
-    expect(raw).toContain('"chatApiUrlEnabled": true');
   });
 
   it("writes config atomically without leaving temp files", () => {
@@ -141,9 +141,14 @@ describe("config", () => {
     expect(readConfig(deps)).toEqual({});
   });
 
-  it("requires url and token", () => {
+  it("requires token and falls back to hardcoded interface/chat urls", () => {
     const missingUrl = createHarness({ config: { token: "bbt_1" } });
-    expect(() => requireConfig(missingUrl.deps)).toThrow(/Missing interface API base URL/);
+    expect(requireConfig(missingUrl.deps)).toEqual({
+      url: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
+      token: "bbt_1",
+      agent: undefined,
+    });
 
     const missingToken = createHarness({ config: { url: "https://api.example" } });
     expect(() => requireConfig(missingToken.deps)).toThrow(/Missing PAT token/);
@@ -247,7 +252,6 @@ describe("config", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
-        chatApiUrlEnabled: true,
         token: "bbt_legacy_secret",
       },
     });
@@ -263,7 +267,6 @@ describe("config", () => {
     expect(migratedConfig).toMatchObject({
       url: "https://interface.example",
       chatApiUrl: "https://chat.example",
-      chatApiUrlEnabled: true,
       auth: {
         tokenRef: {
           source: "file",
@@ -534,7 +537,6 @@ describe("config", () => {
       config: {
         url: "https://interface.example",
         chatApiUrl: "https://chat.example",
-        chatApiUrlEnabled: true,
         token: "bbt_abc",
       },
     });
@@ -547,18 +549,16 @@ describe("config", () => {
     });
   });
 
-  it("ignores chatApiUrl values that are not explicitly enabled", () => {
+  it("uses hardcoded defaults when config has only token", () => {
     const { deps } = createHarness({
       config: {
-        url: "https://interface.example",
-        chatApiUrl: "https://chat.example",
         token: "bbt_abc",
       },
     });
 
     expect(requireConfig(deps)).toEqual({
-      url: "https://interface.example",
-      chatApiUrl: "https://interface.example",
+      url: DEFAULT_INTERFACE_URL,
+      chatApiUrl: DEFAULT_CHAT_API_URL,
       token: "bbt_abc",
       agent: undefined,
     });

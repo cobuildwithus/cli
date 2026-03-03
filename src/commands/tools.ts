@@ -12,6 +12,8 @@ const GET_CAST_CANONICAL_TOOL_NAMES = ["getCast", "get-cast"];
 const CAST_PREVIEW_CANONICAL_TOOL_NAMES = ["castPreview", "cast-preview"];
 const TREASURY_STATS_CANONICAL_TOOL_NAMES = [
   "get-treasury-stats",
+  "getTreasuryStats",
+  "treasuryStats",
 ];
 
 function inferCastIdentifierType(identifier: string): "hash" | "url" {
@@ -33,48 +35,15 @@ function hasOwn(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
-function normalizeGetUserResponse(payload: unknown): Record<string, unknown> {
+function normalizeKeyedResponse(payload: unknown, key: string): Record<string, unknown> {
   const record = asRecord(payload);
-  if (hasOwn(record, "result")) {
+  if (hasOwn(record, key)) {
     if (typeof record.ok === "boolean") {
       return record;
     }
-    return { ok: true, result: record.result };
+    return { ok: true, [key]: record[key] };
   }
-  return { ok: true, result: payload };
-}
-
-function normalizeGetCastResponse(payload: unknown): Record<string, unknown> {
-  const record = asRecord(payload);
-  if (hasOwn(record, "cast")) {
-    if (typeof record.ok === "boolean") {
-      return record;
-    }
-    return { ok: true, cast: record.cast };
-  }
-  return { ok: true, cast: payload };
-}
-
-function normalizeCastPreviewResponse(payload: unknown): Record<string, unknown> {
-  const record = asRecord(payload);
-  if (hasOwn(record, "cast")) {
-    if (typeof record.ok === "boolean") {
-      return record;
-    }
-    return { ok: true, cast: record.cast };
-  }
-  return { ok: true, cast: payload };
-}
-
-function normalizeTreasuryStatsResponse(payload: unknown): Record<string, unknown> {
-  const record = asRecord(payload);
-  if (hasOwn(record, "data")) {
-    if (typeof record.ok === "boolean") {
-      return record;
-    }
-    return { ok: true, data: record.data };
-  }
-  return { ok: true, data: payload };
+  return { ok: true, [key]: payload };
 }
 
 export interface ToolsGetUserInput {
@@ -124,7 +93,7 @@ export async function executeToolsGetUserCommand(
     canonicalToolNames: GET_USER_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeGetUserResponse(response) as ToolsGetUserOutput;
+  return normalizeKeyedResponse(response, "result") as ToolsGetUserOutput;
 }
 
 export async function executeToolsGetCastCommand(
@@ -143,7 +112,7 @@ export async function executeToolsGetCastCommand(
     canonicalToolNames: GET_CAST_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeGetCastResponse(response) as ToolsGetCastOutput;
+  return normalizeKeyedResponse(response, "cast") as ToolsGetCastOutput;
 }
 
 export async function executeToolsCastPreviewCommand(
@@ -167,7 +136,7 @@ export async function executeToolsCastPreviewCommand(
     canonicalToolNames: CAST_PREVIEW_CANONICAL_TOOL_NAMES,
     input: request,
   });
-  return normalizeCastPreviewResponse(response) as ToolsCastPreviewOutput;
+  return normalizeKeyedResponse(response, "cast") as ToolsCastPreviewOutput;
 }
 
 export async function executeToolsTreasuryStatsCommand(
@@ -177,5 +146,5 @@ export async function executeToolsTreasuryStatsCommand(
     canonicalToolNames: TREASURY_STATS_CANONICAL_TOOL_NAMES,
     input: {},
   });
-  return normalizeTreasuryStatsResponse(response) as ToolsTreasuryStatsOutput;
+  return normalizeKeyedResponse(response, "data") as ToolsTreasuryStatsOutput;
 }
