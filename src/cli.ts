@@ -22,9 +22,10 @@ function stripTrailingNewline(value: string): string {
 }
 
 function normalizeCommandNotFoundMessage(message: string): string {
-  const match = message.match(
-    /^'([^']+)' is not a command\. See 'cli(?:\s+([^']+))? --help' for a list of available commands\.$/
-  );
+  const match =
+    message.match(
+      /^'([^']+)' is not a command\. See 'cli(?:\s+([^']+))? --help' for a list of available commands\.$/
+    ) ?? message.match(/^'([^']+)' is not a command for 'cli(?:\s+([^']+))?'\.$/);
   if (!match) return message;
 
   const command = match[1];

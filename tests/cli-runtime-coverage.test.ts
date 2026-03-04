@@ -157,6 +157,56 @@ describe("cli runtime coverage", () => {
     createSpy.mockRestore();
   });
 
+  it("normalizes unknown command errors across legacy and current Incur text", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli");
+
+    createSpy.mockReturnValueOnce({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.(
+          "'unknown' is not a command. See 'cli --help' for a list of available commands.\n"
+        );
+        options?.exit?.(1);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+    await expect(runCli(["unknown"], harness.deps)).rejects.toThrow("Unknown command: unknown");
+
+    createSpy.mockReturnValueOnce({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.(
+          "'delete' is not a command. See 'cli config --help' for a list of available commands.\n"
+        );
+        options?.exit?.(1);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+    await expect(runCli(["config", "delete"], harness.deps)).rejects.toThrow(
+      "Unknown config subcommand: delete"
+    );
+
+    createSpy.mockReturnValueOnce({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.("'nope' is not a command for 'cli'.\n");
+        options?.exit?.(1);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+    await expect(runCli(["nope"], harness.deps)).rejects.toThrow("Unknown command: nope");
+
+    createSpy.mockReturnValueOnce({
+      async serve(_argv: string[], options?: { stdout?: (chunk: string) => void; exit?: (code: number) => void }) {
+        options?.stdout?.('{\"error\":{\"message\":\"\'prune\' is not a command for \'cli wallet\'.\"}}\n');
+        options?.exit?.(1);
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+    await expect(runCli(["wallet", "prune"], harness.deps)).rejects.toThrow(
+      "Unknown wallet subcommand: prune"
+    );
+    expect(harness.outputs).toEqual([]);
+
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
   it("marks --mcp mode and skips stdout buffering adapter", async () => {
     const harness = createHarness();
     const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);

@@ -49,7 +49,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
-    "@cobuild/review-gpt": "^0.2.8",
+    "@cobuild/review-gpt": "^0.2.9",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "husky": "^9.1.7",
@@ -61,7 +61,7 @@
     "@cobuild/wire": "^0.1.3",
     "@farcaster/hub-nodejs": "^0.15.10",
     "@noble/ed25519": "^2.2.3",
-    "incur": "0.1.12",
+    "incur": "0.1.17",
     "viem": "^2.46.3"
   }
 }

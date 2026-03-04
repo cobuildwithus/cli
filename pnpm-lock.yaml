@@ -18,15 +18,15 @@ importers:
         specifier: ^2.2.3
         version: 2.3.0
       incur:
-        specifier: 0.1.12
-        version: 0.1.12
+        specifier: 0.1.17
+        version: 0.1.17
       viem:
         specifier: ^2.46.3
         version: 2.46.3(typescript@5.9.3)(zod@4.3.6)
     devDependencies:
       '@cobuild/review-gpt':
-        specifier: ^0.2.8
-        version: 0.2.8
+        specifier: ^0.2.9
+        version: 0.2.9
       '@types/node':
         specifier: ^25.2.3
         version: 25.3.0
@@ -69,8 +69,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@cobuild/review-gpt@0.2.8':
-    resolution: {integrity: sha512-eElYGlcoemlHnTncxPa7KbMEmbPW4buVs9draM564W57GZO01imSO/Nhfb3GAuvdg+3M+2357TD2gsyAk85kSw==}
+  '@cobuild/review-gpt@0.2.9':
+    resolution: {integrity: sha512-FAhqDl7eZJfKjyv750qvnzw0Y9AzY+GomBK2mFnbtH0jjesT5HNRaMe0OLp7XaaWe15zVIGCzzKGgwCMpjlyig==}
     hasBin: true
 
   '@cobuild/wire@0.1.3':
@@ -253,8 +253,8 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hono/node-server@1.19.9':
-    resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
+  '@hono/node-server@1.19.10':
+    resolution: {integrity: sha512-hZ7nOssGqRgyV3FVVQdfi+U4q02uB23bpnYpdvNXkYTRRyWx84b7yf1ans+dnJ/7h41sGL3CeQTfO+ZGxuO+Iw==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -768,8 +768,8 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
-  hono@4.12.3:
-    resolution: {integrity: sha512-SFsVSjp8sj5UumXOOFlkZOG6XS9SJDKw0TbwFeV+AJ8xlST8kxK5Z/5EYa111UY8732lK2S/xB653ceuaoGwpg==}
+  hono@4.12.5:
+    resolution: {integrity: sha512-3qq+FUBtlTHhtYxbxheZgY8NIFnkkC/MR8u5TTsr7YZ3wixryQ3cCwn3iZbg8p8B88iDBBAYSfZDS75t8MN7Vg==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@2.0.2:
@@ -788,8 +788,8 @@ packages:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
     engines: {node: '>=0.10.0'}
 
-  incur@0.1.12:
-    resolution: {integrity: sha512-sFcRtl5f5HJKrMJxl7TRz4Y01Em4XiC2OoyfLWxwXKnOJjpaCfooNRB+/O8NpwFQaaW6+5CbJOPRVLaaW1h33w==}
+  incur@0.1.17:
+    resolution: {integrity: sha512-8yWjVADAFr3qJb3obT14Cxpu7u6elrP7apO5M0iHIf4z/ynIBMxh5/nhiervroKSqtz/G3B79ruSsJY9YOiL2w==}
     hasBin: true
 
   inherits@2.0.4:
@@ -1251,7 +1251,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@cobuild/review-gpt@0.2.8': {}
+  '@cobuild/review-gpt@0.2.9': {}
 
   '@cobuild/wire@0.1.3(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
@@ -1380,9 +1380,9 @@ snapshots:
       protobufjs: 7.5.4
       yargs: 17.7.2
 
-  '@hono/node-server@1.19.9(hono@4.12.3)':
+  '@hono/node-server@1.19.10(hono@4.12.5)':
     dependencies:
-      hono: 4.12.3
+      hono: 4.12.5
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -1397,7 +1397,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.27.1(zod@4.3.6)':
     dependencies:
-      '@hono/node-server': 1.19.9(hono@4.12.3)
+      '@hono/node-server': 1.19.10(hono@4.12.5)
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       content-type: 1.0.5
@@ -1407,7 +1407,7 @@ snapshots:
       eventsource-parser: 3.0.6
       express: 5.2.1
       express-rate-limit: 8.2.1(express@5.2.1)
-      hono: 4.12.3
+      hono: 4.12.5
       jose: 6.1.3
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -1881,7 +1881,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.12.3: {}
+  hono@4.12.5: {}
 
   html-escaper@2.0.2: {}
 
@@ -1899,7 +1899,7 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
-  incur@0.1.12:
+  incur@0.1.17:
     dependencies:
       '@modelcontextprotocol/sdk': 1.27.1(zod@4.3.6)
       '@toon-format/toon': 2.1.0
