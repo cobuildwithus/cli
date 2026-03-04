@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@cobuild/wire':
-        specifier: link:../wire
-        version: link:../wire
+        specifier: ^0.1.3
+        version: 0.1.3(typescript@5.9.3)(zod@4.3.6)
       '@farcaster/hub-nodejs':
         specifier: ^0.15.10
         version: 0.15.10(typescript@5.9.3)(zod@4.3.6)
@@ -71,6 +71,11 @@ packages:
 
   '@cobuild/review-gpt@0.2.7':
     resolution: {integrity: sha512-KtkyovdaRci2zXwjiSXFEOJa5F5KOdpleIBC+4nL5UapzOlN8AktSKUG8yQ2wdF7mcP3XpezFpba/eMXNTdRcQ==}
+    hasBin: true
+
+  '@cobuild/wire@0.1.3':
+    resolution: {integrity: sha512-A1ou+4+i/BCwpvEG+iVRB4FiKQUB1ai4ytlh4SurvpOSfcnSts/rma+Kn0TAb5NoZFMHS97BcZHaLmkGpe/FWA==}
+    engines: {node: '>=20'}
     hasBin: true
 
   '@esbuild/aix-ppc64@0.27.3':
@@ -1247,6 +1252,15 @@ snapshots:
   '@bcoe/v8-coverage@1.0.2': {}
 
   '@cobuild/review-gpt@0.2.7': {}
+
+  '@cobuild/wire@0.1.3(typescript@5.9.3)(zod@4.3.6)':
+    dependencies:
+      viem: 2.46.3(typescript@5.9.3)(zod@4.3.6)
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true
