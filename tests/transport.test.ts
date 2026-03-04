@@ -1,8 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { apiGet, apiPost, toEndpoint } from "../src/transport.js";
 import { createHarness } from "./helpers.js";
 
 describe("transport", () => {
+  const createHungRequestHarness = () =>
+    createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (_input, init) =>
+        await new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
+          });
+        }),
+    });
+
   it("normalizes endpoint slashes", () => {
     expect(toEndpoint("https://api.example", "/api/cli/wallet").toString()).toBe(
       "https://api.example/api/cli/wallet"
@@ -94,23 +108,56 @@ describe("transport", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
-  it("times out hung requests", async () => {
-    const harness = createHarness({
-      config: {
-        url: "https://api.example",
-        token: "bbt_secret",
-      },
-      fetchResponder: async (_input, init) =>
-        await new Promise((_, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
-          });
-        }),
-    });
+  it("times out hung requests after the 30s default timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createHungRequestHarness();
+      let settled = false;
+      const request = apiPost(harness.deps, "/api/cli/wallet", {});
+      request.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+      const assertTimeout = expect(request).rejects.toThrow("Request timed out after 30000ms");
 
-    await expect(apiPost(harness.deps, "/api/cli/wallet", {}, { timeoutMs: 5 })).rejects.toThrow(
-      "Request timed out after 5ms"
-    );
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await assertTimeout;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses configured timeout override for hung requests", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createHungRequestHarness();
+      let settled = false;
+      const request = apiPost(harness.deps, "/api/cli/wallet", {}, { timeoutMs: 5 });
+      request.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+      const assertTimeout = expect(request).rejects.toThrow("Request timed out after 5ms");
+
+      await vi.advanceTimersByTimeAsync(4);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await assertTimeout;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("routes canonical tool execution requests through chatApiUrl when configured", async () => {
