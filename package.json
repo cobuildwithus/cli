@@ -33,6 +33,7 @@
     "docs:drift": "bash scripts/check-agent-docs-drift.sh",
     "docs:gardening": "bash scripts/doc-gardening.sh --fail-on-issues",
     "review:gpt": "scripts/chatgpt-oracle-review.sh",
+    "review-gpt:ensure-published": "bash scripts/review-gpt-ensure-published.sh",
     "wire:status": "pnpm pkg get dependencies.@cobuild/wire",
     "wire:ensure-published": "bash scripts/wire-ensure-published.sh",
     "wire:use-local": "bash scripts/wire-use-local.sh",
@@ -48,7 +49,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
-    "@cobuild/review-gpt": "^0.2.7",
+    "@cobuild/review-gpt": "^0.2.8",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "husky": "^9.1.7",
