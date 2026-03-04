@@ -7,9 +7,6 @@ import { createHarness } from "./helpers.js";
 const localExecMocks = vi.hoisted(() => ({
   executeLocalTxMock: vi.fn(),
 }));
-const wireMocks = vi.hoisted(() => ({
-  useUppercaseAbiExport: true,
-}));
 
 vi.mock("../src/wallet/local-exec.js", async () => {
   const actual = await vi.importActual<typeof import("../src/wallet/local-exec.js")>(
@@ -154,9 +151,6 @@ vi.mock("@cobuild/wire", async () => {
   ];
   return {
     ...actual,
-    get GOAL_FACTORY_ABI() {
-      return wireMocks.useUppercaseAbiExport ? goalFactoryAbi : undefined;
-    },
     goalFactoryAbi,
   };
 });
@@ -386,7 +380,6 @@ function buildReceipt(params: {
 describe("goal create command", () => {
   beforeEach(() => {
     localExecMocks.executeLocalTxMock.mockReset();
-    wireMocks.useUppercaseAbiExport = true;
   });
 
   it("routes hosted goal creation through /api/cli/exec tx envelope", async () => {
@@ -483,37 +476,6 @@ describe("goal create command", () => {
       kind: "tx",
       goalFactory: GOAL_FACTORY.toLowerCase(),
       network: "base",
-    });
-  });
-
-  it("falls back to camelCase goalFactoryAbi when uppercase export is missing", async () => {
-    wireMocks.useUppercaseAbiExport = false;
-    const harness = createHarness({
-      config: {
-        url: "https://api.example",
-        token: "bbt_secret",
-      },
-      fetchResponder: async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ ok: true }),
-      }),
-    });
-
-    const result = await executeGoalCreateCommand(
-      {
-        factory: GOAL_FACTORY,
-        paramsJson: JSON.stringify(buildDeployParams()),
-      },
-      harness.deps
-    );
-
-    const [, init] = harness.fetchMock.mock.calls[0];
-    const body = JSON.parse(String(init?.body));
-    expect(body.data).toMatch(/^0x9cdeea05/i);
-    expect(result).toMatchObject({
-      ok: true,
-      goalFactory: GOAL_FACTORY.toLowerCase(),
     });
   });
 

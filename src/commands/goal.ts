@@ -9,7 +9,7 @@ import {
   type Abi,
   type Hex,
 } from "viem";
-import * as wire from "@cobuild/wire";
+import { goalFactoryAbi as goalFactoryAbiFromWire } from "@cobuild/wire";
 import { readConfig } from "../config.js";
 import { asRecord, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
@@ -34,12 +34,6 @@ const GOAL_DEPLOY_REQUIRED_KEYS = [
   "flowMetadata",
   "underwriting",
   "budgetTCR",
-] as const;
-const GOAL_FACTORY_ABI_EXPORT_CANDIDATES = [
-  "GOAL_FACTORY_ABI",
-  "V1_GOAL_FACTORY_ABI",
-  "goalFactoryAbi",
-  "v1GoalFactoryAbi",
 ] as const;
 
 const DEFAULT_BASE_RPC_URL = "https://mainnet.base.org";
@@ -140,25 +134,6 @@ function extractDeployParams(raw: Record<string, unknown>): Record<string, unkno
 
   throw new Error(
     "Goal deploy params must include keys: revnet, timing, success, flowMetadata, underwriting, budgetTCR."
-  );
-}
-
-function resolveGoalFactoryAbi(): Abi {
-  const module = wire as Record<string, unknown>;
-  for (const key of GOAL_FACTORY_ABI_EXPORT_CANDIDATES) {
-    let value: unknown;
-    try {
-      value = module[key];
-    } catch {
-      value = undefined;
-    }
-    if (Array.isArray(value)) {
-      return value as Abi;
-    }
-  }
-
-  throw new Error(
-    "GoalFactory ABI is not available from @cobuild/wire. Pull the wire update and retry."
   );
 }
 
@@ -284,7 +259,7 @@ export async function executeGoalCreateCommand(
   }
 
   const goalFactoryAddress = normalizeEvmAddress(input.factory, "--factory");
-  const goalFactoryAbi = resolveGoalFactoryAbi();
+  const goalFactoryAbi = goalFactoryAbiFromWire as unknown as Abi;
   const deployParams = await resolveGoalDeployParams(input, deps);
   let data: Hex;
   try {
