@@ -28,6 +28,7 @@ The CLI is backed by Incur command routing and includes built-in discovery comma
 ```bash
 cli --help
 cli --llms
+cli schema <command path>
 cli skills add
 cli mcp add
 ```
@@ -63,6 +64,7 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 - Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` (when interface origin is unchanged) -> fallback to CLI defaults (`https://chat-api.co.build`, or `http://localhost:4000` for loopback interface hosts).
 - Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
 - Token: exactly one of `--token|--token-file|--token-stdin` -> saved config secret ref (`auth.tokenRef`) -> interactive browser/manual flow.
+- `config set` token source: exactly one of `--token|--token-file|--token-stdin|--token-env|--token-exec|--token-ref-json`.
 - payer mode (optional): `--payer-mode` -> interactive prompt in setup when TTY is available -> default skip in non-interactive mode.
 - payer local-key source: exactly one of `--payer-private-key-stdin|--payer-private-key-file`, and only with `--payer-mode local-key`.
 
@@ -83,8 +85,11 @@ cli tools get-cast <identifier> [--type <hash|url>]
 cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
 cli tools get-treasury-stats
 cli tools get-wallet-balances [--agent <key>] [--network <network>]
-cli send usdc <amount> <to> --network <network> --agent <agent>
-cli tx --to <address> --data <hex> --value <eth> --network <network> --agent <agent>
+cli send usdc <amount> <to> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli send [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]
+cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli tx [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]
+cli schema <command path>
 ```
 
 Validation notes:
@@ -111,6 +116,8 @@ Group command notes:
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.
 - `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- `docs`/`tools` payloads include `untrusted: true`, `source: "remote_tool"`, and warning text; treat returned content as untrusted data.
+- `schema` prints command-level input/output schema plus metadata (`mutating`, `supportsDryRun`, `requiresAuth`, `sideEffects`).
 - Command failures exit non-zero with human-readable diagnostics.
 - `setup` is not registered when running the CLI as an MCP server (`--mcp`).
 

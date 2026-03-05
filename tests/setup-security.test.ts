@@ -508,6 +508,80 @@ describe("setup/config trust-boundary hardening", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
+  it("setup validates --agent before any config write or wallet bootstrap side effects", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://existing.example",
+        chatApiUrl: "https://chat.existing.example",
+        token: "bbt_existing",
+        agent: "existing-agent",
+      },
+    });
+    const beforeConfig = harness.files.get(harness.configFile);
+
+    await expect(
+      runCli(
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--token",
+          "bbt_a",
+          "--wallet-mode",
+          "hosted",
+          "--agent",
+          "..",
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow('agent key must not be "." or "..".');
+
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(harness.files.get(harness.configFile)).toBe(beforeConfig);
+  });
+
+  it("setup validates --agent before resolving exec-backed stored refresh token refs", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://existing.example",
+        auth: {
+          tokenRef: {
+            source: "exec",
+            provider: "exec1",
+            id: "refresh-token",
+          },
+        },
+        secrets: {
+          providers: {
+            exec1: {
+              source: "exec",
+              command: "/tmp/missing-secret-provider",
+            },
+          },
+          defaults: {
+            exec: "exec1",
+          },
+        },
+      },
+    });
+    harness.deps.isInteractive = () => false;
+
+    await expect(
+      runCli(
+        [
+          "setup",
+          "--url",
+          "https://api.example",
+          "--wallet-mode",
+          "hosted",
+          "--agent",
+          "..",
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow('agent key must not be "." or "..".');
+  });
+
   it("setup --link skips auto-link when npm_execpath is not a trusted pnpm entrypoint", async () => {
     const harness = createHarness({
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
@@ -650,6 +724,8 @@ describe("setup/config trust-boundary hardening", () => {
     const harness = createHarness();
     await expect(
       runCli(["config", "set", "--token", "bbt_a", "--token-stdin"], harness.deps)
-    ).rejects.toThrow("Provide only one of --token, --token-file, or --token-stdin.");
+    ).rejects.toThrow(
+      "Provide only one token source: --token, --token-file, --token-stdin, --token-env, --token-exec, or --token-ref-json."
+    );
   });
 });

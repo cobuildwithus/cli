@@ -172,6 +172,35 @@ function normalizeToolsArgv(argv: string[]): string[] {
   return normalized;
 }
 
+function normalizeSchemaArgv(argv: string[]): string[] {
+  if (argv[0] !== "schema") return argv;
+
+  const normalized = ["schema"];
+  const commandPathWords: string[] = [];
+  let positionalOnly = false;
+
+  for (let index = 1; index < argv.length; index += 1) {
+    const current = argv[index]!;
+    if (current === "--") {
+      positionalOnly = true;
+      continue;
+    }
+
+    if (!positionalOnly && current.startsWith("-")) {
+      normalized.push(current);
+      continue;
+    }
+
+    commandPathWords.push(current);
+  }
+
+  if (commandPathWords.length > 0) {
+    normalized.push(encodeEscapedPositional(commandPathWords.join(" ")));
+  }
+
+  return normalized;
+}
+
 function normalizeSetupArgv(argv: string[]): string[] {
   if (argv[0] !== "setup") return argv;
   return argv.map((token) => (token === "--json" ? "--setup-json" : token));
@@ -243,14 +272,181 @@ export function preprocessIncurArgv(argv: string[]): string[] {
   }
 
   const commandNormalizedTail = normalizeSetupArgv(
-    normalizeToolsArgv(
-      normalizeDocsArgv(
-        normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail))
+    normalizeSchemaArgv(
+      normalizeToolsArgv(
+        normalizeDocsArgv(
+          normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail))
+        )
       )
     )
   );
 
   return [...normalizedLeading, ...commandNormalizedTail];
+}
+
+interface IncurManifestCommandEntry {
+  name?: string;
+  description?: string;
+  schema?: unknown;
+  examples?: unknown;
+}
+
+interface IncurManifest {
+  version?: string;
+  commands?: IncurManifestCommandEntry[];
+}
+
+interface CommandSchemaMetadata {
+  mutating: boolean;
+  supportsDryRun: boolean;
+  requiresAuth: boolean;
+  sideEffects: string[];
+}
+
+const DEFAULT_COMMAND_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: false,
+  supportsDryRun: false,
+  requiresAuth: false,
+  sideEffects: [],
+};
+
+const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
+  "config set": {
+    mutating: true,
+    supportsDryRun: false,
+    requiresAuth: false,
+    sideEffects: ["writes_local_files"],
+  },
+  "config show": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: false,
+    sideEffects: ["reads_local_files"],
+  },
+  docs: {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "farcaster signup": {
+    mutating: true,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network", "writes_local_files"],
+  },
+  "farcaster post": {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "writes_local_files"],
+  },
+  "goal create": {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  schema: {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: false,
+    sideEffects: ["introspection"],
+  },
+  send: {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  setup: {
+    mutating: true,
+    supportsDryRun: false,
+    requiresAuth: false,
+    sideEffects: ["network", "writes_local_files"],
+  },
+  "tools cast-preview": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "tools get-cast": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "tools get-treasury-stats": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "tools get-user": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "tools get-wallet-balances": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  tx: {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  wallet: {
+    mutating: true,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network", "writes_local_files"],
+  },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeCommandPath(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+async function readIncurManifest(cli: Cli.Cli, deps: CliDeps): Promise<IncurManifest> {
+  const output: string[] = [];
+  await cli.serve(["--llms", "--format", "json"], {
+    env: deps.env,
+    stdout: (chunk) => {
+      output.push(chunk);
+    },
+    exit: (code) => {
+      throw new Error(`Failed to load command schema manifest (exit ${code}).`);
+    },
+  });
+
+  const raw = output.join("").trim();
+  if (!raw) {
+    throw new Error("Failed to load command schema manifest: empty --llms output.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `Failed to parse command schema manifest JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("Failed to load command schema manifest: unexpected payload shape.");
+  }
+  return parsed as IncurManifest;
 }
 
 export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOptions = {}): Cli.Cli {
@@ -303,18 +499,70 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   registerDocsCommand(root, deps, decodeEscapedPositional);
   registerToolsCommand(root, deps, decodeEscapedPositional);
 
+  root.command("schema", {
+    description: "Print input/output schema and metadata for one command path",
+    args: z.object({
+      commandPath: z.string().min(1),
+    }),
+    output: z.object({
+      ok: z.literal(true),
+      command: z.string(),
+      description: z.string().optional(),
+      schema: z.unknown().nullable(),
+      examples: z.array(z.unknown()).optional(),
+      metadata: z.object({
+        mutating: z.boolean(),
+        supportsDryRun: z.boolean(),
+        requiresAuth: z.boolean(),
+        sideEffects: z.array(z.string()),
+      }),
+    }),
+    async run(context) {
+      const commandPath = normalizeCommandPath(decodeEscapedPositional(context.args.commandPath));
+      if (!commandPath) {
+        throw new Error("Usage: cli schema <command path>");
+      }
+
+      const manifest = await readIncurManifest(root, deps);
+      const commands = Array.isArray(manifest.commands) ? manifest.commands : [];
+      const entry = commands.find(
+        (candidate) =>
+          typeof candidate.name === "string" &&
+          normalizeCommandPath(candidate.name) === commandPath
+      );
+      if (!entry || typeof entry.name !== "string") {
+        throw new Error(
+          `Unknown command path "${commandPath}". Run \`cli --llms --format json\` to inspect available commands.`
+        );
+      }
+
+      return {
+        ok: true as const,
+        command: entry.name,
+        ...(typeof entry.description === "string" ? { description: entry.description } : {}),
+        schema: entry.schema ?? null,
+        ...(Array.isArray(entry.examples) ? { examples: entry.examples } : {}),
+        metadata: COMMAND_SCHEMA_METADATA[entry.name] ?? DEFAULT_COMMAND_SCHEMA_METADATA,
+      };
+    },
+  });
+
   root.command("send", {
     description: "Execute token transfer",
     args: z.object({
-      token: z.string().min(1),
-      amount: z.string().min(1),
-      to: z.string().min(1),
+      token: z.string().optional(),
+      amount: z.string().optional(),
+      to: z.string().optional(),
     }),
     options: z.object({
       network: z.string().optional(),
       decimals: z.string().optional(),
       agent: z.string().optional(),
       idempotencyKey: z.string().optional(),
+      dryRun: z.boolean().optional(),
+      inputJson: z.string().optional(),
+      inputFile: z.string().optional(),
+      inputStdin: z.boolean().optional(),
     }),
     output: sendOrTxOutput,
     run(context) {
@@ -327,6 +575,10 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
           decimals: context.options.decimals,
           agent: context.options.agent,
           idempotencyKey: context.options.idempotencyKey,
+          dryRun: context.options.dryRun,
+          inputJson: context.options.inputJson,
+          inputFile: context.options.inputFile,
+          inputStdin: context.options.inputStdin,
         },
         deps
       );
@@ -336,12 +588,16 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   root.command("tx", {
     description: "Execute raw transaction",
     options: z.object({
-      to: z.string().min(1),
-      data: z.string().min(1),
+      to: z.string().optional(),
+      data: z.string().optional(),
       value: z.string().optional(),
       network: z.string().optional(),
       agent: z.string().optional(),
       idempotencyKey: z.string().optional(),
+      dryRun: z.boolean().optional(),
+      inputJson: z.string().optional(),
+      inputFile: z.string().optional(),
+      inputStdin: z.boolean().optional(),
     }),
     output: sendOrTxOutput,
     run(context) {
@@ -353,6 +609,10 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
           network: context.options.network,
           agent: context.options.agent,
           idempotencyKey: context.options.idempotencyKey,
+          dryRun: context.options.dryRun,
+          inputJson: context.options.inputJson,
+          inputFile: context.options.inputFile,
+          inputStdin: context.options.inputStdin,
         },
         deps
       );

@@ -21,6 +21,7 @@ export function registerGoalCommand(root: Cli.Cli, deps: CliDeps): void {
       network: z.string().optional(),
       agent: z.string().optional(),
       idempotencyKey: z.string().optional(),
+      dryRun: z.boolean().optional(),
     }),
     output: goalOutput,
     run(context) {
@@ -33,6 +34,7 @@ export function registerGoalCommand(root: Cli.Cli, deps: CliDeps): void {
           network: context.options.network,
           agent: context.options.agent,
           idempotencyKey: context.options.idempotencyKey,
+          dryRun: context.options.dryRun,
         },
         deps
       );

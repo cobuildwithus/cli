@@ -23,7 +23,9 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
       ok: z.boolean().optional(),
       replayed: z.boolean().optional(),
       resumedPending: z.boolean().optional(),
+      dryRun: z.boolean().optional(),
       idempotencyKey: z.string(),
+      request: z.unknown().optional(),
       result: z
         .object({
           fid: z.number().optional(),
@@ -46,7 +48,8 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
             })
             .optional(),
         })
-        .passthrough(),
+        .passthrough()
+        .optional(),
     })
     .passthrough();
 
@@ -84,6 +87,7 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
         signerFile: z.string().optional(),
         idempotencyKey: z.string().optional(),
         verify: z.enum(["none", "once", "poll"]).optional(),
+        dryRun: z.boolean().optional(),
       }),
       output: farcasterPostOutput,
       run(context) {
@@ -96,6 +100,7 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
             signerFile: context.options.signerFile,
             idempotencyKey: context.options.idempotencyKey,
             verify: context.options.verify,
+            dryRun: context.options.dryRun,
           },
           deps
         ) as Promise<z.infer<typeof farcasterPostOutput>>;

@@ -10,6 +10,7 @@ import {
   normalizeTokenInput,
   readTokenFromFile,
   readTokenFromStdin,
+  validateAgentKey,
 } from "./shared.js";
 import { executeWalletInitCommand } from "./wallet.js";
 import {
@@ -205,6 +206,8 @@ async function runSetupCommand(
     urlSource = "env";
   }
   const explicitChatApiUrl = typeof input.chatApiUrl === "string" ? input.chatApiUrl : undefined;
+  const defaultAgent = current.agent ?? "default";
+  const agent = validateAgentKey(input.agent ?? defaultAgent, "agent key");
 
   let tokenFromOption: string | undefined;
   if (typeof input.token === "string") {
@@ -228,7 +231,6 @@ async function runSetupCommand(
     }
   }
 
-  const defaultAgent = current.agent || "default";
   let networkSource: SetupValueSource = "default";
   let defaultNetwork = "base";
   if (typeof input.network === "string") {
@@ -238,9 +240,7 @@ async function runSetupCommand(
     defaultNetwork = envNetwork;
     networkSource = "env";
   }
-
   let token = tokenFromOption ?? (storedToken || undefined);
-  const agent = input.agent || defaultAgent;
   const oauthNeedsWriteScope = input.write === true || hostedMode;
   const oauthScope = oauthNeedsWriteScope ? CLI_OAUTH_WRITE_SCOPE : CLI_OAUTH_DEFAULT_SCOPE;
 

@@ -20,30 +20,45 @@ export function registerToolsCommand(
     .object({
       result: z.unknown(),
       ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
     })
     .passthrough();
   const getCastOutput = z
     .object({
       cast: z.unknown(),
       ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
     })
     .passthrough();
   const castPreviewOutput = z
     .object({
       cast: z.unknown(),
       ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
     })
     .passthrough();
   const treasuryStatsOutput = z
     .object({
       data: z.unknown(),
       ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
     })
     .passthrough();
   const walletBalancesOutput = z
     .object({
       data: z.unknown(),
       ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
     })
     .passthrough();
 

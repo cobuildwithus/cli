@@ -64,6 +64,10 @@ describe("cli runtime coverage", () => {
     expect(
       cliIncur.preprocessIncurArgv(["tools", "get-cast", "hello", "world", "--type", "url"])
     ).toEqual(["tools", "get-cast", "--type", "url", encodeEscapedPositional("hello world")]);
+
+    expect(
+      cliIncur.preprocessIncurArgv(["schema", "farcaster", "post"])
+    ).toEqual(["schema", encodeEscapedPositional("farcaster post")]);
   });
 
   it("normalizes preprocessing when global flags appear before the command", () => {

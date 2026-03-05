@@ -17,6 +17,9 @@ export function registerDocsCommand(
     query: z.string(),
     count: z.number(),
     results: z.array(z.unknown()),
+    untrusted: z.literal(true),
+    source: z.literal("remote_tool"),
+    warnings: z.array(z.string()),
   });
 
   root.command("docs", {

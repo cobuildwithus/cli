@@ -479,6 +479,50 @@ describe("goal create command", () => {
     });
   });
 
+  it("supports side-effect-free goal create dry-run output", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "ops",
+      },
+    });
+
+    await runCli(
+      [
+        "goal",
+        "create",
+        "--factory",
+        GOAL_FACTORY,
+        "--params-json",
+        JSON.stringify(buildDeployParams()),
+        "--dry-run",
+      ],
+      harness.deps
+    );
+
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
+    expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toMatchObject({
+      ok: true,
+      dryRun: true,
+      idempotencyKey: "8e03978e-40d5-43e8-bc93-6894a57f9324",
+      goalFactory: GOAL_FACTORY.toLowerCase(),
+      network: "base",
+      request: {
+        method: "POST",
+        path: "/api/cli/exec",
+        body: {
+          kind: "tx",
+          network: "base",
+          agentKey: "ops",
+          to: GOAL_FACTORY.toLowerCase(),
+          valueEth: "0",
+        },
+      },
+    });
+  });
+
   it("rejects multiple deploy params sources", async () => {
     const harness = createHarness({
       config: {
