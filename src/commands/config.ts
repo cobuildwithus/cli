@@ -8,18 +8,21 @@ import {
   resolveMaskedToken,
   writeConfig,
 } from "../config.js";
-import type { CliDeps } from "../types.js";
+import type { CliConfig, CliDeps, SecretRef } from "../types.js";
 import {
   countTokenSources,
   normalizeApiUrl,
   normalizeTokenInput,
   readTokenFromFile,
   readTokenFromStdin,
+  validateAgentKey,
 } from "./shared.js";
-import { isSecretRef } from "../secrets/ref-contract.js";
+import { isSecretRef, resolveDefaultSecretProviderAlias } from "../secrets/ref-contract.js";
+import { withDefaultSecretProviders } from "../secrets/runtime.js";
 
 const CONFIG_SET_USAGE =
-  "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <refresh-token>|--token-file <path>|--token-stdin [--agent <key>]";
+  "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] [--token <refresh-token>|--token-file <path>|--token-stdin|--token-env <ENV_VAR>|--token-exec <provider:id>|--token-ref-json <json>] [--agent <key>]";
+const ENV_VAR_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface ConfigSetCommandInput {
   url?: string;
@@ -27,6 +30,9 @@ export interface ConfigSetCommandInput {
   token?: string;
   tokenFile?: string;
   tokenStdin?: boolean;
+  tokenEnv?: string;
+  tokenExec?: string;
+  tokenRefJson?: string;
   agent?: string;
 }
 
@@ -42,6 +48,112 @@ export interface ConfigShowCommandOutput {
   tokenRef: unknown;
   agent: string | null;
   path: string;
+}
+
+function parseTokenRefJson(raw: string): SecretRef {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `--token-ref-json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (!isSecretRef(parsed)) {
+    throw new Error("--token-ref-json must decode to a valid SecretRef object.");
+  }
+  return parsed;
+}
+
+function resolveTokenExecProviderId(value: string, config: CliConfig): { provider: string; id: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("--token-exec cannot be empty.");
+  }
+
+  const separator = trimmed.indexOf(":");
+  if (separator > 0 && separator < trimmed.length - 1) {
+    return {
+      provider: trimmed.slice(0, separator).trim(),
+      id: trimmed.slice(separator + 1).trim(),
+    };
+  }
+
+  const provider = resolveDefaultSecretProviderAlias(config, "exec");
+  return {
+    provider,
+    id: trimmed,
+  };
+}
+
+function countTokenRefSources(
+  input: Pick<ConfigSetCommandInput, "tokenEnv" | "tokenExec" | "tokenRefJson">
+): number {
+  return (
+    (typeof input.tokenEnv === "string" ? 1 : 0) +
+    (typeof input.tokenExec === "string" ? 1 : 0) +
+    (typeof input.tokenRefJson === "string" ? 1 : 0)
+  );
+}
+
+function resolveTokenRefFromOptions(
+  input: ConfigSetCommandInput,
+  current: CliConfig,
+  deps: Pick<CliDeps, "homedir">
+): SecretRef | undefined {
+  const tokenRefOptionsCount = countTokenRefSources(input);
+  if (tokenRefOptionsCount > 1) {
+    throw new Error(
+      `${CONFIG_SET_USAGE}\nProvide only one of --token-env, --token-exec, or --token-ref-json.`
+    );
+  }
+
+  const configWithProviders = withDefaultSecretProviders(current, deps);
+
+  if (typeof input.tokenEnv === "string") {
+    const id = input.tokenEnv.trim();
+    if (!id) {
+      throw new Error("--token-env cannot be empty.");
+    }
+    if (!ENV_VAR_NAME_REGEX.test(id)) {
+      throw new Error("--token-env must be a valid environment variable name.");
+    }
+    return {
+      source: "env",
+      provider: resolveDefaultSecretProviderAlias(configWithProviders, "env"),
+      id,
+    };
+  }
+
+  if (typeof input.tokenExec === "string") {
+    const { provider, id } = resolveTokenExecProviderId(input.tokenExec, configWithProviders);
+    if (!provider || !id) {
+      throw new Error("--token-exec must be <provider:id> or <id>.");
+    }
+
+    const providerConfig = configWithProviders.secrets?.providers?.[provider];
+    if (!providerConfig || providerConfig.source !== "exec") {
+      throw new Error(
+        `--token-exec provider "${provider}" is not configured as an exec secret provider.`
+      );
+    }
+
+    return {
+      source: "exec",
+      provider,
+      id,
+    };
+  }
+
+  if (typeof input.tokenRefJson === "string") {
+    const trimmed = input.tokenRefJson.trim();
+    if (!trimmed) {
+      throw new Error("--token-ref-json cannot be empty.");
+    }
+    return parseTokenRefJson(trimmed);
+  }
+
+  return undefined;
 }
 
 function safeOrigin(rawUrl: string): string | undefined {
@@ -82,14 +194,15 @@ export async function executeConfigSetCommand(
   input: ConfigSetCommandInput,
   deps: CliDeps
 ): Promise<ConfigSetCommandOutput> {
-  const tokenSourceCount = countTokenSources({
+  const tokenStringSourceCount = countTokenSources({
     token: input.token,
     tokenFile: input.tokenFile,
     tokenStdin: input.tokenStdin,
   });
-  if (tokenSourceCount > 1) {
+  const tokenRefSourceCount = countTokenRefSources(input);
+  if (tokenStringSourceCount + tokenRefSourceCount > 1) {
     throw new Error(
-      `${CONFIG_SET_USAGE}\nProvide only one of --token, --token-file, or --token-stdin.`
+      `${CONFIG_SET_USAGE}\nProvide only one token source: --token, --token-file, --token-stdin, --token-env, --token-exec, or --token-ref-json.`
     );
   }
 
@@ -105,16 +218,19 @@ export async function executeConfigSetCommand(
     throw new Error("Token cannot be empty");
   }
 
+  const current = readConfig(deps);
+  const tokenRefFromOption = resolveTokenRefFromOptions(input, current, deps);
+
   const hasUpdate =
     typeof input.url === "string" ||
     typeof input.chatApiUrl === "string" ||
     tokenFromOption !== undefined ||
+    tokenRefFromOption !== undefined ||
     typeof input.agent === "string";
   if (!hasUpdate) {
     throw new Error(CONFIG_SET_USAGE);
   }
 
-  const current = readConfig(deps);
   if (tokenFromOption !== undefined && !hasConfiguredUrl(current.url) && typeof input.url !== "string") {
     throw new Error(
       `${CONFIG_SET_USAGE}\nPass --url the first time you set a token so it can be bound to the correct interface origin.`
@@ -140,7 +256,11 @@ export async function executeConfigSetCommand(
     }
   }
 
-  if (normalizedInterfaceUrl !== undefined && tokenFromOption === undefined) {
+  if (
+    normalizedInterfaceUrl !== undefined &&
+    tokenFromOption === undefined &&
+    tokenRefFromOption === undefined
+  ) {
     const currentUrl =
       hasConfiguredUrl(current.url) ? current.url!.trim() : DEFAULT_INTERFACE_URL;
     const nextOrigin = safeOrigin(normalizedInterfaceUrl);
@@ -167,8 +287,20 @@ export async function executeConfigSetCommand(
       interfaceUrl,
     });
   }
+  if (tokenRefFromOption !== undefined) {
+    clearPersistedRefreshToken(deps);
+    const configWithProviders = withDefaultSecretProviders(next, deps);
+    const { token: _legacyToken, ...withoutLegacyToken } = configWithProviders;
+    next = {
+      ...withoutLegacyToken,
+      auth: {
+        ...(withoutLegacyToken.auth ?? {}),
+        tokenRef: tokenRefFromOption,
+      },
+    };
+  }
   if (typeof input.agent === "string") {
-    next.agent = input.agent;
+    next.agent = validateAgentKey(input.agent, "--agent");
   }
 
   writeConfig(deps, next);

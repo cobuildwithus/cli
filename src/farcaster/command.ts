@@ -14,6 +14,8 @@ import {
   FARCASTER_MAX_CAST_TEXT_BYTES,
   FARCASTER_USAGE,
   POST_RECEIPT_VERSION,
+  NEYNAR_HUB_CAST_BY_ID_URL,
+  NEYNAR_HUB_SUBMIT_URL,
   SIGNER_FILE_NAME,
   VERIFY_POLL_MAX_ATTEMPTS,
   X402_VALUE_USDC_DISPLAY,
@@ -139,6 +141,25 @@ function resolvePostFid(params: {
   throw new Error("Farcaster FID missing. Pass --fid or run `cli farcaster signup` to refresh signer metadata.");
 }
 
+async function buildCastWithIdempotency(params: {
+  fid: number;
+  text: string;
+  signerPrivateKeyHex: HexString;
+  replyTo: FarcasterReplyTarget | undefined;
+  idempotencyKey: string;
+}): Promise<{ messageBytes: Uint8Array; castHashHex: HexString }> {
+  try {
+    return await buildCastMessage({
+      fid: params.fid,
+      text: params.text,
+      signerPrivateKeyHex: params.signerPrivateKeyHex,
+      replyTo: params.replyTo,
+    });
+  } catch (error) {
+    throwWithIdempotencyKey(error, params.idempotencyKey);
+  }
+}
+
 export interface FarcasterSignupCommandInput {
   agent?: string;
   recovery?: string;
@@ -154,6 +175,7 @@ export interface FarcasterPostCommandInput {
   signerFile?: string;
   idempotencyKey?: string;
   verify?: string;
+  dryRun?: boolean;
 }
 
 export async function executeFarcasterSignupCommand(
@@ -318,6 +340,49 @@ export async function executeFarcasterPostCommand(
     signerFid: signer.fid,
   });
 
+  if (input.dryRun === true) {
+    const cast = await buildCastWithIdempotency({
+      fid,
+      text,
+      signerPrivateKeyHex: signer.privateKeyHex,
+      replyTo,
+      idempotencyKey,
+    });
+
+    return {
+      ok: true,
+      dryRun: true,
+      idempotencyKey,
+      request: {
+        kind: "farcaster.post",
+        agentKey,
+        fid,
+        text,
+        castHashHex: cast.castHashHex,
+        signerFilePath,
+        verifyMode,
+        ...(replyTo ? { replyTo } : {}),
+        requests: [
+          {
+            method: "POST",
+            url: NEYNAR_HUB_SUBMIT_URL,
+            bodyType: "application/octet-stream",
+            requiresX402Payment: true,
+          },
+          ...(verify
+            ? [
+                {
+                  method: "GET",
+                  url: `${NEYNAR_HUB_CAST_BY_ID_URL}?fid=${fid}&hash=${cast.castHashHex}`,
+                  requiresX402Payment: "conditional_http_402",
+                },
+              ]
+            : []),
+        ],
+      },
+    };
+  }
+
   const receiptPath = resolvePostReceiptPath({
     deps,
     agentKey,
@@ -381,19 +446,13 @@ export async function executeFarcasterPostCommand(
     messageBytesBase64 = resumePending.messageBytesBase64;
     messageBytes = decodeMessageBytesBase64(messageBytesBase64);
   } else {
-    let cast: { messageBytes: Uint8Array; castHashHex: HexString };
-    /* c8 ignore start */
-    try {
-      cast = await buildCastMessage({
-        fid,
-        text,
-        signerPrivateKeyHex: signer.privateKeyHex,
-        replyTo,
-      });
-    } catch (error) {
-      throwWithIdempotencyKey(error, idempotencyKey);
-    }
-    /* c8 ignore stop */
+    const cast = await buildCastWithIdempotency({
+      fid,
+      text,
+      signerPrivateKeyHex: signer.privateKeyHex,
+      replyTo,
+      idempotencyKey,
+    });
     castHashHex = cast.castHashHex;
     messageBytes = cast.messageBytes;
     messageBytesBase64 = encodeMessageBytesBase64(messageBytes);

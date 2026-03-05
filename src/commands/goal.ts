@@ -16,6 +16,7 @@ import type { CliDeps } from "../types.js";
 import {
   buildIdempotencyHeaders,
   normalizeEvmAddress,
+  readJsonInputObject,
   resolveAgentKey,
   resolveExecIdempotencyKey,
   resolveNetwork,
@@ -26,7 +27,7 @@ import { executeLocalTx } from "../wallet/local-exec.js";
 import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
 
 const GOAL_CREATE_USAGE =
-  "Usage: cli goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]";
+  "Usage: cli goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
 const GOAL_DEPLOY_REQUIRED_KEYS = [
   "revnet",
   "timing",
@@ -47,6 +48,7 @@ export interface GoalCreateCommandInput {
   network?: string;
   agent?: string;
   idempotencyKey?: string;
+  dryRun?: boolean;
 }
 
 export interface GoalCreateCommandOutput extends Record<string, unknown> {
@@ -59,62 +61,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasOwn(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
-}
-
-function sourceCount(input: GoalCreateCommandInput): number {
-  let count = 0;
-  if (typeof input.paramsFile === "string") count += 1;
-  if (typeof input.paramsJson === "string") count += 1;
-  if (input.paramsStdin === true) count += 1;
-  return count;
-}
-
-function readTextFile(path: string, deps: Pick<CliDeps, "fs">): string {
-  try {
-    return deps.fs.readFileSync(path, "utf8");
-  } catch (error) {
-    throw new Error(
-      `Could not read --params-file ${path}: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-}
-
-async function readTextStdin(deps: Pick<CliDeps, "readStdin">): Promise<string> {
-  if (deps.readStdin) {
-    const value = await deps.readStdin();
-    return value;
-  }
-
-  /* c8 ignore start */
-  if (process.stdin.isTTY) {
-    throw new Error("Refusing --params-stdin from an interactive TTY. Pipe JSON bytes into stdin.");
-  }
-
-  process.stdin.setEncoding("utf8");
-  return await new Promise<string>((resolve, reject) => {
-    let raw = "";
-    process.stdin.on("data", (chunk: string) => {
-      raw += chunk;
-    });
-    process.stdin.once("end", () => resolve(raw));
-    process.stdin.once("error", reject);
-  });
-  /* c8 ignore stop */
-}
-
-function parseJsonRecord(rawJson: string, label: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawJson);
-  } catch (error) {
-    throw new Error(
-      `${label} must be valid JSON: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-  if (!isRecord(parsed)) {
-    throw new Error(`${label} must decode to a JSON object.`);
-  }
-  return parsed;
 }
 
 function isGoalDeployParamsShape(value: unknown): value is Record<string, unknown> {
@@ -226,27 +172,22 @@ async function resolveGoalDeployParams(
   input: GoalCreateCommandInput,
   deps: Pick<CliDeps, "fs" | "readStdin">
 ): Promise<Record<string, unknown>> {
-  const count = sourceCount(input);
-  if (count > 1) {
-    throw new Error(
-      `${GOAL_CREATE_USAGE}\nProvide only one of --params-file, --params-json, or --params-stdin.`
-    );
-  }
-
-  let rawJson: string | null = null;
-  if (typeof input.paramsFile === "string") {
-    rawJson = readTextFile(input.paramsFile, deps);
-  } else if (typeof input.paramsJson === "string") {
-    rawJson = input.paramsJson;
-  } else if (input.paramsStdin) {
-    rawJson = await readTextStdin(deps);
-  }
-
-  if (!rawJson || rawJson.trim().length === 0) {
+  const parsed = await readJsonInputObject(
+    {
+      json: input.paramsJson,
+      file: input.paramsFile,
+      stdin: input.paramsStdin,
+      jsonFlag: "--params-json",
+      fileFlag: "--params-file",
+      stdinFlag: "--params-stdin",
+      usage: GOAL_CREATE_USAGE,
+      valueLabel: "Goal deploy params",
+    },
+    deps
+  );
+  if (!parsed) {
     throw new Error(`${GOAL_CREATE_USAGE}\nGoal deploy params are required.`);
   }
-
-  const parsed = parseJsonRecord(rawJson, "Goal deploy params");
   return extractDeployParams(parsed);
 }
 
@@ -280,6 +221,29 @@ export async function executeGoalCreateCommand(
   const agentKey = resolveAgentKey(input.agent, current.agent);
   const network = resolveNetwork(input.network, deps);
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
+  const requestBody = {
+    kind: "tx",
+    network,
+    agentKey,
+    to: goalFactoryAddress,
+    data,
+    valueEth: "0",
+  };
+
+  if (input.dryRun === true) {
+    return {
+      ok: true,
+      dryRun: true,
+      idempotencyKey,
+      request: {
+        method: "POST",
+        path: "/api/cli/exec",
+        body: requestBody,
+      },
+      goalFactory: getAddress(goalFactoryAddress).toLowerCase(),
+      network,
+    } as GoalCreateCommandOutput;
+  }
 
   const response = await executeWithConfiguredWallet({
     deps,
@@ -306,14 +270,7 @@ export async function executeGoalCreateCommand(
         return await apiPost(
           deps,
           "/api/cli/exec",
-          {
-            kind: "tx",
-            network,
-            agentKey,
-            to: goalFactoryAddress,
-            data,
-            valueEth: "0",
-          },
+          requestBody,
           {
             headers: buildIdempotencyHeaders(idempotencyKey),
           }
@@ -328,9 +285,8 @@ export async function executeGoalCreateCommand(
   output.goalFactory = getAddress(goalFactoryAddress).toLowerCase();
   output.network = network;
 
-  const txHash = typeof asRecord(response).transactionHash === "string"
-    ? (asRecord(response).transactionHash as string)
-    : null;
+  const responseRecord = asRecord(response);
+  const txHash = typeof responseRecord.transactionHash === "string" ? responseRecord.transactionHash : null;
   if (!txHash) {
     return output;
   }
