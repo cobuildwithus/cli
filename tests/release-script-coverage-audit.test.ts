@@ -12,8 +12,17 @@ type RepoFixture = {
 };
 
 const testRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const installedBinDir = path.resolve(testRoot, "node_modules", ".bin");
+const releaseCheckScript = JSON.parse(
+  readFileSync(path.join(testRoot, "package.json"), "utf8")
+).scripts["release:check"] as string;
 const cleanupPaths: string[] = [];
-const releaseScriptNames = ["release.sh", "update-changelog.sh", "generate-release-notes.sh"] as const;
+const releaseScriptNames = [
+  "release.sh",
+  "update-changelog.sh",
+  "generate-release-notes.sh",
+  "repo-tools.config.sh",
+] as const;
 
 afterEach(() => {
   while (cleanupPaths.length > 0) {
@@ -79,6 +88,9 @@ function createRepoFixture(opts?: { packageName?: string; repositoryUrl?: string
           url: opts?.repositoryUrl ?? "https://github.com/cobuildwithus/cli",
         },
         version: "0.1.0",
+        scripts: {
+          "release:check": releaseCheckScript,
+        },
       },
       null,
       2
@@ -91,11 +103,27 @@ function createRepoFixture(opts?: { packageName?: string; repositoryUrl?: string
     `#!/usr/bin/env bash
 set -euo pipefail
 if [ -n "\${PNPM_STUB_LOG:-}" ]; then
-  echo "$*" >> "$PNPM_STUB_LOG"
+  if [ "\${1:-}" != "exec" ]; then
+    echo "$*" >> "$PNPM_STUB_LOG"
+  fi
 fi
 if [ -n "\${PNPM_STUB_FAIL_ON:-}" ] && [ "\${1:-}" = "$PNPM_STUB_FAIL_ON" ]; then
   echo "pnpm stub forced failure for \${1:-}" >&2
   exit 3
+fi
+if [ "\${1:-}" = "exec" ]; then
+  shift || true
+  tool="\${1:-}"
+  shift || true
+  case "$tool" in
+    cobuild-release-package|cobuild-update-changelog|cobuild-generate-release-notes)
+      exec "$tool" "$@"
+      ;;
+    *)
+      echo "unsupported pnpm exec tool: $tool" >&2
+      exit 2
+      ;;
+  esac
 fi
 exit 0
 `
@@ -120,6 +148,23 @@ if [ -n "\${NPM_STUB_LOG:-}" ]; then
 fi
 
 case "$command" in
+  run)
+    script_name="\${1:-}"
+    shift || true
+    script_command="$(node -e '
+const fs = require(\"node:fs\");
+const pkg = JSON.parse(fs.readFileSync(\"package.json\", \"utf8\"));
+const name = process.argv[1];
+const command = pkg.scripts && pkg.scripts[name];
+if (!command) process.exit(2);
+process.stdout.write(command);
+' "$script_name" 2>/dev/null || true)"
+    if [ -z "$script_command" ]; then
+      echo "unsupported npm run script: $script_name" >&2
+      exit 2
+    fi
+    exec sh -lc "$script_command"
+    ;;
   pack)
     exit 0
     ;;
@@ -144,7 +189,7 @@ esac
 `
   );
 
-  const pathEnv = `${binDir}:${process.env.PATH ?? ""}`;
+  const pathEnv = `${binDir}:${installedBinDir}:${process.env.PATH ?? ""}`;
   expect(run("git", ["init", "--initial-branch=main"], repoDir).status).toBe(0);
   expect(
     run("git", ["config", "user.email", "release-audit-tests@users.noreply.github.com"], repoDir)
@@ -229,7 +274,7 @@ describe("release.sh coverage audit", () => {
       "docs:gardening",
       "build",
     ]);
-    expect(npmCalls).toEqual(["pack --dry-run"]);
+    expect(npmCalls).toEqual(["run release:check", "pack --dry-run"]);
     expect(result.stdout).toContain("Release checks passed.");
   });
 
@@ -260,7 +305,7 @@ describe("release.sh coverage audit", () => {
     expect(pnpmCalls).toEqual(["install --frozen-lockfile", "verify", "docs:drift"]);
     expect(pnpmCalls).not.toContain("docs:gardening");
     expect(pnpmCalls).not.toContain("build");
-    expect(npmCalls).toEqual([]);
+    expect(npmCalls).toEqual(["run release:check"]);
     expect(result.stdout).not.toContain("==> Building");
   });
 

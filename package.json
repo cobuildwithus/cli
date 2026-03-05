@@ -41,7 +41,7 @@
     "verify": "pnpm typecheck && pnpm test:coverage",
     "changelog:update": "bash scripts/update-changelog.sh",
     "release:notes": "bash scripts/generate-release-notes.sh",
-    "release:check": "bash scripts/release.sh check",
+    "release:check": "pnpm install --frozen-lockfile && pnpm verify && pnpm docs:drift && pnpm docs:gardening && pnpm build && bash -n scripts/release.sh scripts/update-changelog.sh scripts/generate-release-notes.sh scripts/committer scripts/repo-tools.config.sh && npm pack --dry-run",
     "release:dry-run": "bash scripts/release.sh patch --dry-run",
     "release:patch": "bash scripts/release.sh patch",
     "release:minor": "bash scripts/release.sh minor",
