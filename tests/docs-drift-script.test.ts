@@ -129,4 +129,47 @@ describe("check-agent-docs-drift release commit behavior", () => {
     expect(drift.status).toBe(1);
     expect(output).toContain("Architecture-sensitive code/process changed");
   });
+
+  it("passes for staged dependency-only package metadata changes even with unrelated unstaged dirt", () => {
+    const root = setupFixtureRepo();
+
+    writeFileSync(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@cobuild/cli",
+          version: "0.1.0",
+          dependencies: {
+            chalk: "^5.4.0",
+          },
+        },
+        null,
+        2
+      )}\n`
+    );
+    writeFileSync(path.join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    expectSuccess(run("git", ["add", "package.json", "pnpm-lock.yaml"], root));
+
+    writeFileSync(path.join(root, "README.md"), "# CLI unstaged dirt\n");
+
+    const drift = run("bash", ["scripts/check-agent-docs-drift.sh"], root);
+    const output = combinedOutput(drift);
+    expect(drift.status).toBe(0);
+    expect(output).toContain("Agent docs drift checks passed.");
+  });
+
+  it("passes when only the coordination ledger changes without updating the docs index", () => {
+    const root = setupFixtureRepo();
+
+    writeFileSync(
+      path.join(root, "agent-docs", "exec-plans", "active", "COORDINATION_LEDGER.md"),
+      "# COORDINATION_LEDGER\n\n| task_id | goal | scope | owner | status | updated |\n| --- | --- | --- | --- | --- | --- |\n| task-1 | test drift gate | `scripts/check-agent-docs-drift.sh` | codex | active | 2026-03-05 |\n"
+    );
+    expectSuccess(run("git", ["add", "agent-docs/exec-plans/active/COORDINATION_LEDGER.md"], root));
+
+    const drift = run("bash", ["scripts/check-agent-docs-drift.sh"], root);
+    const output = combinedOutput(drift);
+    expect(drift.status).toBe(0);
+    expect(output).toContain("Agent docs drift checks passed.");
+  });
 });

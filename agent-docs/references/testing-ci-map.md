@@ -11,7 +11,11 @@
 ## Script Enforcement
 
 - Drift checks: `scripts/check-agent-docs-drift.sh` (allows release-artifacts-only commit shape: `package.json` + `CHANGELOG.md` + `release-notes/v<semver>.md` where `<semver>` may include prerelease suffixes)
+- Drift checks ignore execution-plan-only churn when deciding whether `agent-docs/index.md` must change.
+- `agent-docs/exec-plans/active/COORDINATION_LEDGER.md` alone does not count as an active execution plan for docs-drift relief.
+- Dependency-only `package.json` + optional `pnpm-lock.yaml` updates do not require matching docs updates.
 - Docs inventory/report generation: `scripts/doc-gardening.sh`
+- Local pre-commit runs doc gardening only when docs/governance files are staged.
 - Plan lifecycle: `scripts/open-exec-plan.sh`, `scripts/close-exec-plan.sh`
 - Selective commits: `scripts/committer`
 - Release guardrails: `scripts/release.sh` (`check`, exact-version + prerelease support, branch/remote/package/repository validation, then `pnpm verify`, `pnpm docs:drift`, `pnpm docs:gardening`, `pnpm build`, and `npm pack --dry-run`)
