@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoToolsRoot = path.resolve(repoRoot, "../repo-tools");
+const docsDriftBin = path.join(repoToolsRoot, "bin", "cobuild-check-agent-docs-drift");
 const cleanupPaths: string[] = [];
 
 const requiredDocFiles = [
@@ -43,9 +45,10 @@ afterEach(() => {
   }
 });
 
-function run(command: string, args: string[], cwd: string): CmdResult {
+function run(command: string, args: string[], cwd: string, env: Record<string, string> = {}): CmdResult {
   const result = spawnSync(command, args, {
     cwd,
+    env: { ...process.env, ...env },
     encoding: "utf8",
   });
   return {
@@ -55,6 +58,14 @@ function run(command: string, args: string[], cwd: string): CmdResult {
   };
 }
 
+const docsDriftEnv = {
+  COBUILD_DRIFT_REQUIRED_FILES: `${requiredDocFiles.join("\n")}\n`,
+  COBUILD_DRIFT_CODE_CHANGE_PATTERN:
+    "^(src/|scripts/|package\\.json$|README\\.md$|ARCHITECTURE\\.md$|AGENTS\\.md$)",
+  COBUILD_DRIFT_CODE_CHANGE_LABEL: "Architecture-sensitive code/process",
+  COBUILD_DRIFT_ALLOW_RELEASE_ARTIFACTS_ONLY: "1",
+};
+
 function expectSuccess(result: CmdResult): void {
   expect(result.status).toBe(0);
 }
@@ -62,11 +73,6 @@ function expectSuccess(result: CmdResult): void {
 function setupFixtureRepo(): string {
   const root = mkdtempSync(path.join(os.tmpdir(), "cli-docs-drift-boundary-test-"));
   cleanupPaths.push(root);
-
-  mkdirSync(path.join(root, "scripts"), { recursive: true });
-  const scriptPath = path.join(root, "scripts", "check-agent-docs-drift.sh");
-  copyFileSync(path.join(repoRoot, "scripts", "check-agent-docs-drift.sh"), scriptPath);
-  chmodSync(scriptPath, 0o755);
 
   for (const relPath of requiredDocFiles) {
     const filePath = path.join(root, relPath);
@@ -107,7 +113,7 @@ describe("check-agent-docs-drift release allowlist boundaries", () => {
     expectSuccess(run("git", ["add", "."], root));
     expectSuccess(run("git", ["commit", "-m", "chore(release): v0.1.1 with readme tweak"], root));
 
-    const drift = run("bash", ["scripts/check-agent-docs-drift.sh"], root);
+    const drift = run(docsDriftBin, [], root, docsDriftEnv);
     expect(drift.status).toBe(1);
     expect(`${drift.stdout}\n${drift.stderr}`).toContain("Architecture-sensitive code/process changed");
   });
