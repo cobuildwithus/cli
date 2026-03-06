@@ -25,8 +25,8 @@ importers:
         version: 2.46.3(typescript@5.9.3)(zod@4.3.6)
     devDependencies:
       '@cobuild/repo-tools':
-        specifier: file:../repo-tools
-        version: file:../repo-tools
+        specifier: ^0.1.4
+        version: 0.1.4
       '@cobuild/review-gpt':
         specifier: ^0.2.11
         version: 0.2.11
@@ -72,8 +72,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@cobuild/repo-tools@file:../repo-tools':
-    resolution: {directory: ../repo-tools, type: directory}
+  '@cobuild/repo-tools@0.1.4':
+    resolution: {integrity: sha512-I+Oe9Oi/qG+XAsjwQpsAuIsPuIZr2HoD9pm01OAIsVxJfRrV6aQMZnFhDC5cYBsSP/NQUHnn1NJA5xrbQZTocA==}
     hasBin: true
 
   '@cobuild/review-gpt@0.2.11':
@@ -1253,7 +1253,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@cobuild/repo-tools@file:../repo-tools': {}
+  '@cobuild/repo-tools@0.1.4': {}
 
   '@cobuild/review-gpt@0.2.11': {}
 
