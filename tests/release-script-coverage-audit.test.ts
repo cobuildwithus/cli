@@ -67,9 +67,11 @@ function createRepoFixture(opts?: { packageName?: string; repositoryUrl?: string
   const repoDir = path.join(tempDir, "repo");
   const binDir = path.join(tempDir, "bin");
   const remoteDir = path.join(tempDir, "remote.git");
+  const helperDir = path.join(repoDir, "node_modules", "@cobuild", "repo-tools", "src");
   mkdirSync(repoDir);
   mkdirSync(binDir);
   mkdirSync(path.join(repoDir, "scripts"), { recursive: true });
+  mkdirSync(helperDir, { recursive: true });
 
   for (const scriptName of releaseScriptNames) {
     const sourcePath = path.join(testRoot, "scripts", scriptName);
@@ -77,6 +79,11 @@ function createRepoFixture(opts?: { packageName?: string; repositoryUrl?: string
     cpSync(sourcePath, targetPath);
     chmodSync(targetPath, 0o755);
   }
+
+  cpSync(
+    path.join(testRoot, "node_modules", "@cobuild", "repo-tools", "src", "consumer-shell.sh"),
+    path.join(helperDir, "consumer-shell.sh")
+  );
 
   writeFileSync(
     path.join(repoDir, "package.json"),
