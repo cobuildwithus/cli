@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check published wire dependency
+        run: pnpm wire:ensure-published
+
       - name: Run tests with coverage
         run: pnpm test:coverage
 
