@@ -5,4 +5,4 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 source scripts/repo-tools.config.sh
-exec pnpm exec cobuild-package-audit-context "$@"
+exec "$(cobuild_repo_tool_bin cobuild-package-audit-context)" "$@"

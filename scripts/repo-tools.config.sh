@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+COBUILD_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 repo_tools_join_lines() {
   local out_var="$1"
   shift
@@ -11,6 +13,24 @@ repo_tools_join_lines() {
   done
   printf -v "$out_var" '%s' "$joined"
   export "$out_var"
+}
+
+cobuild_repo_tool_bin() {
+  local bin_name="$1"
+  local local_bin="$COBUILD_REPO_ROOT/node_modules/.bin/$bin_name"
+
+  if [ -x "$local_bin" ]; then
+    printf '%s\n' "$local_bin"
+    return 0
+  fi
+
+  if command -v "$bin_name" >/dev/null 2>&1; then
+    command -v "$bin_name"
+    return 0
+  fi
+
+  echo "Error: missing repo-tools executable '$bin_name'. Install dependencies first." >&2
+  return 1
 }
 
 required_files=(

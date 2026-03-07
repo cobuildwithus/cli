@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@cobuild/wire':
-        specifier: link:../wire
-        version: link:../wire
+        specifier: ^0.1.5
+        version: 0.1.5(typescript@5.9.3)(zod@4.3.6)
       '@farcaster/hub-nodejs':
         specifier: ^0.15.10
         version: 0.15.10(typescript@5.9.3)(zod@4.3.6)
@@ -25,8 +25,8 @@ importers:
         version: 2.46.3(typescript@5.9.3)(zod@4.3.6)
     devDependencies:
       '@cobuild/repo-tools':
-        specifier: ^0.1.7
-        version: 0.1.7
+        specifier: ^0.1.6
+        version: 0.1.6
       '@cobuild/review-gpt':
         specifier: ^0.2.13
         version: 0.2.13
@@ -72,12 +72,17 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@cobuild/repo-tools@0.1.7':
-    resolution: {integrity: sha512-6vDFJtP0nQoAx6kzOlVgxjeSY/uxj4IdQpk0vZiioAo1Q0qb5eKzGI4uiS/HUpVYXjC+Hvn9nRM37q/iIt0doA==}
+  '@cobuild/repo-tools@0.1.6':
+    resolution: {integrity: sha512-gp+zbbsupxYzqTId1sTJuBL1NzirCbo41SdRJeeaYwh1LzdubawikNEy5qWi4SNCplxQZ/OF73fFIn2Bu7Ovew==}
     hasBin: true
 
   '@cobuild/review-gpt@0.2.13':
     resolution: {integrity: sha512-HVbDG/PaLj6V3ghMG/G+2XWDCenreJAXaygz+c56Raxr/gZM++4lsy1uVBc70lhADgVUV0/PF1bY7R43VKOuSQ==}
+    hasBin: true
+
+  '@cobuild/wire@0.1.5':
+    resolution: {integrity: sha512-CEd8wEZAkCcNsekmgbMeOJCuMsGFFALM1snYeMGxWDfTezWzytNfXpePaX2IyqiKukgNaTA/ivuIpiUU/PQCeA==}
+    engines: {node: '>=20'}
     hasBin: true
 
   '@esbuild/aix-ppc64@0.27.3':
@@ -1253,9 +1258,18 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@cobuild/repo-tools@0.1.7': {}
+  '@cobuild/repo-tools@0.1.6': {}
 
   '@cobuild/review-gpt@0.2.13': {}
+
+  '@cobuild/wire@0.1.5(typescript@5.9.3)(zod@4.3.6)':
+    dependencies:
+      viem: 2.46.3(typescript@5.9.3)(zod@4.3.6)
+    transitivePeerDependencies:
+      - bufferutil
+      - typescript
+      - utf-8-validate
+      - zod
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true

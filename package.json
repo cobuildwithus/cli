@@ -48,7 +48,7 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
-    "@cobuild/repo-tools": "^0.1.7",
+    "@cobuild/repo-tools": "^0.1.6",
     "@cobuild/review-gpt": "^0.2.13",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
@@ -58,7 +58,7 @@
   },
   "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531",
   "dependencies": {
-    "@cobuild/wire": "link:../wire",
+    "@cobuild/wire": "^0.1.5",
     "@farcaster/hub-nodejs": "^0.15.10",
     "@noble/ed25519": "^2.2.3",
     "incur": "0.1.17",
