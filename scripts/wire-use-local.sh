@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 
-cd "$REPO_ROOT"
-
-pnpm pkg set "dependencies.@cobuild/wire=link:../wire"
-pnpm install --force
-
-echo "Switched @cobuild/wire to link:../wire"
+exec pnpm exec cobuild-switch-package-source --package @cobuild/wire --field dependencies --local ../wire "$@"

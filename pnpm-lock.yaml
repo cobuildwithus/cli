@@ -25,11 +25,11 @@ importers:
         version: 2.46.3(typescript@5.9.3)(zod@4.3.6)
     devDependencies:
       '@cobuild/repo-tools':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.1.7
+        version: 0.1.7
       '@cobuild/review-gpt':
-        specifier: ^0.2.11
-        version: 0.2.11
+        specifier: ^0.2.13
+        version: 0.2.13
       '@types/node':
         specifier: ^25.2.3
         version: 25.3.0
@@ -72,12 +72,12 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@cobuild/repo-tools@0.1.4':
-    resolution: {integrity: sha512-I+Oe9Oi/qG+XAsjwQpsAuIsPuIZr2HoD9pm01OAIsVxJfRrV6aQMZnFhDC5cYBsSP/NQUHnn1NJA5xrbQZTocA==}
+  '@cobuild/repo-tools@0.1.7':
+    resolution: {integrity: sha512-6vDFJtP0nQoAx6kzOlVgxjeSY/uxj4IdQpk0vZiioAo1Q0qb5eKzGI4uiS/HUpVYXjC+Hvn9nRM37q/iIt0doA==}
     hasBin: true
 
-  '@cobuild/review-gpt@0.2.11':
-    resolution: {integrity: sha512-F5nPtRQXpWeijyvKRQQBWDlul1dwADlG4A3A0qcjG0IxZu1r/Zv8WrPT6UrZsYEGKw5M9Del+RzzlpdN8ol5OQ==}
+  '@cobuild/review-gpt@0.2.13':
+    resolution: {integrity: sha512-HVbDG/PaLj6V3ghMG/G+2XWDCenreJAXaygz+c56Raxr/gZM++4lsy1uVBc70lhADgVUV0/PF1bY7R43VKOuSQ==}
     hasBin: true
 
   '@esbuild/aix-ppc64@0.27.3':
@@ -1253,9 +1253,9 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@cobuild/repo-tools@0.1.4': {}
+  '@cobuild/repo-tools@0.1.7': {}
 
-  '@cobuild/review-gpt@0.2.11': {}
+  '@cobuild/review-gpt@0.2.13': {}
 
   '@esbuild/aix-ppc64@0.27.3':
     optional: true

@@ -44,6 +44,28 @@ export COBUILD_DRIFT_CHANGED_COUNT_EXCLUDE_PATTERN='^agent-docs/generated/|^agen
 export COBUILD_DRIFT_ALLOW_RELEASE_ARTIFACTS_ONLY='1'
 export COBUILD_COMMITTER_EXAMPLE='fix(cli): normalize api errors'
 export COBUILD_DOC_GARDENING_EXTRA_TRACKED_PATHS=ARCHITECTURE.md$'\n'
+export COBUILD_AUDIT_CONTEXT_PREFIX='cobuild-cli-audit'
+export COBUILD_AUDIT_CONTEXT_TITLE='Cobuild CLI Audit Bundle'
+export COBUILD_AUDIT_CONTEXT_REPO_LABEL='cli'
+repo_tools_join_lines COBUILD_AUDIT_CONTEXT_ALWAYS_PATHS \
+  "AGENTS.md" \
+  "ARCHITECTURE.md" \
+  "README.md" \
+  "package.json" \
+  "pnpm-lock.yaml" \
+  "tsconfig.json" \
+  "tsconfig.build.json" \
+  "vitest.config.ts"
+repo_tools_join_lines COBUILD_AUDIT_CONTEXT_SCAN_SPECS \
+  "src" \
+  "scripts"
+repo_tools_join_lines COBUILD_AUDIT_CONTEXT_TEST_SCAN_SPECS \
+  "tests" \
+  "test"
+repo_tools_join_lines COBUILD_AUDIT_CONTEXT_DOC_SCAN_SPECS \
+  "agent-docs:*.md"
+repo_tools_join_lines COBUILD_AUDIT_CONTEXT_CI_SCAN_SPECS \
+  ".github/workflows"
 export COBUILD_RELEASE_PACKAGE_NAME='@cobuild/cli'
 export COBUILD_RELEASE_REPOSITORY_URL='https://github.com/cobuildwithus/cli'
 export COBUILD_RELEASE_NOTES_ENABLED='1'
