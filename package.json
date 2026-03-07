@@ -48,8 +48,8 @@
     "release:major": "bash scripts/release.sh major"
   },
   "devDependencies": {
-    "@cobuild/repo-tools": "^0.1.8",
-    "@cobuild/review-gpt": "^0.2.13",
+    "@cobuild/repo-tools": "^0.1.10",
+    "@cobuild/review-gpt": "^0.2.15",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "husky": "^9.1.7",

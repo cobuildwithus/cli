@@ -111,6 +111,20 @@ if [ -n "\${PNPM_STUB_FAIL_ON:-}" ] && [ "\${1:-}" = "$PNPM_STUB_FAIL_ON" ]; the
   echo "pnpm stub forced failure for \${1:-}" >&2
   exit 3
 fi
+if [ "\${1:-}" = "version" ]; then
+  shift || true
+  tag="\${NPM_STUB_NEW_TAG:-v0.1.1}"
+  version="\${tag#v}"
+  node -e '
+const fs = require("node:fs");
+const packageJsonPath = "package.json";
+const data = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+data.version = process.argv[1];
+fs.writeFileSync(packageJsonPath, JSON.stringify(data, null, 2) + "\\n");
+' "$version"
+  echo "$tag"
+  exit 0
+fi
 if [ "\${1:-}" = "exec" ]; then
   shift || true
   tool="\${1:-}"
