@@ -1541,6 +1541,172 @@ describe("cli", () => {
     });
   });
 
+  it("tools notifications list posts pagination and filter payload", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        data: {
+          subjectWalletAddress: "0xabc",
+          items: [],
+          pageInfo: {
+            limit: 10,
+            nextCursor: null,
+            hasMore: false,
+          },
+          unread: {
+            count: 0,
+            watermark: "0",
+          },
+        },
+      }),
+    });
+
+    await expect(
+      runCli(["tools", "notifications", "list", "extra"], harness.deps)
+    ).rejects.toThrow("Invalid input: expected never, received string");
+
+    await runCli(
+      [
+        "tools",
+        "notifications",
+        "list",
+        "--limit",
+        "10",
+        "--cursor",
+        "cursor_123",
+        "--unread-only",
+        "--kind",
+        "discussion",
+        "--kind",
+        "payment",
+      ],
+      harness.deps
+    );
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "list-wallet-notifications",
+      input: {
+        limit: 10,
+        cursor: "cursor_123",
+        unreadOnly: true,
+        kinds: ["discussion", "payment"],
+      },
+    });
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: {
+        subjectWalletAddress: "0xabc",
+        items: [],
+        pageInfo: {
+          limit: 10,
+          nextCursor: null,
+          hasMore: false,
+        },
+        unread: {
+          count: 0,
+          watermark: "0",
+        },
+      },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+  });
+
+  it("tools notifications list posts an empty input object when no filters are set", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        data: {
+          subjectWalletAddress: "0xabc",
+          items: [],
+          pageInfo: {
+            limit: 20,
+            nextCursor: null,
+            hasMore: false,
+          },
+          unread: {
+            count: 0,
+            watermark: "0",
+          },
+        },
+      }),
+    });
+
+    await runCli(["tools", "notifications", "list"], harness.deps);
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "list-wallet-notifications",
+      input: {},
+    });
+  });
+
+  it("tools notifications list retries alias candidates when the primary tool name is unavailable", async () => {
+    const attemptedNames: string[] = [];
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ tools: [] }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body)) as { name?: string };
+          attemptedNames.push(String(body.name));
+          if (body.name === "list-wallet-notifications") {
+            return {
+              ok: false,
+              status: 404,
+              text: async () => JSON.stringify({ ok: false, error: "Tool not found" }),
+            };
+          }
+          if (body.name === "listWalletNotifications") {
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ data: { items: [] } }),
+            };
+          }
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ ok: false, error: "Unexpected alias" }),
+          };
+        }
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ ok: false, error: "Unexpected URL" }),
+        };
+      },
+    });
+
+    await runCli(["tools", "notifications", "list"], harness.deps);
+    expect(attemptedNames).toEqual(["list-wallet-notifications", "listWalletNotifications"]);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      data: { items: [] },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+  });
+
   it("tools get-user normalizes canonical responses that omit ok", async () => {
     const harness = createHarness({
       config: {
@@ -1905,6 +2071,10 @@ describe("cli", () => {
       {
         args: ["tools", "get-wallet-balances"],
         legacyPath: "/api/cli/tools/get-wallet-balances",
+      },
+      {
+        args: ["tools", "notifications", "list"],
+        legacyPath: "/api/cli/tools/notifications",
       },
     ];
 

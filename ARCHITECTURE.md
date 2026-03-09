@@ -30,7 +30,7 @@ cli/
   - `wallet`: wallet lookup via interface API + payer setup/status (`payer init`, `payer status`).
   - `farcaster`: Farcaster signup + posting orchestration (`signup`, `post`).
   - `docs`: docs search query via docs search API.
-  - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `get-treasury-stats`).
+  - `tools`: read-only tool API access (`get-user`, `get-cast`, `cast-preview`, `get-treasury-stats`, `notifications list`).
   - `send`: token transfer execution envelope.
   - `tx`: arbitrary transaction execution envelope.
 

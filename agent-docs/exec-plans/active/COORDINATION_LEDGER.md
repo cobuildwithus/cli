@@ -6,7 +6,6 @@ Use this file only for currently active coding work. Keep it minimal and current
 
 | Agent/Session | Task | Files in Scope | Symbols (add/rename/delete) | Dependency Notes | Updated (YYYY-MM-DD) |
 | --- | --- | --- | --- | --- | --- |
-
 ## Rules
 
 1. Add a row before your first code edit for every coding task (single-agent and multi-agent).

@@ -4,6 +4,7 @@ import {
   executeToolsGetCastCommand,
   executeToolsGetWalletBalancesCommand,
   executeToolsGetUserCommand,
+  executeToolsNotificationsListCommand,
   executeToolsTreasuryStatsCommand,
 } from "../src/commands/tools.js";
 import { createHarness } from "./helpers.js";
@@ -47,6 +48,24 @@ describe("tools branch coverage", () => {
     await expect(
       executeToolsGetCastCommand({ identifier: "0xabc", type: "other" }, harness.deps)
     ).rejects.toThrow("--type must be either 'hash' or 'url'");
+    await expect(
+      executeToolsNotificationsListCommand({ limit: "nope" }, harness.deps)
+    ).rejects.toThrow("--limit must be an integer");
+    await expect(
+      executeToolsNotificationsListCommand({ limit: "0" }, harness.deps)
+    ).rejects.toThrow("--limit must be between 1 and 50");
+    await expect(
+      executeToolsNotificationsListCommand({ limit: "1.5" }, harness.deps)
+    ).rejects.toThrow("--limit must be an integer");
+    await expect(
+      executeToolsNotificationsListCommand({ limit: "10abc" }, harness.deps)
+    ).rejects.toThrow("--limit must be an integer");
+    await expect(
+      executeToolsNotificationsListCommand({ cursor: "   " }, harness.deps)
+    ).rejects.toThrow("--cursor must not be empty");
+    await expect(
+      executeToolsNotificationsListCommand({ kind: ["unknown"] }, harness.deps)
+    ).rejects.toThrow('--kind must be one of "discussion", "payment", or "protocol"');
   });
 
   it("execute get-user, get-cast, and cast-preview normalize responses", async () => {
@@ -283,6 +302,56 @@ describe("tools branch coverage", () => {
         input: {
           agentKey: "override",
           network: "base-sepolia",
+        },
+      },
+    ]);
+  });
+
+  it("notifications list normalizes responses and preserves opaque cursor values", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tool-executions")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ data: { items: [] } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ tools: [{ name: "list-wallet-notifications" }] }),
+        };
+      },
+    });
+
+    const output = await executeToolsNotificationsListCommand(
+      {
+        limit: "10",
+        cursor: "  abc123  ",
+        unreadOnly: true,
+        kind: ["discussion", "payment", "discussion"],
+      },
+      harness.deps
+    );
+
+    expect(output).toEqual(withUntrustedMetadata({
+      ok: true,
+      data: { items: [] },
+    }));
+    expect(getToolExecutionPayloads(harness.fetchMock.mock.calls)).toEqual([
+      {
+        name: "list-wallet-notifications",
+        input: {
+          limit: 10,
+          cursor: "  abc123  ",
+          unreadOnly: true,
+          kinds: ["discussion", "payment"],
         },
       },
     ]);

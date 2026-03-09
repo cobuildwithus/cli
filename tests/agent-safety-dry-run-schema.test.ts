@@ -577,6 +577,35 @@ describe("agent safety + dry-run + schema", () => {
         supportsDryRun: true,
       },
     });
+
+    await runCli(["schema", "tools", "notifications", "list"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "tools notifications list",
+      schema: {
+        options: {
+          properties: {
+            limit: expect.any(Object),
+            cursor: expect.any(Object),
+            unreadOnly: expect.any(Object),
+            kind: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            data: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+      },
+    });
   });
 
   it("returns deterministic schema errors for blank and unknown command paths", async () => {

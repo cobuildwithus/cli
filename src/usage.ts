@@ -17,6 +17,7 @@ Usage:
   cli tools cast-preview --text <text> [--embed <url>] [--parent <value>]
   cli tools get-treasury-stats
   cli tools get-wallet-balances [--agent <key>] [--network <network>]
+  cli tools notifications list [--limit <n>] [--cursor <cursor>] [--unread-only] [--kind <kind>]
   cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <key>]
   cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <key>]
 
@@ -48,6 +49,7 @@ Examples:
   cli tools cast-preview --text "Ship update" --embed https://image.example/pic.png
   cli tools get-treasury-stats
   cli tools get-wallet-balances --agent default --network base
+  cli tools notifications list --limit 10 --unread-only --kind discussion
   cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base
   cli tx --to 0x1234... --data 0xabcdef --value 0 --network base`;
 

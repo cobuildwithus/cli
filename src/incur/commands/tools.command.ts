@@ -4,6 +4,7 @@ import {
   executeToolsGetCastCommand,
   executeToolsGetWalletBalancesCommand,
   executeToolsGetUserCommand,
+  executeToolsNotificationsListCommand,
   executeToolsTreasuryStatsCommand,
 } from "../../commands/tools.js";
 import type { CliDeps } from "../../types.js";
@@ -61,10 +62,48 @@ export function registerToolsCommand(
       warnings: z.array(z.string()),
     })
     .passthrough();
+  const notificationsListOutput = z
+    .object({
+      data: z.unknown(),
+      ok: z.boolean().optional(),
+      untrusted: z.literal(true),
+      source: z.literal("remote_tool"),
+      warnings: z.array(z.string()),
+    })
+    .passthrough();
 
   const tools = Cli.create("tools", {
     description: "Execute canonical tool endpoints",
-  })
+  });
+
+  const notifications = Cli.create("notifications", {
+    description: "Read canonical wallet notification tools",
+  }).command("list", {
+    description: "List wallet notifications",
+    args: z.object({
+      extra: z.never().optional(),
+    }),
+    options: z.object({
+      limit: z.coerce.number().int().min(1).max(50).optional(),
+      cursor: z.string().optional(),
+      unreadOnly: z.boolean().optional(),
+      kind: z.array(z.enum(["discussion", "payment", "protocol"])).optional(),
+    }),
+    output: notificationsListOutput,
+    run(context) {
+      return executeToolsNotificationsListCommand(
+        {
+          limit: context.options.limit !== undefined ? String(context.options.limit) : undefined,
+          cursor: context.options.cursor,
+          unreadOnly: context.options.unreadOnly,
+          kind: context.options.kind,
+        },
+        deps
+      );
+    },
+  });
+
+  tools
     .command("get-user", {
       description: "Lookup user profile by name",
       args: toolNameArgs,
@@ -143,7 +182,8 @@ export function registerToolsCommand(
           deps
         );
       },
-    });
+    })
+    .command(notifications);
 
   root.command(tools);
 }

@@ -110,6 +110,7 @@
 ## Tools Flow
 
 1. Parse `tools` subcommand and options.
+2. For `tools notifications list`, validate `--limit` as an integer in `1..50`, accept optional opaque `--cursor`, repeated `--kind`, and `--unread-only`.
 2. Validate command-specific argument shape.
 3. Optionally GET `/v1/tools` to resolve canonical tool naming.
 4. POST `/v1/tool-executions` with command-specific canonical tool input.

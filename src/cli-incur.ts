@@ -403,6 +403,12 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     requiresAuth: true,
     sideEffects: ["network"],
   },
+  "tools notifications list": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
   tx: {
     mutating: true,
     supportsDryRun: true,
