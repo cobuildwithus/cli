@@ -1651,6 +1651,57 @@ describe("cli", () => {
     });
   });
 
+  it("tools notifications list rejects cursors longer than the server limit", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      runCli(["tools", "notifications", "list", "--cursor", "x".repeat(513)], harness.deps)
+    ).rejects.toThrow("--cursor must not exceed 512 characters");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("tools notifications list accepts a 512-character cursor and forwards it unchanged", async () => {
+    const cursor = "x".repeat(512);
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        data: {
+          subjectWalletAddress: "0xabc",
+          items: [],
+          pageInfo: {
+            limit: 20,
+            nextCursor: null,
+            hasMore: false,
+          },
+          unread: {
+            count: 0,
+            watermark: "0",
+          },
+        },
+      }),
+    });
+
+    await runCli(["tools", "notifications", "list", "--cursor", cursor], harness.deps);
+    const [, init] = findFetchCallByUrl(
+      harness.fetchMock.mock.calls,
+      "https://interface.example/v1/tool-executions"
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "list-wallet-notifications",
+      input: {
+        cursor,
+      },
+    });
+  });
+
   it("tools notifications list retries alias candidates when the primary tool name is unavailable", async () => {
     const attemptedNames: string[] = [];
     const harness = createHarness({

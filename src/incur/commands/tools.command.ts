@@ -85,7 +85,15 @@ export function registerToolsCommand(
     }),
     options: z.object({
       limit: z.coerce.number().int().min(1).max(50).optional(),
-      cursor: z.string().optional(),
+      cursor: z
+        .string()
+        .refine((value) => value.trim().length > 0, {
+          message: "--cursor must not be empty",
+        })
+        .max(512, {
+          message: "--cursor must not exceed 512 characters",
+        })
+        .optional(),
       unreadOnly: z.boolean().optional(),
       kind: z.array(z.enum(["discussion", "payment", "protocol"])).optional(),
     }),

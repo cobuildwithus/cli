@@ -64,6 +64,9 @@ describe("tools branch coverage", () => {
       executeToolsNotificationsListCommand({ cursor: "   " }, harness.deps)
     ).rejects.toThrow("--cursor must not be empty");
     await expect(
+      executeToolsNotificationsListCommand({ cursor: "x".repeat(513) }, harness.deps)
+    ).rejects.toThrow("--cursor must not exceed 512 characters");
+    await expect(
       executeToolsNotificationsListCommand({ kind: ["unknown"] }, harness.deps)
     ).rejects.toThrow('--kind must be one of "discussion", "payment", or "protocol"');
   });

@@ -586,7 +586,9 @@ describe("agent safety + dry-run + schema", () => {
         options: {
           properties: {
             limit: expect.any(Object),
-            cursor: expect.any(Object),
+            cursor: expect.objectContaining({
+              maxLength: 512,
+            }),
             unreadOnly: expect.any(Object),
             kind: expect.any(Object),
           },
