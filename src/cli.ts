@@ -1,4 +1,4 @@
-import { createCobuildIncurCli, preprocessIncurArgv } from "./cli-incur.js";
+import { createCobuildIncurCli, preprocessIncurArgv, splitLeadingGlobalArgv } from "./cli-incur.js";
 import { defaultDeps } from "./deps.js";
 import type { CliDeps } from "./types.js";
 
@@ -76,37 +76,8 @@ function extractIncurErrorMessage(outputs: string[], exitCode: number): string {
 }
 
 function isMcpRequested(argv: string[]): boolean {
-  let index = 0;
-  while (index < argv.length) {
-    const token = argv[index]!;
-    if (token === "--") return false;
-    if (!token.startsWith("-")) return false;
-    if (token === "--mcp") return true;
-
-    if (token === "--format") {
-      index += 2;
-      continue;
-    }
-    if (token.startsWith("--format=")) {
-      index += 1;
-      continue;
-    }
-
-    if (
-      token === "--verbose" ||
-      token === "--json" ||
-      token === "--llms" ||
-      token === "--help" ||
-      token === "-h" ||
-      token === "--version"
-    ) {
-      index += 1;
-      continue;
-    }
-
-    return false;
-  }
-  return false;
+  const { leading } = splitLeadingGlobalArgv(argv);
+  return leading.includes("--mcp");
 }
 
 export function createCliDeps(overrides: Partial<CliDeps> = {}): CliDeps {

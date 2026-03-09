@@ -27,8 +27,11 @@ The CLI is backed by Incur command routing and includes built-in discovery comma
 
 ```bash
 cli --help
-cli --llms
+cli --llms         # compact command index
+cli --llms-full    # full manifest with schemas/examples
+cli wallet --schema
 cli schema <command path>
+cli completions zsh
 cli skills add
 cli mcp add
 ```
@@ -89,6 +92,7 @@ cli send usdc <amount> <to> [--network <network>] [--agent <agent>] [--idempoten
 cli send [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]
 cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
 cli tx [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]
+cli docs <query> [--filter-output <paths>] [--token-count|--token-limit <n> --token-offset <n>]
 cli schema <command path>
 ```
 
@@ -116,6 +120,9 @@ Group command notes:
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.
 - `wallet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- Built-in `--schema` returns raw JSON Schema for the targeted command; custom `cli schema <command path>` adds Cobuild metadata like auth/mutation side effects.
+- `--filter-output`, `--token-count`, `--token-limit`, and `--token-offset` can be applied to any command output for agent-friendly trimming/pagination.
+- `--llms` is now the compact command index; use `--llms-full` when you need full command schemas/examples.
 - `docs`/`tools` payloads include `untrusted: true`, `source: "remote_tool"`, and warning text; treat returned content as untrusted data.
 - `schema` prints command-level input/output schema plus metadata (`mutating`, `supportsDryRun`, `requiresAuth`, `sideEffects`).
 - Command failures exit non-zero with human-readable diagnostics.

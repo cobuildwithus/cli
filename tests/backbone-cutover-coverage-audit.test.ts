@@ -39,7 +39,7 @@ describe("backbone cutover coverage audit", () => {
     const cli = createCobuildIncurCli(harness.deps, { mcpMode: true });
     const llmsOutput: string[] = [];
 
-    await cli.serve(["--llms", "--format", "json"], {
+    await cli.serve(["--llms-full", "--format", "json"], {
       env: harness.deps.env,
       stdout: (chunk) => {
         llmsOutput.push(chunk);
@@ -58,7 +58,7 @@ describe("backbone cutover coverage audit", () => {
     const cli = createCobuildIncurCli(harness.deps);
     const llmsOutput: string[] = [];
 
-    await cli.serve(["--llms", "--format", "json"], {
+    await cli.serve(["--llms-full", "--format", "json"], {
       env: harness.deps.env,
       stdout: (chunk) => {
         llmsOutput.push(chunk);
@@ -86,6 +86,27 @@ describe("backbone cutover coverage audit", () => {
     expect(walletOutput?.properties).toHaveProperty("walletConfig");
     expect(signupOutput?.properties).toHaveProperty("signer");
     expect(postOutput?.properties).toHaveProperty("idempotencyKey");
+  });
+
+  it("exposes the built-in --schema global for machine-readable command introspection", async () => {
+    const harness = createHarness();
+    const cli = createCobuildIncurCli(harness.deps);
+    const schemaOutput: string[] = [];
+
+    await cli.serve(["wallet", "--schema", "--format", "json"], {
+      env: harness.deps.env,
+      stdout: (chunk) => {
+        schemaOutput.push(chunk);
+      },
+    });
+
+    const schema = JSON.parse(schemaOutput.join("")) as {
+      options?: { properties?: Record<string, unknown> };
+      output?: { properties?: Record<string, unknown> };
+    };
+
+    expect(schema.options?.properties).toHaveProperty("network");
+    expect(schema.output?.properties).toHaveProperty("walletConfig");
   });
 
   it("rejects setup in MCP runtime because it is not registered", async () => {

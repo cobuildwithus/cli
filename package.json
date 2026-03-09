@@ -61,7 +61,7 @@
     "@cobuild/wire": "^0.1.5",
     "@farcaster/hub-nodejs": "^0.15.10",
     "@noble/ed25519": "^2.2.3",
-    "incur": "0.1.17",
+    "incur": "0.3.0",
     "viem": "^2.46.3"
   }
 }

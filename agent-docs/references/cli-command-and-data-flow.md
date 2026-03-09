@@ -21,6 +21,7 @@
 3. Preprocess argv compatibility shims in `preprocessIncurArgv`:
 - `setup --json` remapped to command-local setup json mode.
 - `--json setup ...` remapped to setup-local machine mode (`--setup-json`) while preserving other leading global flags.
+- Leading Incur globals used before a command (`--llms`, `--llms-full`, `--schema`, `--filter-output`, `--token-count`, `--token-limit`, `--token-offset`, `--format`, `--verbose`) are preserved so command-local positional compatibility shims still run on the actual command tail.
 - `docs -- --<dashed-term>` preserved via escaped positional passthrough (base64url marker encoding).
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.

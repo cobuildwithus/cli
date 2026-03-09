@@ -1,6 +1,6 @@
 # CLI Architecture
 
-Last updated: 2026-03-02
+Last updated: 2026-03-09
 
 See `README.md` for setup/use context. Canonical docs map: `agent-docs/index.md`.
 
@@ -23,7 +23,7 @@ cli/
 
 - `src/index.ts` is the executable entrypoint and delegates to `runCliFromProcess`.
 - `src/cli.ts` owns process lifecycle adapters and bridges process/test harness IO into the runtime.
-- `src/cli-incur.ts` owns command parsing and subcommand routing via Incur (`Cli.create`, command groups, built-in `skills add`, `mcp add`, `--llms`, and `--mcp`).
+- `src/cli-incur.ts` owns command parsing and subcommand routing via Incur (`Cli.create`, command groups, built-in `skills add`, `mcp add`, `completions`, compact `--llms`, full `--llms-full`, built-in `--schema`, output filtering/token pagination globals, and `--mcp`).
 - Command families:
   - `setup`: onboarding wizard + secure browser approval + config persistence + wallet bootstrap + optional wallet payer setup.
   - `config`: local config read/write/inspect.

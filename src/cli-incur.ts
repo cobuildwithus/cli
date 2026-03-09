@@ -15,12 +15,20 @@ const LEADING_GLOBAL_BOOLEAN_FLAGS = new Set([
   "--verbose",
   "--json",
   "--llms",
+  "--llms-full",
   "--mcp",
+  "--schema",
+  "--token-count",
   "--help",
   "-h",
   "--version",
 ]);
-const LEADING_GLOBAL_VALUE_FLAGS = new Set(["--format"]);
+const LEADING_GLOBAL_VALUE_FLAGS = new Set([
+  "--filter-output",
+  "--format",
+  "--token-limit",
+  "--token-offset",
+]);
 
 export interface CobuildIncurCliOptions {
   mcpMode?: boolean;
@@ -229,7 +237,7 @@ function consumeLeadingGlobalFlag(argv: string[], index: number): number {
   return index;
 }
 
-function splitLeadingGlobalArgv(argv: string[]): { leading: string[]; tail: string[] } {
+export function splitLeadingGlobalArgv(argv: string[]): { leading: string[]; tail: string[] } {
   let index = 0;
   while (index < argv.length) {
     const token = argv[index]!;
@@ -419,7 +427,7 @@ function normalizeCommandPath(value: string): string {
 
 async function readIncurManifest(cli: Cli.Cli, deps: CliDeps): Promise<IncurManifest> {
   const output: string[] = [];
-  await cli.serve(["--llms", "--format", "json"], {
+  await cli.serve(["--llms-full", "--format", "json"], {
     env: deps.env,
     stdout: (chunk) => {
       output.push(chunk);
@@ -431,7 +439,7 @@ async function readIncurManifest(cli: Cli.Cli, deps: CliDeps): Promise<IncurMani
 
   const raw = output.join("").trim();
   if (!raw) {
-    throw new Error("Failed to load command schema manifest: empty --llms output.");
+    throw new Error("Failed to load command schema manifest: empty --llms-full output.");
   }
 
   let parsed: unknown;
@@ -532,7 +540,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       );
       if (!entry || typeof entry.name !== "string") {
         throw new Error(
-          `Unknown command path "${commandPath}". Run \`cli --llms --format json\` to inspect available commands.`
+          `Unknown command path "${commandPath}". Run \`cli --llms --format json\` to inspect commands or \`cli --llms-full --format json\` for the full manifest.`
         );
       }
 

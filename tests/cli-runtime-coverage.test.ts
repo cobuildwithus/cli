@@ -78,6 +78,24 @@ describe("cli runtime coverage", () => {
     expect(
       cliIncur.preprocessIncurArgv(["--json", "farcaster", "post", "--verify"])
     ).toEqual(["--json", "farcaster", "post", "--verify=once"]);
+
+    expect(
+      cliIncur.preprocessIncurArgv(["--schema", "docs", "setup", "approval"])
+    ).toEqual(["--schema", "docs", encodeEscapedPositional("setup approval")]);
+
+    expect(
+      cliIncur.preprocessIncurArgv(["--filter-output", "results[0].title", "tools", "get-user", "alice", "builder"])
+    ).toEqual([
+      "--filter-output",
+      "results[0].title",
+      "tools",
+      "get-user",
+      encodeEscapedPositional("alice builder"),
+    ]);
+
+    expect(
+      cliIncur.preprocessIncurArgv(["--token-limit", "40", "--llms-full", "wallet"])
+    ).toEqual(["--token-limit", "40", "--llms-full", "wallet"]);
   });
 
   it("does not rewrite legacy farcaster payer command paths after hard cutover", () => {
@@ -281,6 +299,32 @@ describe("cli runtime coverage", () => {
     const secondMcpDeps = createSpy.mock.calls[1]?.[0] as { isInteractive?: () => boolean };
     expect(firstMcpDeps.isInteractive?.()).toBe(false);
     expect(secondMcpDeps.isInteractive?.()).toBe(false);
+
+    preprocessSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it("detects --mcp after newer built-in global flags", async () => {
+    const harness = createHarness();
+    const preprocessSpy = vi.spyOn(cliIncur, "preprocessIncurArgv").mockImplementation((argv) => argv);
+    const createSpy = vi.spyOn(cliIncur, "createCobuildIncurCli").mockReturnValue({
+      async serve() {
+        return;
+      },
+    } as unknown as ReturnType<typeof cliIncur.createCobuildIncurCli>);
+
+    await runCli(["--filter-output", "meta.command", "--token-limit", "40", "--mcp"], harness.deps);
+
+    expect(preprocessSpy).toHaveBeenCalledWith([
+      "--filter-output",
+      "meta.command",
+      "--token-limit",
+      "40",
+      "--mcp",
+    ]);
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining(harness.deps), { mcpMode: true });
+    const mcpDeps = createSpy.mock.calls[0]?.[0] as { isInteractive?: () => boolean };
+    expect(mcpDeps.isInteractive?.()).toBe(false);
 
     preprocessSpy.mockRestore();
     createSpy.mockRestore();

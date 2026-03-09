@@ -129,6 +129,34 @@ For runtime commands:
 - `setup` keeps human wizard/progress text on stderr so stdout remains machine-readable.
 - Failures exit non-zero and print human-readable diagnostics.
 
+## Agent-Friendly Globals
+
+The CLI now ships with newer Incur built-ins that are useful for both agents and humans:
+
+```bash
+# Compact command index for quick agent discovery
+cli --llms
+
+# Full manifest with schemas/examples
+cli --llms-full --format json
+
+# Raw JSON Schema for one command
+cli wallet --schema --format json
+
+# Cobuild-specific schema wrapper with metadata
+cli schema wallet
+
+# Trim large payloads to the fields you care about
+cli docs setup approval flow --filter-output results[0,2].title
+
+# Token-aware pagination for large responses
+cli docs setup approval flow --token-count
+cli docs setup approval flow --token-limit 120 --token-offset 120
+
+# Generate shell completions
+cli completions zsh
+```
+
 ## Command Auth Requirements
 
 - No pre-existing token needed: `setup`, `config set`, `config show`, and `--help`.

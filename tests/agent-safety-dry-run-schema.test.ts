@@ -551,13 +551,20 @@ describe("agent safety + dry-run + schema", () => {
   it("supports command-level schema introspection", async () => {
     const harness = createHarness();
 
-    await runCli(["schema", "send"], harness.deps);
+    await runCli(["schema", "wallet"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
-      command: "send",
+      command: "wallet",
+      schema: {
+        output: {
+          properties: {
+            walletConfig: expect.any(Object),
+          },
+        },
+      },
       metadata: {
         mutating: true,
-        supportsDryRun: true,
+        supportsDryRun: false,
       },
     });
 
