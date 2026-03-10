@@ -56,16 +56,19 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 - `goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
 - Defaults to the canonical Base GoalFactory exported by `@cobuild/wire`, with `--factory` retained as an override.
-- Builds GoalFactory `deployGoal` calldata from JSON params through shared `@cobuild/wire` normalization/build helpers.
-- Executes through the existing hosted/local wallet split (`/api/cli/exec` in hosted mode, local viem tx in local mode).
+- Builds a shared `goal.create` protocol plan from JSON params through `@cobuild/wire` normalization/build helpers.
+- Hosted mode now POSTs `/api/cli/exec` with the first-class `kind: protocol-step` envelope; local mode still executes the raw viem tx path.
 - Attempts to decode `GoalDeployed` from the transaction receipt when available using shared wire decoders.
 
 ### Shared protocol plan runtime
 
-- `src/protocol-plan/runner.ts` executes structural `@cobuild/wire` `ProtocolExecutionPlan` objects (or plan-shaped pilot scaffolding) through the existing hosted `/api/cli/exec` and local-wallet split.
+- Governance, stake, and premium participant commands now build their execution plans directly with `@cobuild/wire` helpers instead of assembling parallel CLI-local plan/approval objects.
+- `src/protocol-plan/runner.ts` executes structural `@cobuild/wire` `ProtocolExecutionPlan` objects through the existing hosted `/api/cli/exec` and local-wallet split.
 - The runner derives a root idempotency key plus deterministic per-step child idempotency keys so multi-step reruns replay completed steps safely.
-- Dry-run output stays step-explicit: every approval/call step includes the derived child idempotency key, tx request payload, and hosted-vs-local execution target.
-- Executed output normalizes to one machine-readable contract with plan metadata, per-step request/result records, replay markers, and optional receipt summaries/decode warnings.
+- Hosted protocol-plan steps preserve `action`, `riskClass`, and step metadata in a `kind: protocol-step` request; raw `kind: tx` remains the explicit generic escape hatch.
+- Dry-run output stays step-explicit: every approval/call step includes the derived child idempotency key, execution-target-specific request payload, and hosted-vs-local execution target.
+- Executed output normalizes to one machine-readable contract with plan metadata, per-step request/result records, replay markers, and optional receipt summaries/decode warnings; participant commands add only a thin top-level `family` label plus command-specific action aliasing where needed.
+- Hosted execution halts immediately when a step is still pending so reruns can safely resume from the same root idempotency key.
 - Receipt decoding is pluggable per step: commands provide a decoder only when they have contract-specific receipt semantics worth surfacing.
 
 ### `docs`

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@cobuild/wire':
-        specifier: ^0.1.10
-        version: 0.1.10(typescript@5.9.3)(zod@4.3.6)
+        specifier: ^0.2.0
+        version: 0.2.0(typescript@5.9.3)(zod@4.3.6)
       '@farcaster/hub-nodejs':
         specifier: ^0.15.10
         version: 0.15.10(typescript@5.9.3)(zod@4.3.6)
@@ -97,8 +97,8 @@ packages:
     resolution: {integrity: sha512-wxpb5fwLya/DjNlBS1YOzqrccPk73OoEFxViMpMVDmIfI+UjcA16qSzO+hLndwpGAY3Xnzbk2yMvlZvtrlkDbw==}
     hasBin: true
 
-  '@cobuild/wire@0.1.10':
-    resolution: {integrity: sha512-2dkI6DIFeA2r6t2lTY4IcdNlHesaAu4ycU7bwvQJLTUrFhIXZtbb9jwbfYJzADo+DHj5Vjo5z1gs+6Qx33eYQw==}
+  '@cobuild/wire@0.2.0':
+    resolution: {integrity: sha512-6P+ny8BBayE/iotrNQLacep6k7uGqVfEhMSAIJLhV5tQoSF9Y6PuO6jrnX44j1vdsB2aII0tEimiHgvVm0WmKw==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -1358,7 +1358,7 @@ snapshots:
 
   '@cobuild/review-gpt@0.2.15': {}
 
-  '@cobuild/wire@0.1.10(typescript@5.9.3)(zod@4.3.6)':
+  '@cobuild/wire@0.2.0(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
       viem: 2.46.3(typescript@5.9.3)(zod@4.3.6)
     transitivePeerDependencies:

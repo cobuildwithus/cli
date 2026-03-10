@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, type Hex } from "viem";
 import {
   buildGoalCreateTransaction,
+  buildGoalCreateProtocolPlan,
   goalFactoryAbi,
   goalFactoryAddress,
 } from "@cobuild/wire";
@@ -141,6 +142,27 @@ function setLocalWalletConfig(harness: ReturnType<typeof createHarness>): void {
     JSON.stringify(
       {
         "wallet:payer:default": `0x${"01".repeat(31)}02`,
+      },
+      null,
+      2
+    )
+  );
+}
+
+function setHostedWalletConfig(
+  harness: ReturnType<typeof createHarness>,
+  agentKey = "default"
+): void {
+  harness.files.set(
+    `/tmp/cli-tests/.cobuild-cli/agents/${agentKey}/wallet/payer.json`,
+    JSON.stringify(
+      {
+        version: 1,
+        mode: "hosted",
+        payerAddress: null,
+        network: "base",
+        token: "usdc",
+        createdAt: "2026-03-03T00:00:00.000Z",
       },
       null,
       2
@@ -309,7 +331,7 @@ describe("goal create command", () => {
     });
   });
 
-  it("routes hosted goal creation through /api/cli/exec tx envelope", async () => {
+  it("routes hosted goal creation through /api/cli/exec protocol-step envelope", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -345,18 +367,27 @@ describe("goal create command", () => {
     });
 
     const body = JSON.parse(String(init?.body));
-    const expectedTx = buildGoalCreateTransaction({
+    const expectedPlan = buildGoalCreateProtocolPlan({
       deployParams: buildDeployParams(),
       factoryAddress: GOAL_FACTORY,
     });
     expect(body).toMatchObject({
-      kind: "tx",
+      kind: "protocol-step",
       network: "base",
+      action: "goal.create",
+      riskClass: "economic",
       agentKey: "default",
-      to: GOAL_FACTORY.toLowerCase(),
-      valueEth: "0",
+      step: {
+        kind: "contract-call",
+        contract: "GoalFactory",
+        functionName: "deployGoal",
+        transaction: {
+          to: GOAL_FACTORY.toLowerCase(),
+          valueEth: "0",
+        },
+      },
     });
-    expect(body.data).toBe(expectedTx.data);
+    expect(body.step.transaction.data).toBe(expectedPlan.steps[0]?.transaction.data);
 
     const output = JSON.parse(harness.outputs.at(-1) ?? "{}");
     expect(output).toMatchObject({
@@ -364,6 +395,82 @@ describe("goal create command", () => {
       idempotencyKey: EXPLICIT_UUID,
       goalFactory: GOAL_FACTORY.toLowerCase(),
       network: "base",
+    });
+  });
+
+  it("preserves pending hosted protocol-step responses without attempting receipt decode", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 202,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            kind: "protocol-step",
+            pending: true,
+            status: "pending",
+            userOpHash: `0x${"7".repeat(64)}`,
+          }),
+      }),
+    });
+
+    const result = await executeGoalCreateCommand(
+      {
+        factory: GOAL_FACTORY,
+        paramsJson: JSON.stringify(buildDeployParams()),
+        idempotencyKey: EXPLICIT_UUID,
+      },
+      harness.deps
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      kind: "protocol-step",
+      pending: true,
+      status: "pending",
+      userOpHash: `0x${"7".repeat(64)}`,
+      idempotencyKey: EXPLICIT_UUID,
+      goalFactory: GOAL_FACTORY.toLowerCase(),
+      network: "base",
+    });
+    expect(result.goalDeployment).toBeUndefined();
+    expect(result.goalDeploymentDecodeError).toBeUndefined();
+  });
+
+  it("uses explicit agent and normalized network on hosted goal-create protocol-step requests", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "default",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+    setHostedWalletConfig(harness, "ops");
+
+    await executeGoalCreateCommand(
+      {
+        agent: "ops",
+        network: "base-mainnet",
+        paramsJson: JSON.stringify(buildDeployParams()),
+      },
+      harness.deps
+    );
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      kind: "protocol-step",
+      network: "base",
+      action: "goal.create",
+      agentKey: "ops",
     });
   });
 
@@ -390,7 +497,12 @@ describe("goal create command", () => {
     const [input, init] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://api.example/api/cli/exec");
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      to: CANONICAL_GOAL_FACTORY,
+      kind: "protocol-step",
+      step: {
+        transaction: {
+          to: CANONICAL_GOAL_FACTORY,
+        },
+      },
     });
     expect(result).toMatchObject({
       ok: true,
@@ -489,6 +601,7 @@ describe("goal create command", () => {
         agent: "ops",
       },
     });
+    setHostedWalletConfig(harness, "ops");
 
     await runCli(
       ["goal", "create", "--params-json", JSON.stringify(buildDeployParams()), "--dry-run"],
@@ -507,10 +620,57 @@ describe("goal create command", () => {
         method: "POST",
         path: "/api/cli/exec",
         body: {
+          kind: "protocol-step",
+          network: "base",
+          action: "goal.create",
+          riskClass: "economic",
+          agentKey: "ops",
+          step: {
+            kind: "contract-call",
+            contract: "GoalFactory",
+            functionName: "deployGoal",
+            transaction: {
+              to: CANONICAL_GOAL_FACTORY,
+              valueEth: "0",
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("emits a local raw-tx dry-run request when the configured wallet is local", async () => {
+    const harness = createHarness({
+      config: {
+        agent: "default",
+      },
+    });
+    setLocalWalletConfig(harness);
+
+    await runCli(
+      ["goal", "create", "--params-json", JSON.stringify(buildDeployParams()), "--dry-run"],
+      harness.deps
+    );
+
+    const expectedTx = buildGoalCreateTransaction({
+      deployParams: buildDeployParams(),
+    });
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
+    expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toMatchObject({
+      ok: true,
+      dryRun: true,
+      goalFactory: CANONICAL_GOAL_FACTORY,
+      network: "base",
+      request: {
+        method: "POST",
+        path: "/api/cli/exec",
+        body: {
           kind: "tx",
           network: "base",
-          agentKey: "ops",
+          agentKey: "default",
           to: CANONICAL_GOAL_FACTORY,
+          data: expectedTx.data,
           valueEth: "0",
         },
       },

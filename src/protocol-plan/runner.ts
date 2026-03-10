@@ -2,6 +2,7 @@ import { readConfig } from "../config.js";
 import { resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
 import { apiPost, asRecord } from "../transport.js";
 import type { CliConfig, CliDeps } from "../types.js";
+import { buildCliProtocolStepRequest } from "@cobuild/wire";
 import {
   buildIdempotencyHeaders,
   resolveAgentKey,
@@ -11,11 +12,13 @@ import { executeLocalTx } from "../wallet/local-exec.js";
 import { requireStoredWalletConfig } from "../wallet/payer-config.js";
 import { deriveProtocolPlanStepIdempotencyKey } from "./idempotency.js";
 import {
+  formatProtocolPlanPendingMessage,
   formatProtocolPlanStepFailureMessage,
   formatProtocolPlanStepLabel,
 } from "./labels.js";
 import { tryDecodeProtocolPlanStepReceipt } from "./receipt.js";
 import type {
+  RawTxProtocolPlanStepRequest,
   ProtocolExecutionPlanLike,
   ProtocolPlanExecutionOutput,
   ProtocolPlanStepLike,
@@ -72,11 +75,11 @@ function resolveProtocolPlanWalletContext(params: {
   };
 }
 
-function buildProtocolPlanStepRequest(params: {
+function buildRawTxProtocolPlanStepRequest(params: {
   network: string;
   agentKey: string;
   step: ProtocolPlanStepLike;
-}): ProtocolPlanStepRequest {
+}): RawTxProtocolPlanStepRequest {
   return {
     kind: "tx",
     network: params.network,
@@ -85,6 +88,46 @@ function buildProtocolPlanStepRequest(params: {
     data: params.step.transaction.data,
     valueEth: params.step.transaction.valueEth,
   };
+}
+
+function buildHostedProtocolPlanStepRequest(params: {
+  network: string;
+  agentKey: string;
+  plan: ProtocolExecutionPlanLike;
+  step: ProtocolPlanStepLike;
+}): ProtocolPlanStepRequest {
+  return {
+    ...buildCliProtocolStepRequest({
+      network: params.network,
+      action: params.plan.action,
+      riskClass: params.plan.riskClass,
+      step: params.step,
+    }),
+    agentKey: params.agentKey,
+  };
+}
+
+function buildProtocolPlanStepRequest(params: {
+  walletMode: ProtocolPlanWalletMode;
+  network: string;
+  agentKey: string;
+  plan: ProtocolExecutionPlanLike;
+  step: ProtocolPlanStepLike;
+}): ProtocolPlanStepRequest {
+  if (params.walletMode === "local") {
+    return buildRawTxProtocolPlanStepRequest({
+      network: params.network,
+      agentKey: params.agentKey,
+      step: params.step,
+    });
+  }
+
+  return buildHostedProtocolPlanStepRequest({
+    network: params.network,
+    agentKey: params.agentKey,
+    plan: params.plan,
+    step: params.step,
+  });
 }
 
 function buildProtocolPlanStepOutputBase(params: {
@@ -136,21 +179,25 @@ function buildProtocolPlanStepOutputBase(params: {
   };
 }
 
+function isHostedPendingStepResult(result: Record<string, unknown>): boolean {
+  return result.pending === true || result.status === "pending";
+}
+
 async function executeProtocolPlanStep(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir" | "env">;
   walletContext: ResolvedWalletContext;
   agentKey: string;
   network: string;
+  plan: ProtocolExecutionPlanLike;
   step: ProtocolPlanStepLike;
   idempotencyKey: string;
 }): Promise<Record<string, unknown>> {
-  const request = buildProtocolPlanStepRequest({
-    network: params.network,
-    agentKey: params.agentKey,
-    step: params.step,
-  });
-
   if (params.walletContext.walletMode === "local") {
+    const request = buildRawTxProtocolPlanStepRequest({
+      network: params.network,
+      agentKey: params.agentKey,
+      step: params.step,
+    });
     return await executeLocalTx({
       deps: params.deps,
       agentKey: params.agentKey,
@@ -162,6 +209,13 @@ async function executeProtocolPlanStep(params: {
       idempotencyKey: params.idempotencyKey,
     });
   }
+
+  const request = buildHostedProtocolPlanStepRequest({
+    network: params.network,
+    agentKey: params.agentKey,
+    plan: params.plan,
+    step: params.step,
+  });
 
   return asRecord(
     await apiPost(params.deps, "/api/cli/exec", request, {
@@ -234,8 +288,10 @@ export async function executeProtocolPlan(params: {
         stepNumber,
       });
       const request = buildProtocolPlanStepRequest({
+        walletMode: walletContext.walletMode,
         network,
         agentKey,
+        plan: params.plan,
         step,
       });
 
@@ -275,8 +331,10 @@ export async function executeProtocolPlan(params: {
       stepNumber,
     });
     const request = buildProtocolPlanStepRequest({
+      walletMode: walletContext.walletMode,
       network,
       agentKey,
+      plan: params.plan,
       step,
     });
     const baseOutput = buildProtocolPlanStepOutputBase({
@@ -295,6 +353,7 @@ export async function executeProtocolPlan(params: {
         walletContext,
         agentKey,
         network,
+        plan: params.plan,
         step,
         idempotencyKey: stepIdempotencyKey,
       });
@@ -305,6 +364,21 @@ export async function executeProtocolPlan(params: {
           stepIdempotencyKey,
           rootIdempotencyKey,
           cause: error,
+        })
+      );
+    }
+
+    if (walletContext.walletMode === "hosted" && isHostedPendingStepResult(result)) {
+      const userOpHash =
+        typeof result.userOpHash === "string" && result.userOpHash.length > 0
+          ? result.userOpHash
+          : "unknown";
+      throw new Error(
+        formatProtocolPlanPendingMessage({
+          displayLabel: baseOutput.displayLabel,
+          stepIdempotencyKey,
+          rootIdempotencyKey,
+          userOpHash,
         })
       );
     }

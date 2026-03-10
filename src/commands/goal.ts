@@ -1,13 +1,13 @@
 import { base } from "viem/chains";
 import {
   createPublicClient,
-  getAddress,
   http,
   isHex,
   type Hex,
 } from "viem";
 import {
-  buildGoalCreateTransaction,
+  buildCliProtocolStepRequest,
+  buildGoalCreateProtocolPlan,
   decodeGoalDeployedEvent,
   extractGoalFactoryDeployParams,
   serializeGoalDeployedEvent,
@@ -28,7 +28,7 @@ import {
 } from "./shared.js";
 import { executeCanonicalToolOnly } from "./tool-execution.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
-import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
+import { executeWithConfiguredWallet, requireStoredWalletConfig } from "../wallet/payer-config.js";
 
 const GOAL_CREATE_USAGE =
   "Usage: cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
@@ -62,6 +62,38 @@ export interface GoalInspectCommandOutput extends Record<string, unknown> {
   untrusted: true;
   source: "remote_tool";
   warnings: string[];
+}
+
+function buildHostedGoalCreateRequest(params: {
+  network: string;
+  agentKey: string;
+  plan: ReturnType<typeof buildGoalCreateProtocolPlan>;
+}) {
+  return {
+    ...buildCliProtocolStepRequest({
+      network: params.network,
+      action: params.plan.action,
+      riskClass: params.plan.riskClass,
+      step: params.plan.steps[0]!,
+    }),
+    agentKey: params.agentKey,
+  };
+}
+
+function buildLocalGoalCreateRequest(params: {
+  network: string;
+  agentKey: string;
+  plan: ReturnType<typeof buildGoalCreateProtocolPlan>;
+}) {
+  const tx = params.plan.steps[0]!.transaction;
+  return {
+    kind: "tx" as const,
+    network: params.network,
+    agentKey: params.agentKey,
+    to: tx.to,
+    data: tx.data,
+    valueEth: tx.valueEth,
+  };
 }
 
 function resolveRpcUrlForNetwork(deps: Pick<CliDeps, "env">): string {
@@ -215,21 +247,31 @@ export async function executeGoalCreateCommand(
   const deployParams = await resolveGoalDeployParams(input, deps);
   const factoryAddress =
     input.factory === undefined ? undefined : normalizeEvmAddress(input.factory, "--factory");
-  const goalCreateTx = buildGoalCreateTransaction({
+  const goalCreatePlan = buildGoalCreateProtocolPlan({
     deployParams,
     factoryAddress,
-  });
-  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
-  const requestBody = {
-    kind: "tx",
     network,
-    agentKey,
-    to: goalCreateTx.to,
-    data: goalCreateTx.data,
-    valueEth: "0",
-  };
+  });
+  const goalCreateTx = goalCreatePlan.steps[0]!.transaction;
+  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
   if (input.dryRun === true) {
+    const walletConfig = requireStoredWalletConfig({
+      deps,
+      agentKey,
+    });
+    const requestBody =
+      walletConfig.mode === "local"
+        ? buildLocalGoalCreateRequest({
+            network: goalCreatePlan.network,
+            agentKey,
+            plan: goalCreatePlan,
+          })
+        : buildHostedGoalCreateRequest({
+            network: goalCreatePlan.network,
+            agentKey,
+            plan: goalCreatePlan,
+          });
     return {
       ok: true,
       dryRun: true,
@@ -239,8 +281,8 @@ export async function executeGoalCreateCommand(
         path: "/api/cli/exec",
         body: requestBody,
       },
-      goalFactory: getAddress(goalCreateTx.to).toLowerCase(),
-      network,
+      goalFactory: goalCreatePlan.goalFactory,
+      network: goalCreatePlan.network,
     } as GoalCreateCommandOutput;
   }
 
@@ -254,9 +296,9 @@ export async function executeGoalCreateCommand(
           deps,
           agentKey,
           privateKeyHex,
-          network,
+          network: goalCreatePlan.network,
           to: goalCreateTx.to,
-          valueEth: "0",
+          valueEth: goalCreateTx.valueEth,
           data: goalCreateTx.data,
           idempotencyKey,
         });
@@ -266,6 +308,11 @@ export async function executeGoalCreateCommand(
     },
     onHosted: async () => {
       try {
+        const requestBody = buildHostedGoalCreateRequest({
+          network: goalCreatePlan.network,
+          agentKey,
+          plan: goalCreatePlan,
+        });
         return await apiPost(
           deps,
           "/api/cli/exec",
@@ -281,8 +328,8 @@ export async function executeGoalCreateCommand(
   });
 
   const output = withIdempotencyKey(idempotencyKey, response) as GoalCreateCommandOutput;
-  output.goalFactory = getAddress(goalCreateTx.to).toLowerCase();
-  output.network = network;
+  output.goalFactory = goalCreatePlan.goalFactory;
+  output.network = goalCreatePlan.network;
 
   const responseRecord = asRecord(response);
   const txHash = typeof responseRecord.transactionHash === "string" ? responseRecord.transactionHash : null;
@@ -292,7 +339,7 @@ export async function executeGoalCreateCommand(
 
   const decoded = await tryDecodeGoalDeployment({
     deps,
-    network,
+    network: goalCreatePlan.network,
     txHash,
   });
   if (decoded.event) {

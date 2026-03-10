@@ -1,12 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { erc20Abi } from "viem";
+import {
+  buildApprovalPlan,
+  buildGoalStakeDepositPlan,
+  buildProtocolCallStep,
+  buildUnderwriterWithdrawalPreparationPlan,
+} from "@cobuild/wire";
 import { runCli } from "../src/cli.js";
 import {
-  buildParticipantApprovalPlan,
-  buildParticipantContractCallStep,
-  deriveParticipantStepIdempotencyKey,
   executeParticipantProtocolPlan,
 } from "../src/commands/protocol-participant-runtime.js";
+import { deriveProtocolPlanStepIdempotencyKey } from "../src/protocol-plan/idempotency.js";
 import {
   executePremiumCheckpointCommand,
   executeStakeDepositCobuildCommand,
@@ -101,6 +105,33 @@ function buildTcrCosts(): Record<string, string> {
     challengeRemovalCost: "456",
     arbitrationCost: "567",
   };
+}
+
+function buildPendingStakePlan() {
+  const plan = buildGoalStakeDepositPlan({
+    network: "base",
+    stakeVaultAddress: REGISTRY,
+    goalTokenAddress: TOKEN,
+    amount: "2",
+    approvalMode: "force",
+  });
+
+  return {
+    ...plan,
+    summary: "Pending hosted plan",
+    steps: plan.steps.map((step, index) => ({
+      ...step,
+      label: index === 0 ? "Approve token" : "Deposit stake",
+    })),
+  };
+}
+
+function buildCoveragePlan() {
+  return buildUnderwriterWithdrawalPreparationPlan({
+    network: "base",
+    stakeVaultAddress: REGISTRY,
+    maxBudgets: 3,
+  });
 }
 
 function buildBudgetSubmissionInput(
@@ -258,22 +289,30 @@ describe("protocol participant commands", () => {
     });
     expect(output.steps).toMatchObject([
       {
-        index: 1,
+        stepNumber: 1,
         kind: "erc20-approval",
         request: {
-          body: {
-            kind: "tx",
-            to: TOKEN.toLowerCase(),
+          kind: "protocol-step",
+          action: "addItem",
+          step: {
+            kind: "erc20-approval",
+            transaction: {
+              to: TOKEN.toLowerCase(),
+            },
           },
         },
       },
       {
-        index: 2,
+        stepNumber: 2,
         kind: "contract-call",
         request: {
-          body: {
-            kind: "tx",
-            to: REGISTRY.toLowerCase(),
+          kind: "protocol-step",
+          action: "addItem",
+          step: {
+            kind: "contract-call",
+            transaction: {
+              to: REGISTRY.toLowerCase(),
+            },
           },
         },
       },
@@ -323,16 +362,16 @@ describe("protocol participant commands", () => {
     expect(harness.fetchMock).toHaveBeenCalledTimes(2);
     const [, firstInit] = harness.fetchMock.mock.calls[0]!;
     const [, secondInit] = harness.fetchMock.mock.calls[1]!;
+    const output = parseLastJsonOutput(harness.outputs);
+    const outputSteps = output.steps as Array<Record<string, unknown>>;
     expect(firstInit?.headers).toMatchObject({
-      "X-Idempotency-Key": deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 0),
-      "Idempotency-Key": deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 0),
+      "X-Idempotency-Key": outputSteps[0]?.idempotencyKey,
+      "Idempotency-Key": outputSteps[0]?.idempotencyKey,
     });
     expect(secondInit?.headers).toMatchObject({
-      "X-Idempotency-Key": deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 1),
-      "Idempotency-Key": deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 1),
+      "X-Idempotency-Key": outputSteps[1]?.idempotencyKey,
+      "Idempotency-Key": outputSteps[1]?.idempotencyKey,
     });
-
-    const output = parseLastJsonOutput(harness.outputs);
     expect(output).toMatchObject({
       ok: true,
       idempotencyKey: EXPLICIT_UUID,
@@ -343,6 +382,7 @@ describe("protocol participant commands", () => {
   });
 
   it("halts hosted execution when a step returns a pending user operation", async () => {
+    const pendingPlan = buildPendingStakePlan();
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -364,37 +404,19 @@ describe("protocol participant commands", () => {
     await expect(
       executeParticipantProtocolPlan({
         deps: harness.deps,
+        family: "stake",
         input: {
           idempotencyKey: EXPLICIT_UUID,
         },
-        plan: {
-          family: "stake",
-          action: "stake.pending",
-          riskClass: "stake",
-          summary: "Pending hosted plan",
-          preconditions: [],
-          steps: [
-            buildParticipantContractCallStep({
-              contract: "ERC20",
-              functionName: "approve",
-              label: "Approve token",
-              to: TOKEN,
-              abi: erc20Abi,
-              args: [REGISTRY, 1n],
-            }),
-            buildParticipantContractCallStep({
-              contract: "ERC20",
-              functionName: "approve",
-              label: "Deposit stake",
-              to: REGISTRY,
-              abi: erc20Abi,
-              args: [RECIPIENT, 2n],
-            }),
-          ],
-        },
+        plan: pendingPlan,
       })
     ).rejects.toThrow(
-      `Step 1/2: Approve token is still pending on the hosted wallet (step idempotency key: ${deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 0)}, root idempotency key: ${EXPLICIT_UUID}, userOpHash: 0xpending-user-op). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
+      `Step 1/2: Approve token is still pending on the hosted wallet (step idempotency key: ${deriveProtocolPlanStepIdempotencyKey({
+        rootIdempotencyKey: EXPLICIT_UUID,
+        plan: pendingPlan,
+        step: pendingPlan.steps[0]!,
+        stepNumber: 1,
+      })}, root idempotency key: ${EXPLICIT_UUID}, userOpHash: 0xpending-user-op). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
     );
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(1);
@@ -407,30 +429,19 @@ describe("protocol participant commands", () => {
         token: "bbt_secret",
       },
     });
+    const unsupportedNetworkPlan = buildPendingStakePlan();
 
     await expect(
       executeParticipantProtocolPlan({
         deps: harness.deps,
+        family: "stake",
         input: {
           idempotencyKey: EXPLICIT_UUID,
           network: "base-sepolia",
         },
         plan: {
-          family: "stake",
-          action: "stake.pending",
-          riskClass: "stake",
-          summary: "Unsupported hosted network",
-          preconditions: [],
-          steps: [
-            buildParticipantContractCallStep({
-              contract: "ERC20",
-              functionName: "approve",
-              label: "Approve token",
-              to: TOKEN,
-              abi: erc20Abi,
-              args: [REGISTRY, 1n],
-            }),
-          ],
+          ...unsupportedNetworkPlan,
+          network: "base-sepolia",
         },
       })
     ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
@@ -476,11 +487,14 @@ describe("protocol participant commands", () => {
     });
     expect(output.steps).toMatchObject([
       {
-        index: 1,
+        stepNumber: 1,
         kind: "contract-call",
         request: {
-          body: {
-            to: ARBITRATOR.toLowerCase(),
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: ARBITRATOR.toLowerCase(),
+            },
           },
         },
       },
@@ -519,15 +533,16 @@ describe("protocol participant commands", () => {
     );
 
     expect(localExecMocks.executeLocalTxMock).toHaveBeenCalledTimes(2);
+    const output = parseLastJsonOutput(harness.outputs);
+    const outputSteps = output.steps as Array<Record<string, unknown>>;
     expect(localExecMocks.executeLocalTxMock.mock.calls[0]?.[0]).toMatchObject({
-      idempotencyKey: deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 0),
+      idempotencyKey: outputSteps[0]?.idempotencyKey,
       to: TOKEN.toLowerCase(),
     });
     expect(localExecMocks.executeLocalTxMock.mock.calls[1]?.[0]).toMatchObject({
-      idempotencyKey: deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 1),
+      idempotencyKey: outputSteps[1]?.idempotencyKey,
       to: REGISTRY.toLowerCase(),
     });
-    const output = parseLastJsonOutput(harness.outputs);
     expect(output).toMatchObject({
       ok: true,
       family: "stake",
@@ -574,7 +589,7 @@ describe("protocol participant commands", () => {
   });
 
   it("covers the shared approval-plan branches and rethrows hosted failures with idempotency context", async () => {
-    const noArgsStep = buildParticipantContractCallStep({
+    const noArgsStep = buildProtocolCallStep({
       contract: "ERC20",
       functionName: "totalSupply",
       label: "Read total supply",
@@ -584,7 +599,7 @@ describe("protocol participant commands", () => {
     expect(noArgsStep.transaction.data).toMatch(/^0x/);
 
     expect(
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         mode: "skip",
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
@@ -601,7 +616,7 @@ describe("protocol participant commands", () => {
     });
 
     expect(
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: 500n,
@@ -616,7 +631,7 @@ describe("protocol participant commands", () => {
     });
 
     expect(
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: "500",
@@ -632,7 +647,7 @@ describe("protocol participant commands", () => {
     });
 
     expect(
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: "500",
@@ -647,7 +662,7 @@ describe("protocol participant commands", () => {
     });
 
     expect(() =>
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: -1n,
@@ -657,7 +672,7 @@ describe("protocol participant commands", () => {
     ).toThrow("requiredAmount must be a non-negative integer.");
 
     expect(() =>
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: -1,
@@ -667,7 +682,7 @@ describe("protocol participant commands", () => {
     ).toThrow("requiredAmount must be a non-negative integer.");
 
     expect(() =>
-      buildParticipantApprovalPlan({
+      buildApprovalPlan({
         tokenAddress: TOKEN,
         spenderAddress: REGISTRY,
         requiredAmount: "oops",
@@ -676,22 +691,32 @@ describe("protocol participant commands", () => {
       })
     ).toThrow("requiredAmount must be a non-negative integer.");
 
+    const coveragePlan = buildCoveragePlan();
+
     const dryRunOutput = await executeParticipantProtocolPlan({
       deps: createHostedHarness().deps,
+      family: "stake",
       input: {
         dryRun: true,
         idempotencyKey: EXPLICIT_UUID,
       },
-      plan: {
-        family: "stake",
-        action: "stake.coverage",
-        riskClass: "stake",
-        summary: "Coverage plan",
-        preconditions: [],
-        steps: [noArgsStep],
-      },
+      plan: coveragePlan,
     });
-    expect(dryRunOutput).not.toHaveProperty("expectedEvents");
+    expect(dryRunOutput.expectedEvents).toEqual([]);
+
+    const dryRunWithDecoder = await executeParticipantProtocolPlan({
+      deps: createHostedHarness().deps,
+      family: "stake",
+      input: {
+        dryRun: true,
+        idempotencyKey: EXPLICIT_UUID,
+      },
+      plan: coveragePlan,
+      getStepReceiptDecoder: () => ({
+        decode: () => ({ covered: true }),
+      }),
+    });
+    expect(dryRunWithDecoder.family).toBe("stake");
 
     const successHarness = createHarness({
       config: {
@@ -706,19 +731,13 @@ describe("protocol participant commands", () => {
     });
     const successOutput = await executeParticipantProtocolPlan({
       deps: successHarness.deps,
+      family: "stake",
       input: {
         idempotencyKey: EXPLICIT_UUID,
       },
-      plan: {
-        family: "stake",
-        action: "stake.coverage",
-        riskClass: "stake",
-        summary: "Coverage plan",
-        preconditions: [],
-        steps: [noArgsStep],
-      },
+      plan: coveragePlan,
     });
-    expect(successOutput).not.toHaveProperty("expectedEvents");
+    expect(successOutput.expectedEvents).toEqual([]);
 
     const harness = createHarness({
       config: {
@@ -735,29 +754,11 @@ describe("protocol participant commands", () => {
     await expect(
       executeParticipantProtocolPlan({
         deps: harness.deps,
+        family: "stake",
         input: {
           idempotencyKey: EXPLICIT_UUID,
         },
-        plan: {
-          family: "stake",
-          action: "stake.coverage",
-          riskClass: "stake",
-          summary: "Coverage plan",
-          preconditions: [],
-          steps: [
-            {
-              kind: "contract-call",
-              label: "Coverage tx",
-              contract: "GoalStakeVault",
-              functionName: "coverage",
-              transaction: {
-                to: REGISTRY.toLowerCase(),
-                data: "0x1234",
-                valueEth: "0",
-              },
-            },
-          ],
-        },
+        plan: coveragePlan,
       })
     ).rejects.toThrow(`idempotency key: ${EXPLICIT_UUID}`);
   });
@@ -1017,7 +1018,7 @@ describe("protocol participant commands", () => {
         },
         harness.deps
       )
-    ).rejects.toThrow("listing.metadata must be an object.");
+    ).rejects.toThrow("metadata must be an object.");
 
     const budgetBlankTitle = structuredClone(buildBudgetSubmissionInput({ withOverrides: false }));
     ((budgetBlankTitle.listing as Record<string, unknown>).metadata as Record<string, unknown>).title =
@@ -1030,7 +1031,7 @@ describe("protocol participant commands", () => {
         },
         harness.deps
       )
-    ).rejects.toThrow("listing.metadata.title must be a non-empty string.");
+    ).rejects.toThrow("metadata.title must be a non-empty string.");
 
     const budgetBadTagline = structuredClone(buildBudgetSubmissionInput({ withOverrides: false }));
     ((budgetBadTagline.listing as Record<string, unknown>).metadata as Record<string, unknown>).tagline =
@@ -1043,7 +1044,7 @@ describe("protocol participant commands", () => {
         },
         harness.deps
       )
-    ).rejects.toThrow("listing.metadata.tagline must be a string.");
+    ).rejects.toThrow("metadata.tagline must be a string.");
 
     const budgetHugeDeadline = structuredClone(buildBudgetSubmissionInput({ withOverrides: false }));
     (budgetHugeDeadline.listing as Record<string, unknown>).fundingDeadline = (
@@ -1192,7 +1193,7 @@ describe("protocol participant commands", () => {
         },
         harness.deps
       )
-    ).rejects.toThrow("payload.submission must be an object.");
+    ).rejects.toThrow("submission must be an object.");
 
     const roundSourceTooHigh = structuredClone(
       buildRoundSubmissionInput({ withOverrides: false })
@@ -1284,8 +1285,11 @@ describe("protocol participant commands", () => {
       {
         kind: "contract-call",
         request: {
-          body: {
-            to: REGISTRY.toLowerCase(),
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: REGISTRY.toLowerCase(),
+            },
           },
         },
       },
@@ -1317,8 +1321,11 @@ describe("protocol participant commands", () => {
       {
         kind: "contract-call",
         request: {
-          body: {
-            to: REGISTRY.toLowerCase(),
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: REGISTRY.toLowerCase(),
+            },
           },
         },
       },
@@ -1616,8 +1623,11 @@ describe("protocol participant commands", () => {
     expect(steps).toHaveLength(stepCount);
     expect(steps.at(-1)).toMatchObject({
       request: {
-        body: {
-          to,
+        kind: "protocol-step",
+        step: {
+          transaction: {
+            to,
+          },
         },
       },
     });

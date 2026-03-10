@@ -1,37 +1,22 @@
-export type ProtocolPlanRiskClass =
-  | "stake"
-  | "claim"
-  | "governance"
-  | "maintenance"
-  | "economic"
-  | string;
+import type {
+  CliProtocolStepAction,
+  CliProtocolStepRequest,
+  ProtocolContractCallStep,
+  ProtocolErc20ApprovalStep,
+  ProtocolRiskClass,
+} from "@cobuild/wire";
 
-export type ProtocolPlanTransaction = {
-  to: string;
-  data: string;
-  valueEth: string;
-};
+export type ProtocolPlanRiskClass = ProtocolRiskClass;
 
-export type ProtocolContractCallStepLike = {
-  kind: "contract-call";
-  label: string;
-  contract: string;
-  functionName: string;
-  transaction: ProtocolPlanTransaction;
-};
+export type ProtocolPlanTransaction = ProtocolContractCallStep["transaction"];
 
-export type ProtocolErc20ApprovalStepLike = {
-  kind: "erc20-approval";
-  label: string;
-  tokenAddress: string;
-  spenderAddress: string;
-  amount: string;
-  transaction: ProtocolPlanTransaction;
-};
+export type ProtocolContractCallStepLike = ProtocolContractCallStep;
+
+export type ProtocolErc20ApprovalStepLike = ProtocolErc20ApprovalStep;
 
 export type ProtocolPlanStepLike = ProtocolContractCallStepLike | ProtocolErc20ApprovalStepLike;
 
-export type ProtocolExecutionPlanLike<TAction extends string = string> = {
+export type ProtocolExecutionPlanLike<TAction extends CliProtocolStepAction = CliProtocolStepAction> = {
   network: string;
   action: TAction;
   riskClass: ProtocolPlanRiskClass;
@@ -43,7 +28,7 @@ export type ProtocolExecutionPlanLike<TAction extends string = string> = {
 
 export type ProtocolPlanWalletMode = "hosted" | "local";
 
-export type ProtocolPlanStepRequest = {
+export type RawTxProtocolPlanStepRequest = {
   kind: "tx";
   network: string;
   agentKey: string;
@@ -51,6 +36,12 @@ export type ProtocolPlanStepRequest = {
   data: string;
   valueEth: string;
 };
+
+export type HostedProtocolPlanStepRequest = CliProtocolStepRequest<CliProtocolStepAction> & {
+  agentKey: string;
+};
+
+export type ProtocolPlanStepRequest = RawTxProtocolPlanStepRequest | HostedProtocolPlanStepRequest;
 
 export interface ProtocolPlanStepReceiptDecoder<TSummary = unknown> {
   decode(params: {

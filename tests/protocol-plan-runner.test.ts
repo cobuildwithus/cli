@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Hex } from "viem";
+import { buildGoalStakeDepositPlan } from "@cobuild/wire";
 import {
   IDEMPOTENCY_DEPRECATED_HEADER,
   IDEMPOTENCY_PRIMARY_HEADER,
@@ -38,40 +39,21 @@ vi.mock("../src/wallet/local-exec.js", async () => {
 const ROOT_IDEMPOTENCY_KEY = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
 
 function buildPlan(): ProtocolExecutionPlanLike<"stake.deposit-goal"> {
-  return {
+  const canonicalPlan = buildGoalStakeDepositPlan({
     network: "base",
-    action: "stake.deposit-goal",
-    riskClass: "stake",
+    stakeVaultAddress: "0x0000000000000000000000000000000000000022",
+    goalTokenAddress: "0x0000000000000000000000000000000000000011",
+    amount: "100",
+    approvalMode: "force",
+  });
+
+  return {
+    ...canonicalPlan,
     summary: "Deposit goal stake into the stake vault.",
     preconditions: [
       "Ensure the goal is active before depositing stake.",
     ],
     expectedEvents: ["Approval", "GoalStaked"],
-    steps: [
-      {
-        kind: "erc20-approval",
-        label: "Approve goal token for stake vault",
-        tokenAddress: "0x0000000000000000000000000000000000000011",
-        spenderAddress: "0x0000000000000000000000000000000000000022",
-        amount: "100",
-        transaction: {
-          to: "0x0000000000000000000000000000000000000011",
-          data: "0x095ea7b30000000000000000000000000000000000000000000000000000000000000022",
-          valueEth: "0",
-        },
-      },
-      {
-        kind: "contract-call",
-        label: "Deposit goal stake",
-        contract: "GoalStakeVault",
-        functionName: "depositGoal",
-        transaction: {
-          to: "0x0000000000000000000000000000000000000022",
-          data: "0xb6b55f250000000000000000000000000000000000000000000000000000000000000064",
-          valueEth: "0",
-        },
-      },
-    ],
   };
 }
 
@@ -259,10 +241,17 @@ describe("protocol plan runner", () => {
         executionTarget: "hosted_api",
         status: "dry-run",
         request: {
-          kind: "tx",
+          kind: "protocol-step",
           network: "base",
+          action: "stake.deposit-goal",
+          riskClass: "stake",
           agentKey: "ops",
-          to: "0x0000000000000000000000000000000000000011",
+          step: {
+            kind: "erc20-approval",
+            transaction: {
+              to: "0x0000000000000000000000000000000000000011",
+            },
+          },
         },
       },
       {
@@ -278,6 +267,50 @@ describe("protocol plan runner", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
     );
     expect(result.steps[0]?.idempotencyKey).not.toBe(result.steps[1]?.idempotencyKey);
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps local-wallet dry-run requests on the raw tx contract", async () => {
+    const harness = createHarness({
+      config: {
+        agent: "pilot",
+      },
+    });
+    setLocalWalletConfig(harness, "pilot");
+
+    const result = await executeProtocolPlan({
+      deps: harness.deps,
+      plan: buildPlan(),
+      agent: "pilot",
+      dryRun: true,
+    });
+
+    expect(result.walletMode).toBe("local");
+    expect(result.steps).toMatchObject([
+      {
+        stepNumber: 1,
+        executionTarget: "local_wallet",
+        request: {
+          kind: "tx",
+          network: "base",
+          agentKey: "pilot",
+          to: "0x0000000000000000000000000000000000000011",
+          valueEth: "0",
+        },
+      },
+      {
+        stepNumber: 2,
+        executionTarget: "local_wallet",
+        request: {
+          kind: "tx",
+          network: "base",
+          agentKey: "pilot",
+          to: "0x0000000000000000000000000000000000000022",
+          valueEth: "0",
+        },
+      },
+    ]);
     expect(harness.fetchMock).not.toHaveBeenCalled();
     expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
