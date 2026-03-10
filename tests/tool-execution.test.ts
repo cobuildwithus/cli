@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { executeCanonicalToolOnly } from "../src/commands/tool-execution.js";
-import { createHarness } from "./helpers.js";
+import { createHarness, createToolCatalogResponse } from "./helpers.js";
 import { ApiRequestError } from "../src/transport.js";
 
 describe("tool execution helper", () => {
@@ -26,7 +26,7 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-user" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-user")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -36,7 +36,8 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { fid: 1, fname: "alice" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: body.name, output: { fid: 1, fname: "alice" } }),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -51,10 +52,10 @@ describe("tool execution helper", () => {
     ).resolves.toEqual({ fid: 1, fname: "alice" });
   });
 
-  it("supports discovery catalog data/id entries and nested execution envelopes", async () => {
+  it("rejects malformed discovery catalog envelopes", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
-      fetchResponder: async (input, init) => {
+      fetchResponder: async (input) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
           return {
@@ -63,10 +64,73 @@ describe("tool execution helper", () => {
             text: async () => JSON.stringify({ data: [{ id: "cast-preview" }] }),
           };
         }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["castPreview", "cast-preview"],
+        input: { text: "hello" },
+      })
+    ).rejects.toThrow('Tool catalog response includes unsupported field "data"');
+  });
+
+  it("rejects malformed canonical tool metadata in discovery responses", async () => {
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                tools: [
+                  {
+                    name: "docs_search",
+                    description: "docs",
+                    inputSchema: { type: "object" },
+                    scopes: [],
+                    authPolicy: { requiredScopes: [], walletBinding: "none" },
+                    exposure: "invalid",
+                    sideEffects: "read",
+                    version: "test",
+                    deprecated: false,
+                  },
+                ],
+              }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["docsSearch", "docs_search"],
+        input: { query: "setup" },
+      })
+    ).rejects.toThrow("exposure is invalid");
+  });
+
+  it("rejects malformed execution envelopes", async () => {
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify(createToolCatalogResponse("docs_search")),
+          };
+        }
         if (url.endsWith("/v1/tool-executions")) {
           const body = JSON.parse(String(init?.body));
-          expect(body.name).toBe("cast-preview");
-          expect(body.input).toEqual({ text: "hello" });
+          expect(body.name).toBe("docs_search");
+          expect(body.input).toEqual({ query: "setup" });
           return {
             ok: true,
             status: 200,
@@ -79,47 +143,13 @@ describe("tool execution helper", () => {
 
     await expect(
       executeCanonicalToolOnly(harness.deps, {
-        canonicalToolNames: ["castPreview", "cast-preview"],
-        input: { text: "hello" },
-      })
-    ).resolves.toEqual({ text: "hello" });
-  });
-
-  it("supports catalog results entries and array execution payloads", async () => {
-    const harness = createHarness({
-      config: { url: "https://interface.example", token: "bbt_secret" },
-      fetchResponder: async (input, init) => {
-        const url = String(input);
-        if (url.endsWith("/v1/tools")) {
-          return {
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify({ results: [{ toolName: "docs_search" }] }),
-          };
-        }
-        if (url.endsWith("/v1/tool-executions")) {
-          const body = JSON.parse(String(init?.body));
-          expect(body.name).toBe("docs_search");
-          expect(body.input).toEqual({ query: "setup" });
-          return {
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify([{ id: "a" }]),
-          };
-        }
-        throw new Error(`Unexpected URL: ${url}`);
-      },
-    });
-
-    await expect(
-      executeCanonicalToolOnly(harness.deps, {
         canonicalToolNames: ["docsSearch", "docs_search"],
         input: { query: "setup" },
       })
-    ).resolves.toEqual([{ id: "a" }]);
+    ).rejects.toThrow('Tool execution response includes unsupported field "execution"');
   });
 
-  it("returns raw canonical payload when there is no known execution result key", async () => {
+  it("rejects malformed raw execution payloads", async () => {
     const harness = createHarness({
       config: { url: "https://interface.example", token: "bbt_secret" },
       fetchResponder: async (input, init) => {
@@ -128,7 +158,7 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify([]),
+            text: async () => JSON.stringify({ tools: [] }),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -152,7 +182,43 @@ describe("tool execution helper", () => {
         canonicalToolNames: ["getUser"],
         input: { fname: "alice" },
       })
-    ).resolves.toEqual({ foo: "bar" });
+    ).rejects.toThrow('Tool execution response includes unsupported field "foo"');
+  });
+
+  it("rejects canonical execution responses that report a different tool name", async () => {
+    const harness = createHarness({
+      config: { url: "https://interface.example", token: "bbt_secret" },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify(createToolCatalogResponse("docs_search")),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          expect(body.name).toBe("docs_search");
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({ ok: true, name: "other_tool", output: { text: "hello" } }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await expect(
+      executeCanonicalToolOnly(harness.deps, {
+        canonicalToolNames: ["docsSearch", "docs_search"],
+        input: { query: "setup" },
+      })
+    ).rejects.toThrow(
+      'Tool execution response name mismatch: expected "docs_search", got "other_tool".'
+    );
   });
 
   it("throws when canonical execution routes are unavailable", async () => {
@@ -314,7 +380,7 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify([]),
+            text: async () => JSON.stringify({ tools: [] }),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -330,7 +396,8 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { fid: 7, fname: "alice" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: body.name, output: { fid: 7, fname: "alice" } }),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -357,7 +424,7 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify([]),
+            text: async () => JSON.stringify({ tools: [] }),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -373,7 +440,8 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { fid: 7, fname: "alice" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: body.name, output: { fid: 7, fname: "alice" } }),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -436,7 +504,7 @@ describe("tool execution helper", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify([]),
+            text: async () => JSON.stringify({ tools: [] }),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {

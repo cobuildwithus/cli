@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createCliDeps, runCli, runCliFromProcess } from "../src/cli.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 const GENERATED_UUID = "8e03978e-40d5-43e8-bc93-6894a57f9324";
 const EXPLICIT_UUID = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
@@ -82,6 +86,23 @@ function createJsonResponder(body: unknown, status = 200) {
     status,
     text: async () => JSON.stringify(body),
   });
+}
+
+function createCanonicalToolFetchResponder(
+  toolNames: string[],
+  output: unknown,
+  toolName = toolNames[0] ?? "tool"
+) {
+  return async (input: URL | string) => {
+    const url = String(input);
+    if (url.endsWith("/v1/tools")) {
+      return await createJsonResponder(createToolCatalogResponse(...toolNames))();
+    }
+    if (url.endsWith("/v1/tool-executions")) {
+      return await createJsonResponder(createToolExecutionSuccessResponse(output, toolName))();
+    }
+    return await createJsonResponder({ ok: false, error: "Unexpected URL" }, 500)();
+  };
 }
 
 function findFetchCallByUrl(
@@ -915,11 +936,15 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        query: "setup approval",
-        count: 1,
-        results: [{ filename: "self-hosted/chat-api.mdx" }],
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["docsSearch"],
+        {
+          query: "setup approval",
+          count: 1,
+          results: [{ filename: "self-hosted/chat-api.mdx" }],
+        },
+        "docsSearch"
+      ),
     });
 
     await runCli(["docs", "setup", "approval", "--limit", "5"], harness.deps);
@@ -954,11 +979,15 @@ describe("cli", () => {
         chatApiUrl: "https://chat.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        query: "setup approval",
-        count: 1,
-        results: [{ filename: "self-hosted/chat-api.mdx" }],
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["docsSearch"],
+        {
+          query: "setup approval",
+          count: 1,
+          results: [{ filename: "self-hosted/chat-api.mdx" }],
+        },
+        "docsSearch"
+      ),
     });
 
     await runCli(["docs", "setup", "approval"], harness.deps);
@@ -979,11 +1008,15 @@ describe("cli", () => {
         url: "https://api.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        query: "setup approval",
-        count: 1,
-        results: [{ filename: "self-hosted/chat-api.mdx" }],
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["docsSearch"],
+        {
+          query: "setup approval",
+          count: 1,
+          results: [{ filename: "self-hosted/chat-api.mdx" }],
+        },
+        "docsSearch"
+      ),
     });
 
     await runCli(["docs", "setup", "approval"], harness.deps);
@@ -1004,11 +1037,15 @@ describe("cli", () => {
         url: "https://api.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        query: "--token-stdin",
-        count: 0,
-        results: [],
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["docsSearch"],
+        {
+          query: "--token-stdin",
+          count: 0,
+          results: [],
+        },
+        "docsSearch"
+      ),
     });
 
     await runCli(["docs", "--", "--token-stdin"], harness.deps);
@@ -1023,7 +1060,7 @@ describe("cli", () => {
     });
   });
 
-  it("docs normalizes canonical array output to stable docs envelope", async () => {
+  it("docs accepts the canonical docs envelope", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1035,14 +1072,20 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("docsSearch")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ output: [{ filename: "one.mdx" }] }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { query: "setup", count: 1, results: [{ filename: "one.mdx" }] },
+                  "docsSearch"
+                )
+              ),
           };
         }
         return {
@@ -1062,7 +1105,7 @@ describe("cli", () => {
     });
   });
 
-  it("docs normalizes canonical payloads that expose results without count", async () => {
+  it("docs rejects docs payloads without count", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1074,14 +1117,20 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("docsSearch")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ query: "setup", results: [{ filename: "one.mdx" }] }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { query: "setup", results: [{ filename: "one.mdx" }] },
+                  "docsSearch"
+                )
+              ),
           };
         }
         return {
@@ -1092,16 +1141,12 @@ describe("cli", () => {
       },
     });
 
-    await runCli(["docs", "setup"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      query: "setup",
-      count: 1,
-      results: [{ filename: "one.mdx" }],
-      ...REMOTE_UNTRUSTED_OUTPUT,
-    });
+    await expect(runCli(["docs", "setup"], harness.deps)).rejects.toThrow(
+      'Docs search response did not match the canonical envelope for query "setup".'
+    );
   });
 
-  it("docs normalizes scalar canonical payloads to a single-result envelope", async () => {
+  it("docs rejects scalar docs payloads", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1113,14 +1158,15 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("docsSearch")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: "snippet" }),
+            text: async () =>
+              JSON.stringify(createToolExecutionSuccessResponse("snippet", "docsSearch")),
           };
         }
         return {
@@ -1131,16 +1177,12 @@ describe("cli", () => {
       },
     });
 
-    await runCli(["docs", "setup"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      query: "setup",
-      count: 1,
-      results: ["snippet"],
-      ...REMOTE_UNTRUSTED_OUTPUT,
-    });
+    await expect(runCli(["docs", "setup"], harness.deps)).rejects.toThrow(
+      'Docs search response did not match the canonical envelope for query "setup".'
+    );
   });
 
-  it("docs normalizes canonical data arrays and null payloads", async () => {
+  it("docs rejects non-canonical docs payloads", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1152,14 +1194,20 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("docsSearch")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ data: [{ filename: "one.mdx" }] }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { data: [{ filename: "one.mdx" }] },
+                  "docsSearch"
+                )
+              ),
           };
         }
         return {
@@ -1170,13 +1218,9 @@ describe("cli", () => {
       },
     });
 
-    await runCli(["docs", "setup"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      query: "setup",
-      count: 1,
-      results: [{ filename: "one.mdx" }],
-      ...REMOTE_UNTRUSTED_OUTPUT,
-    });
+    await expect(runCli(["docs", "setup"], harness.deps)).rejects.toThrow(
+      'Docs search response did not match the canonical envelope for query "setup".'
+    );
 
     harness.fetchMock.mockClear();
     harness.deps.fetch = async (input) => {
@@ -1185,14 +1229,14 @@ describe("cli", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "docsSearch" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("docsSearch")),
         };
       }
       if (url.endsWith("/v1/tool-executions")) {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ result: null }),
+          text: async () => JSON.stringify(createToolExecutionSuccessResponse(null, "docsSearch")),
         };
       }
       return {
@@ -1202,13 +1246,9 @@ describe("cli", () => {
       };
     };
 
-    await runCli(["docs", "setup"], harness.deps);
-    expect(parseLastJsonOutput(harness.outputs)).toEqual({
-      query: "setup",
-      count: 0,
-      results: [],
-      ...REMOTE_UNTRUSTED_OUTPUT,
-    });
+    await expect(runCli(["docs", "setup"], harness.deps)).rejects.toThrow(
+      'Docs search response did not match the canonical envelope for query "setup".'
+    );
   });
 
   it("tools requires a known subcommand", async () => {
@@ -1227,7 +1267,11 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({ ok: true, result: { fid: 1, fname: "alice" } }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["getUser"],
+        { ok: true, result: { fid: 1, fname: "alice" } },
+        "getUser"
+      ),
     });
 
     await runCli(["tools", "get-user", "alice"], harness.deps);
@@ -1261,7 +1305,11 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({ ok: true, cast: { hash: "0xabc" } }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["getCast"],
+        { ok: true, cast: { hash: "0xabc" } },
+        "getCast"
+      ),
     });
 
     await runCli(
@@ -1303,7 +1351,11 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({ ok: true, cast: { hash: "0xabc" } }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["getCast"],
+        { ok: true, cast: { hash: "0xabc" } },
+        "getCast"
+      ),
     });
 
     await runCli(["tools", "get-cast", "--", "--type"], harness.deps);
@@ -1369,7 +1421,7 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({ ok: true }),
+      fetchResponder: createCanonicalToolFetchResponder(["castPreview"], { ok: true }, "castPreview"),
     });
 
     await runCli(
@@ -1409,7 +1461,11 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({ ok: true, data: { asOf: "2026-02-25T00:00:00.000Z" } }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["get-treasury-stats"],
+        { ok: true, data: { asOf: "2026-02-25T00:00:00.000Z" } },
+        "get-treasury-stats"
+      ),
     });
 
     await expect(runCli(["tools", "get-treasury-stats", "extra"], harness.deps)).rejects.toThrow(
@@ -1435,17 +1491,21 @@ describe("cli", () => {
         token: "bbt_secret",
         agent: "stored-agent",
       },
-      fetchResponder: createJsonResponder({
-        data: {
-          agentKey: "stored-agent",
-          network: "base",
-          walletAddress: "0xabc",
-          balances: {
-            eth: { wei: "1000000000000000", formatted: "0.001" },
-            usdc: { raw: "2500000", decimals: 6, formatted: "2.5" },
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["get-wallet-balances"],
+        {
+          data: {
+            agentKey: "stored-agent",
+            network: "base",
+            walletAddress: "0xabc",
+            balances: {
+              eth: { wei: "1000000000000000", formatted: "0.001" },
+              usdc: { raw: "2500000", decimals: 6, formatted: "2.5" },
+            },
           },
         },
-      }),
+        "get-wallet-balances"
+      ),
     });
     harness.deps.env = {};
 
@@ -1487,9 +1547,11 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        data: { walletAddress: "0xenv" },
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["get-wallet-balances"],
+        { data: { walletAddress: "0xenv" } },
+        "get-wallet-balances"
+      ),
     });
     harness.deps.env = { COBUILD_CLI_NETWORK: "base-mainnet" };
 
@@ -1519,10 +1581,11 @@ describe("cli", () => {
         token: "bbt_secret",
         agent: "stored-agent",
       },
-      fetchResponder: createJsonResponder({
-        ok: true,
-        data: { walletAddress: "0xabc" },
-      }),
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["get-wallet-balances"],
+        { ok: true, data: { walletAddress: "0xabc" } },
+        "get-wallet-balances"
+      ),
     });
 
     await runCli(
@@ -1555,16 +1618,16 @@ describe("cli", () => {
             ok: true,
             status: 200,
             text: async () =>
-              JSON.stringify({
-                tools: [
-                  { name: "get-goal" },
-                  { name: "get-budget" },
-                  { name: "get-tcr-request" },
-                  { name: "get-dispute" },
-                  { name: "get-stake-position" },
-                  { name: "get-premium-escrow" },
-                ],
-              }),
+              JSON.stringify(
+                createToolCatalogResponse(
+                  "get-goal",
+                  "get-budget",
+                  "get-tcr-request",
+                  "get-dispute",
+                  "get-stake-position",
+                  "get-premium-escrow"
+                )
+              ),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -1574,7 +1637,8 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ goalAddress: "0xgoal" }),
+              text: async () =>
+                JSON.stringify(createToolExecutionSuccessResponse({ goalAddress: "0xgoal" }, "get-goal")),
             };
           }
           if (body.name === "get-budget") {
@@ -1585,7 +1649,10 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ budgetAddress: "0xbudget" }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse({ budgetAddress: "0xbudget" }, "get-budget")
+                ),
             };
           }
           if (body.name === "get-tcr-request") {
@@ -1596,7 +1663,10 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ requestIndex: "1" }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse({ requestIndex: "1" }, "get-tcr-request")
+                ),
             };
           }
           if (body.name === "get-dispute") {
@@ -1610,7 +1680,8 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ disputeId: "42" }),
+              text: async () =>
+                JSON.stringify(createToolExecutionSuccessResponse({ disputeId: "42" }, "get-dispute")),
             };
           }
           if (body.name === "get-stake-position") {
@@ -1624,7 +1695,13 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ stakeVaultAddress: "0xvault" }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse(
+                    { stakeVaultAddress: "0xvault" },
+                    "get-stake-position"
+                  )
+                ),
             };
           }
           expect(body).toEqual({
@@ -1637,7 +1714,13 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ premiumEscrowAddress: "0xescrow" }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { premiumEscrowAddress: "0xescrow" },
+                  "get-premium-escrow"
+                )
+              ),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -1736,21 +1819,25 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        data: {
-          subjectWalletAddress: "0xabc",
-          items: [],
-          pageInfo: {
-            limit: 10,
-            nextCursor: null,
-            hasMore: false,
-          },
-          unread: {
-            count: 0,
-            watermark: "0",
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["list-wallet-notifications"],
+        {
+          data: {
+            subjectWalletAddress: "0xabc",
+            items: [],
+            pageInfo: {
+              limit: 10,
+              nextCursor: null,
+              hasMore: false,
+            },
+            unread: {
+              count: 0,
+              watermark: "0",
+            },
           },
         },
-      }),
+        "list-wallet-notifications"
+      ),
     });
 
     await expect(
@@ -1812,21 +1899,25 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        data: {
-          subjectWalletAddress: "0xabc",
-          items: [],
-          pageInfo: {
-            limit: 20,
-            nextCursor: null,
-            hasMore: false,
-          },
-          unread: {
-            count: 0,
-            watermark: "0",
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["list-wallet-notifications"],
+        {
+          data: {
+            subjectWalletAddress: "0xabc",
+            items: [],
+            pageInfo: {
+              limit: 20,
+              nextCursor: null,
+              hasMore: false,
+            },
+            unread: {
+              count: 0,
+              watermark: "0",
+            },
           },
         },
-      }),
+        "list-wallet-notifications"
+      ),
     });
 
     await runCli(["tools", "notifications", "list"], harness.deps);
@@ -1861,21 +1952,25 @@ describe("cli", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        data: {
-          subjectWalletAddress: "0xabc",
-          items: [],
-          pageInfo: {
-            limit: 20,
-            nextCursor: null,
-            hasMore: false,
-          },
-          unread: {
-            count: 0,
-            watermark: "0",
+      fetchResponder: createCanonicalToolFetchResponder(
+        ["list-wallet-notifications"],
+        {
+          data: {
+            subjectWalletAddress: "0xabc",
+            items: [],
+            pageInfo: {
+              limit: 20,
+              nextCursor: null,
+              hasMore: false,
+            },
+            unread: {
+              count: 0,
+              watermark: "0",
+            },
           },
         },
-      }),
+        "list-wallet-notifications"
+      ),
     });
 
     await runCli(["tools", "notifications", "list", "--cursor", cursor], harness.deps);
@@ -1921,7 +2016,13 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ data: { items: [] } }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse(
+                    { data: { items: [] } },
+                    "listWalletNotifications"
+                  )
+                ),
             };
           }
           return {
@@ -1959,7 +2060,7 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "getUser" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("getUser")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -1970,7 +2071,13 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { fid: 1, fname: "alice" } }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { result: { fid: 1, fname: "alice" } },
+                  "getUser"
+                )
+              ),
           };
         }
         return {
@@ -2001,7 +2108,7 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "getCast" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("getCast")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -2012,7 +2119,10 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ cast: { hash: "0xabc" } }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse({ cast: { hash: "0xabc" } }, "getCast")
+              ),
           };
         }
         return {
@@ -2043,7 +2153,7 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "castPreview" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("castPreview")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -2054,7 +2164,10 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ cast: { text: "hello" } }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse({ cast: { text: "hello" } }, "castPreview")
+              ),
           };
         }
         return {
@@ -2085,7 +2198,7 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-treasury-stats")),
           };
         }
         if (url.endsWith("/v1/tool-executions")) {
@@ -2096,7 +2209,13 @@ describe("cli", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ data: { asOf: "2026-02-25T00:00:00.000Z" } }),
+            text: async () =>
+              JSON.stringify(
+                createToolExecutionSuccessResponse(
+                  { data: { asOf: "2026-02-25T00:00:00.000Z" } },
+                  "get-treasury-stats"
+                )
+              ),
           };
         }
         return {
@@ -2145,7 +2264,13 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ data: { asOf: "2026-03-01T00:00:00.000Z" } }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse(
+                    { data: { asOf: "2026-03-01T00:00:00.000Z" } },
+                    "getTreasuryStats"
+                  )
+                ),
             };
           }
           return {
@@ -2201,7 +2326,13 @@ describe("cli", () => {
             return {
               ok: true,
               status: 200,
-              text: async () => JSON.stringify({ data: { walletAddress: "0xabc" } }),
+              text: async () =>
+                JSON.stringify(
+                  createToolExecutionSuccessResponse(
+                    { data: { walletAddress: "0xabc" } },
+                    "getWalletBalances"
+                  )
+                ),
             };
           }
           return {
@@ -2384,8 +2515,7 @@ describe("cli", () => {
           recoveryAddress: "0x0000000000000000000000000000000000000001",
           fid: "123",
           idGatewayPriceWei: "7000000000000000",
-          registerTxHash: "0xregister",
-          addKeyTxHash: "0xadd",
+          txHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
         },
       }),
     });
@@ -2509,6 +2639,9 @@ describe("cli", () => {
           ownerAddress: "0x0000000000000000000000000000000000000001",
           custodyAddress: "0x0000000000000000000000000000000000000002",
           recoveryAddress: "0x0000000000000000000000000000000000000001",
+          fid: "123",
+          idGatewayPriceWei: "7000000000000000",
+          txHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
         },
       }),
     });

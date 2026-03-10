@@ -33,11 +33,13 @@ describe("setup oauth scope selection", () => {
             status: 200,
             text: async () =>
               JSON.stringify({
+                token_type: "Bearer",
                 access_token: "access-token",
                 refresh_token: "refresh-token",
                 expires_in: 600,
                 scope: CLI_OAUTH_WRITE_SCOPE,
                 session_id: "session-1",
+                can_write: true,
               }),
           };
         }

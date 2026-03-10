@@ -35,40 +35,23 @@ function withUntrustedOutput(output: Omit<DocsCommandOutput, "untrusted" | "sour
 }
 
 function normalizeDocsResponse(query: string, payload: unknown): DocsCommandOutput {
-  if (payload === null || payload === undefined) {
-    return withUntrustedOutput({ query, count: 0, results: [] });
-  }
-
-  if (Array.isArray(payload)) {
-    return withUntrustedOutput({ query, count: payload.length, results: payload });
-  }
-
   const record = asRecord(payload);
-  if (typeof record.query === "string" && typeof record.count === "number" && Array.isArray(record.results)) {
+  const count = record.count;
+  if (
+    typeof record.query === "string" &&
+    typeof count === "number" &&
+    Number.isInteger(count) &&
+    count >= 0 &&
+    Array.isArray(record.results)
+  ) {
     return withUntrustedOutput({
       query: record.query,
-      count: record.count,
+      count,
       results: record.results,
     });
   }
 
-  if (Array.isArray(record.results)) {
-    return withUntrustedOutput({
-      query: typeof record.query === "string" ? record.query : query,
-      count: typeof record.count === "number" ? record.count : record.results.length,
-      results: record.results,
-    });
-  }
-
-  if (Array.isArray(record.data)) {
-    return withUntrustedOutput({ query, count: record.data.length, results: record.data });
-  }
-
-  if (Array.isArray(record.output)) {
-    return withUntrustedOutput({ query, count: record.output.length, results: record.output });
-  }
-
-  return withUntrustedOutput({ query, count: 1, results: [payload] });
+  throw new Error(`Docs search response did not match the canonical envelope for query "${query}".`);
 }
 
 export async function executeDocsCommand(input: DocsCommandInput, deps: CliDeps): Promise<DocsCommandOutput> {

@@ -10,6 +10,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Runtime composition + command tree: `src/cli-incur.ts`
 - Process lifecycle adapters: `src/cli.ts`
 - Command handlers: `src/commands/*.ts`
+- Shared protocol plan runtime: `src/protocol-plan/*.ts`
 - Config boundary: `src/config.ts`
 - Transport boundary: `src/transport.ts`
 - Output/usage boundary: `src/output.ts`, `src/usage.ts`
@@ -57,6 +58,14 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Builds GoalFactory `deployGoal` calldata from JSON params through shared `@cobuild/wire` normalization/build helpers.
 - Executes through the existing hosted/local wallet split (`/api/cli/exec` in hosted mode, local viem tx in local mode).
 - Attempts to decode `GoalDeployed` from the transaction receipt when available using shared wire decoders.
+
+### Shared protocol plan runtime
+
+- `src/protocol-plan/runner.ts` executes structural `@cobuild/wire` `ProtocolExecutionPlan` objects (or plan-shaped pilot scaffolding) through the existing hosted `/api/cli/exec` and local-wallet split.
+- The runner derives a root idempotency key plus deterministic per-step child idempotency keys so multi-step reruns replay completed steps safely.
+- Dry-run output stays step-explicit: every approval/call step includes the derived child idempotency key, tx request payload, and hosted-vs-local execution target.
+- Executed output normalizes to one machine-readable contract with plan metadata, per-step request/result records, replay markers, and optional receipt summaries/decode warnings.
+- Receipt decoding is pluggable per step: commands provide a decoder only when they have contract-specific receipt semantics worth surfacing.
 
 ### `docs`
 
@@ -126,11 +135,13 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Transport enforces secure base URL policy (`https`, except loopback `http`) and rejects embedded credentials.
 - Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
 - `send`/`tx` include both `X-Idempotency-Key` and `Idempotency-Key`.
+- Shared protocol plan execution also uses both idempotency headers on hosted step calls while keeping root idempotency local to the CLI runtime for deterministic child-key derivation.
 
 4. Output boundary
 
 - Machine-readable success output uses pretty JSON (`printJson`).
 - Errors are emitted as single-line `Error: <message>` and non-zero exit.
+- Shared protocol plan execution outputs one normalized plan envelope (`action`, `riskClass`, `summary`, `preconditions`, `warnings`, `steps`) so participant commands do not invent per-command execution schemas.
 
 ## Update Triggers
 
@@ -140,6 +151,7 @@ Update this doc when changing:
 - Incur runtime command registration or argv preprocessor compatibility behavior,
 - `docs`/`tools` command topology or canonical `/v1/tool-executions` endpoint contracts,
 - payload envelopes for `/api/cli/wallet` or `/api/cli/exec`,
+- shared protocol plan output/runtime contract in `src/protocol-plan/**`,
 - config file path/schema,
 - transport/auth/error normalization behavior,
 - skill command guidance in `skills/cli/SKILL.md` for the same command/tool changes.

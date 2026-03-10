@@ -2,53 +2,25 @@ import {
   FARCASTER_CONTRACTS,
   FARCASTER_ID_GATEWAY_ABI,
   FARCASTER_ID_REGISTRY_ABI,
-  FARCASTER_SIGNUP_NETWORK,
+  buildFarcasterSignupCompletedResult,
+  buildFarcasterSignupNeedsFundingResult,
   buildFarcasterSignedKeyRequestMetadata,
   buildFarcasterSignedKeyRequestTypedData,
   buildFarcasterSignupCallPlan,
   buildFarcasterSignupExecutableCalls,
   computeFarcasterSignedKeyRequestDeadline,
   evaluateFarcasterSignupPreflight,
+  type FarcasterSignupResult,
 } from "@cobuild/wire";
-import { createPublicClient, createWalletClient, formatEther, http } from "viem";
+import { createPublicClient, createWalletClient, http } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { optimism } from "viem/chains";
 import { normalizeEvmAddress } from "../commands/shared.js";
 import type { CliDeps } from "../types.js";
-import { formatNeedsFundingResult } from "../wallet/local-exec.js";
 import type { HexString } from "./types.js";
 
 const DEFAULT_OPTIMISM_RPC_URL = "https://mainnet.optimism.io";
 const FARCASTER_LOCAL_TX_TIMEOUT_MS = 120_000;
-
-export type LocalFarcasterSignupNeedsFundingResult = {
-  status: "needs_funding";
-  network: typeof FARCASTER_SIGNUP_NETWORK;
-  ownerAddress: `0x${string}`;
-  custodyAddress: `0x${string}`;
-  recoveryAddress: `0x${string}`;
-  idGatewayPriceWei: string;
-  idGatewayPriceEth: string;
-  balanceWei: string;
-  balanceEth: string;
-  requiredWei: string;
-  requiredEth: string;
-};
-
-export type LocalFarcasterSignupCompletedResult = {
-  status: "complete";
-  network: typeof FARCASTER_SIGNUP_NETWORK;
-  ownerAddress: `0x${string}`;
-  custodyAddress: `0x${string}`;
-  recoveryAddress: `0x${string}`;
-  fid: string;
-  idGatewayPriceWei: string;
-  txHash: `0x${string}`;
-};
-
-export type LocalFarcasterSignupResult =
-  | LocalFarcasterSignupNeedsFundingResult
-  | LocalFarcasterSignupCompletedResult;
 
 export class LocalFarcasterAlreadyRegisteredError extends Error {
   readonly fid: string;
@@ -107,7 +79,7 @@ export async function executeLocalFarcasterSignup(params: {
   signerPublicKey: `0x${string}`;
   recoveryAddress?: string;
   extraStorage?: string;
-}): Promise<LocalFarcasterSignupResult> {
+}): Promise<FarcasterSignupResult> {
   const rpcUrl = resolveOptimismRpcUrl(params.deps);
   const transport = http(rpcUrl, {
     timeout: 30_000,
@@ -160,19 +132,14 @@ export async function executeLocalFarcasterSignup(params: {
     balanceWei,
   });
   if (preflight.status === "needs_funding") {
-    const requiredWei = BigInt(preflight.requiredWei);
-    return {
-      status: "needs_funding",
-      network: FARCASTER_SIGNUP_NETWORK,
+    return buildFarcasterSignupNeedsFundingResult({
       ownerAddress,
       custodyAddress,
       recoveryAddress,
-      ...formatNeedsFundingResult({
-        priceWei,
-        balanceWei,
-        requiredWei,
-      }),
-    };
+      idGatewayPriceWei: priceWei,
+      balanceWei,
+      requiredWei: preflight.requiredWei,
+    });
   }
 
   const deadline = computeFarcasterSignedKeyRequestDeadline();
@@ -231,14 +198,12 @@ export async function executeLocalFarcasterSignup(params: {
     throw new Error("Farcaster signup confirmed but FID was not assigned to custody address.");
   }
 
-  return {
-    status: "complete",
-    network: FARCASTER_SIGNUP_NETWORK,
+  return buildFarcasterSignupCompletedResult({
     ownerAddress,
     custodyAddress,
     recoveryAddress,
-    fid: assignedFid.toString(),
-    idGatewayPriceWei: priceWei.toString(),
+    fid: assignedFid,
+    idGatewayPriceWei: priceWei,
     txHash,
-  };
+  });
 }

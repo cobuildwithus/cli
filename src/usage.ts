@@ -11,6 +11,32 @@ Usage:
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
   cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]
+  cli tcr inspect <identifier>
+  cli tcr submit-budget --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+  cli tcr submit-mechanism --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+  cli tcr submit-round-submission --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+  cli tcr remove --registry <address> --deposit-token <address> --item-id <bytes32> --costs-json <json>|--costs-file <path>|--costs-stdin [--evidence <text>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli tcr challenge --registry <address> --deposit-token <address> --item-id <bytes32> --request-type <registrationRequested|clearingRequested|2|3> --costs-json <json>|--costs-file <path>|--costs-stdin [--evidence <text>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli tcr execute --registry <address> --item-id <bytes32> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli tcr timeout --registry <address> --item-id <bytes32> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli tcr evidence --registry <address> --item-id <bytes32> --evidence <text> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli tcr withdraw --registry <address> --beneficiary <address> --item-id <bytes32> --request-index <n> --round-index <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote status <identifier> [--juror <address>]
+  cli vote commit --arbitrator <address> --dispute-id <n> [--commit-hash <bytes32>|--round <n> --choice <n> --salt <bytes32> [--voter <address>] [--reason <text>] [--chain-id <n>]] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote commit-for --arbitrator <address> --dispute-id <n> --voter <address> [--commit-hash <bytes32>|--round <n> --choice <n> --salt <bytes32> [--reason <text>] [--chain-id <n>]] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote reveal --arbitrator <address> --dispute-id <n> --voter <address> --choice <n> --salt <bytes32> [--reason <text>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote rewards --arbitrator <address> --dispute-id <n> --round <n> --voter <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote invalid-round-rewards --arbitrator <address> --dispute-id <n> --round <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli vote execute-ruling --arbitrator <address> --dispute-id <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake status <identifier> <account>
+  cli stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake deposit-cobuild --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake prepare-underwriter-withdrawal --vault <address> --max-budgets <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake withdraw-goal --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake withdraw-cobuild --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli premium status <identifier> [--account <address>]
+  cli premium checkpoint --escrow <address> --account <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli premium claim --escrow <address> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -42,6 +68,11 @@ Examples:
   cli farcaster post --text "Replying on thread" --reply-to 123:0x1111111111111111111111111111111111111111
   cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once
   cli goal create --params-file ./goal-deploy.json --network base
+  cli tcr submit-budget --input-file ./budget-tcr-submit.json --dry-run
+  cli tcr challenge --registry 0x000000000000000000000000000000000000dEaD --deposit-token 0x00000000000000000000000000000000000000aa --item-id 0x1111111111111111111111111111111111111111111111111111111111111111 --request-type registrationRequested --costs-file ./tcr-costs.json --dry-run
+  cli vote commit --arbitrator 0x000000000000000000000000000000000000dEaD --dispute-id 1 --round 0 --voter 0x00000000000000000000000000000000000000aa --choice 1 --salt 0x1111111111111111111111111111111111111111111111111111111111111111 --dry-run
+  cli stake deposit-goal --vault 0x000000000000000000000000000000000000dEaD --token 0x00000000000000000000000000000000000000aa --amount 1000000 --dry-run
+  cli premium claim --escrow 0x000000000000000000000000000000000000dEaD --recipient 0x00000000000000000000000000000000000000aa --dry-run
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will

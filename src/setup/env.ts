@@ -81,8 +81,6 @@ export function resolveInterfaceSetupCompleteUrl(params: {
   url.searchParams.set("agent_key", agent);
   if (walletMode) {
     url.searchParams.set("wallet_mode", walletMode);
-    // Keep old query key for in-flight interface deployments.
-    url.searchParams.set("payer_mode", walletMode);
   }
   return url.toString();
 }

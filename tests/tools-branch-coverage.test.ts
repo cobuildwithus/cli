@@ -7,7 +7,7 @@ import {
   executeToolsNotificationsListCommand,
   executeToolsTreasuryStatsCommand,
 } from "../src/commands/tools.js";
-import { createHarness } from "./helpers.js";
+import { createHarness, createToolCatalogResponse } from "./helpers.js";
 
 const REMOTE_UNTRUSTED_OUTPUT = {
   untrusted: true as const,
@@ -77,20 +77,28 @@ describe("tools branch coverage", () => {
         url: "https://interface.example",
         token: "bbt_secret",
       },
-      fetchResponder: async (input) => {
+      fetchResponder: async (input, init) => {
         const url = String(input);
         if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { cast: { text: "hi" } } }),
+            text: async () =>
+              JSON.stringify({
+                ok: true,
+                name: body.name,
+                output:
+                  body.name === "getUser"
+                    ? { result: { cast: { text: "hi" } } }
+                    : { cast: { text: "hi" } },
+              }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () =>
-            JSON.stringify({ tools: [{ name: "getUser" }, { name: "getCast" }, { name: "castPreview" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("getUser", "getCast", "castPreview")),
         };
       },
     });
@@ -126,13 +134,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ cast: { ok: true } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "getCast", output: { cast: { ok: true } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "getCast" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("getCast")),
         };
       },
     });
@@ -165,13 +174,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ cast: { text: "hi" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "castPreview", output: { cast: { text: "hi" } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "castPreview" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("castPreview")),
         };
       },
     });
@@ -207,13 +217,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ data: { snapshots: 2 } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "get-treasury-stats", output: { data: { snapshots: 2 } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-treasury-stats")),
         };
       },
     });
@@ -239,13 +250,17 @@ describe("tools branch coverage", () => {
             ok: true,
             status: 200,
             text: async () =>
-              JSON.stringify({ data: { walletAddress: "0xabc", balances: { eth: {}, usdc: {} } } }),
+              JSON.stringify({
+                ok: true,
+                name: "get-wallet-balances",
+                output: { data: { walletAddress: "0xabc", balances: { eth: {}, usdc: {} } } },
+              }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-wallet-balances")),
         };
       },
     });
@@ -280,13 +295,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ ok: true, data: { walletAddress: "0xdef" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "get-wallet-balances", output: { ok: true, data: { walletAddress: "0xdef" } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-wallet-balances")),
         };
       },
     });
@@ -322,13 +338,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ data: { items: [] } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "list-wallet-notifications", output: { data: { items: [] } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "list-wallet-notifications" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("list-wallet-notifications")),
         };
       },
     });
@@ -373,13 +390,17 @@ describe("tools branch coverage", () => {
             ok: true,
             status: 200,
             text: async () =>
-              JSON.stringify({ walletAddress: "0xenv", balances: { eth: {}, usdc: {} } }),
+              JSON.stringify({
+                ok: true,
+                name: "get-wallet-balances",
+                output: { walletAddress: "0xenv", balances: { eth: {}, usdc: {} } },
+              }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-wallet-balances" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-wallet-balances")),
         };
       },
     });
@@ -413,13 +434,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ ok: true, data: { stale: true } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "get-treasury-stats", output: { ok: true, data: { stale: true } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-treasury-stats")),
         };
       },
     });
@@ -443,13 +465,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { ok: false, result: { fid: 1 } } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "getUser", output: { ok: false, result: { fid: 1 } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "getUser" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("getUser")),
         };
       },
     });
@@ -471,13 +494,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { result: { fid: 2 } } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "getUser", output: { result: { fid: 2 } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "getUser" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("getUser")),
         };
       },
     });
@@ -504,13 +528,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { foo: "bar" } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "getCast", output: { foo: "bar" } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "getCast" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("getCast")),
         };
       },
     });
@@ -535,13 +560,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { ok: true, cast: { text: "hi" } } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "castPreview", output: { ok: true, cast: { text: "hi" } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "castPreview" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("castPreview")),
         };
       },
     });
@@ -568,13 +594,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ result: { data: { snapshots: 1 } } }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "get-treasury-stats", output: { data: { snapshots: 1 } } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-treasury-stats")),
         };
       },
     });
@@ -598,13 +625,14 @@ describe("tools branch coverage", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ foo: "bar" }),
+            text: async () =>
+              JSON.stringify({ ok: true, name: "get-treasury-stats", output: { foo: "bar" } }),
           };
         }
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ tools: [{ name: "get-treasury-stats" }] }),
+          text: async () => JSON.stringify(createToolCatalogResponse("get-treasury-stats")),
         };
       },
     });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executeStakeStatusCommand } from "../src/commands/stake.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 describe("stake status command", () => {
   it("requires both identifier and account", async () => {
@@ -28,7 +32,7 @@ describe("stake status command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-stake-position" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-stake-position")),
           };
         }
         const body = JSON.parse(String(init?.body));
@@ -38,7 +42,10 @@ describe("stake status command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ stakeVaultAddress: "0xvault" }),
+          text: async () =>
+            JSON.stringify(
+              createToolExecutionSuccessResponse({ stakeVaultAddress: "0xvault" }, "get-stake-position")
+            ),
         };
       },
     });

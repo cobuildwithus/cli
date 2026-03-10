@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executeTcrInspectCommand } from "../src/commands/tcr.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 describe("tcr inspect command", () => {
   it("requires an identifier", async () => {
@@ -24,7 +28,7 @@ describe("tcr inspect command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-tcr-request" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-tcr-request")),
           };
         }
         const body = JSON.parse(String(init?.body));
@@ -35,7 +39,10 @@ describe("tcr inspect command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ requestId: "req-1" }),
+          text: async () =>
+            JSON.stringify(
+              createToolExecutionSuccessResponse({ requestId: "req-1" }, "get-tcr-request")
+            ),
         };
       },
     });

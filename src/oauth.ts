@@ -4,10 +4,13 @@ import {
   CLI_OAUTH_PUBLIC_CLIENT_ID as CLI_OAUTH_PUBLIC_CLIENT_ID_FROM_WIRE,
   CLI_OAUTH_REDIRECT_PATH as CLI_OAUTH_REDIRECT_PATH_FROM_WIRE,
   CLI_OAUTH_WRITE_SCOPE as CLI_OAUTH_WRITE_SCOPE_FROM_WIRE,
+  parseCliOAuthTokenResponse,
+  readCliOAuthErrorResponse,
+  serializeCliOAuthTokenRequestBody,
+  type CliOAuthTokenResponse,
   createPkcePair as createWirePkcePair,
   normalizeCliSessionLabel as normalizeCliSessionLabelFromWire,
 } from "@cobuild/wire";
-import { parseOAuthErrorPayload, parseOAuthTokenPayload } from "./api-response-schemas.js";
 import type { CliDeps, FetchResponseLike } from "./types.js";
 import { parseAndValidateApiBaseUrl } from "./url.js";
 
@@ -16,14 +19,7 @@ export const CLI_OAUTH_REDIRECT_PATH = CLI_OAUTH_REDIRECT_PATH_FROM_WIRE;
 export const CLI_OAUTH_DEFAULT_SCOPE = CLI_OAUTH_DEFAULT_SCOPE_FROM_WIRE;
 export const CLI_OAUTH_WRITE_SCOPE = CLI_OAUTH_WRITE_SCOPE_FROM_WIRE;
 export type CliSetupWalletModeHint = "hosted" | "local-generate" | "local-key";
-
-export type OAuthTokenResponse = {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  scope: string;
-  sessionId: string | null;
-};
+export type OAuthTokenResponse = CliOAuthTokenResponse;
 
 export class OAuthTokenRequestError extends Error {
   readonly status: number;
@@ -62,12 +58,12 @@ function parseJsonResponse(text: string): unknown {
 }
 
 function readOAuthErrorMessage(payload: unknown, fallback: string): string {
-  const errorPayload = parseOAuthErrorPayload(payload);
-  if (errorPayload.oauthDescription) {
-    return errorPayload.oauthDescription;
+  const errorPayload = readCliOAuthErrorResponse(payload);
+  if (errorPayload?.errorDescription) {
+    return errorPayload.errorDescription;
   }
-  if (errorPayload.oauthError) {
-    return errorPayload.oauthError;
+  if (errorPayload?.error) {
+    return errorPayload.error;
   }
   return fallback;
 }
@@ -96,15 +92,15 @@ async function postOauthToken(
   const text = await response.text();
   const payload = parseJsonResponse(text);
   if (!response.ok) {
-    const parsedError = parseOAuthErrorPayload(payload);
+    const parsedError = readCliOAuthErrorResponse(payload);
     throw new OAuthTokenRequestError({
       message: readOAuthErrorMessage(payload, `OAuth token request failed (status ${response.status}).`),
       status: response.status,
-      oauthError: parsedError.oauthError,
-      oauthDescription: parsedError.oauthDescription,
+      oauthError: parsedError?.error ?? null,
+      oauthDescription: parsedError?.errorDescription ?? null,
     });
   }
-  return parseOAuthTokenPayload(payload);
+  return parseCliOAuthTokenResponse(payload);
 }
 
 export async function createPkcePair(): Promise<{ codeVerifier: string; codeChallenge: string }> {
@@ -157,8 +153,6 @@ export function buildCliAuthorizeUrl(params: {
   }
   if (params.walletMode) {
     url.searchParams.set("wallet_mode", params.walletMode);
-    // Keep old query key for in-flight interface deployments.
-    url.searchParams.set("payer_mode", params.walletMode);
   }
   return url.toString();
 }
@@ -171,13 +165,17 @@ export async function exchangeAuthorizationCode(params: {
   codeVerifier: string;
   clientId?: string;
 }): Promise<OAuthTokenResponse> {
-  return await postOauthToken(params.deps, params.chatApiUrl, {
-    grant_type: "authorization_code",
-    client_id: params.clientId ?? CLI_OAUTH_PUBLIC_CLIENT_ID,
-    code: params.code,
-    redirect_uri: params.redirectUri,
-    code_verifier: params.codeVerifier,
-  });
+  return await postOauthToken(
+    params.deps,
+    params.chatApiUrl,
+    serializeCliOAuthTokenRequestBody({
+      grantType: "authorization_code",
+      clientId: params.clientId ?? CLI_OAUTH_PUBLIC_CLIENT_ID,
+      code: params.code,
+      redirectUri: params.redirectUri,
+      codeVerifier: params.codeVerifier,
+    }),
+  );
 }
 
 export async function refreshAccessToken(params: {
@@ -186,9 +184,13 @@ export async function refreshAccessToken(params: {
   refreshToken: string;
   clientId?: string;
 }): Promise<OAuthTokenResponse> {
-  return await postOauthToken(params.deps, params.chatApiUrl, {
-    grant_type: "refresh_token",
-    client_id: params.clientId ?? CLI_OAUTH_PUBLIC_CLIENT_ID,
-    refresh_token: params.refreshToken,
-  });
+  return await postOauthToken(
+    params.deps,
+    params.chatApiUrl,
+    serializeCliOAuthTokenRequestBody({
+      grantType: "refresh_token",
+      clientId: params.clientId ?? CLI_OAUTH_PUBLIC_CLIENT_ID,
+      refreshToken: params.refreshToken,
+    }),
+  );
 }

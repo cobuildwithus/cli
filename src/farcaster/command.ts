@@ -1,7 +1,12 @@
 import * as ed from "@noble/ed25519";
+import {
+  buildFarcasterSignupResponse,
+  validateFarcasterSignupAlreadyRegisteredErrorResponse,
+  validateFarcasterSignupResponse,
+} from "@cobuild/wire";
 import { bytesToHex } from "viem";
 import { readConfig } from "../config.js";
-import { ApiRequestError, asRecord, apiPost } from "../transport.js";
+import { ApiRequestError, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import {
   normalizeEvmAddress,
@@ -245,19 +250,13 @@ export async function executeFarcasterSignupCommand(
         result: localResult,
       });
       return withSignerInfo(
-        {
-          ok: true,
-          result: localResult,
-        },
+        buildFarcasterSignupResponse(localResult),
         signerPublicKey,
         true
       );
     }
     return withSignerInfo(
-      {
-        ok: true,
-        result: localResult,
-      },
+      buildFarcasterSignupResponse(localResult),
       signerPublicKey,
       false
     );
@@ -272,11 +271,15 @@ export async function executeFarcasterSignupCommand(
     });
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 409) {
-      const payload = asRecord(error.payload);
-      const details = asRecord(payload.details);
-      const fid = typeof details.fid === "string" ? details.fid : null;
-      const custodyAddress =
-        typeof details.custodyAddress === "string" ? details.custodyAddress : null;
+      let fid: string | null = null;
+      let custodyAddress: string | null = null;
+      try {
+        const response = validateFarcasterSignupAlreadyRegisteredErrorResponse(error.payload);
+        fid = response.details.fid;
+        custodyAddress = response.details.custodyAddress;
+      } catch {
+        // Keep the CLI error readable even if the backend returns a malformed 409 payload.
+      }
       const detailParts = [
         fid ? `fid=${fid}` : null,
         custodyAddress ? `custodyAddress=${custodyAddress}` : null,
@@ -289,10 +292,8 @@ export async function executeFarcasterSignupCommand(
     throw error;
   }
 
-  const payload = asRecord(response);
-  const result = asRecord(payload.result);
-  const status = typeof result.status === "string" ? result.status : null;
-  if (status === "complete") {
+  const payload = validateFarcasterSignupResponse(response);
+  if (payload.result.status === "complete") {
     saveSignerSecret({
       deps,
       config: current,
@@ -300,7 +301,7 @@ export async function executeFarcasterSignupCommand(
       outputDirectory,
       signerPublicKey,
       signerPrivateKey,
-      result,
+      result: payload.result,
     });
     return withSignerInfo(payload, signerPublicKey, true);
   }

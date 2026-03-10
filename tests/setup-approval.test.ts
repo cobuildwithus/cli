@@ -48,6 +48,7 @@ describe("setup approval", () => {
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
     expect(parsed.searchParams.get("label")).toBe("cli-default");
     expect(parsed.searchParams.get("wallet_mode")).toBe("hosted");
+    expect(parsed.searchParams.get("payer_mode")).toBeNull();
   });
 
   it("rejects invalid setup state values", () => {

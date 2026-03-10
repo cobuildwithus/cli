@@ -690,6 +690,36 @@ describe("agent safety + dry-run + schema", () => {
       },
     });
 
+    await runCli(["schema", "tcr", "submit-budget"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "tcr submit-budget",
+      schema: {
+        options: {
+          properties: {
+            inputJson: expect.any(Object),
+            inputFile: expect.any(Object),
+            inputStdin: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
     await runCli(["schema", "vote", "status"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
@@ -722,6 +752,36 @@ describe("agent safety + dry-run + schema", () => {
       },
     });
 
+    await runCli(["schema", "vote", "commit"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "vote commit",
+      schema: {
+        options: {
+          properties: {
+            arbitrator: expect.any(Object),
+            disputeId: expect.any(Object),
+            commitHash: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
     await runCli(["schema", "stake", "status"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
@@ -747,6 +807,36 @@ describe("agent safety + dry-run + schema", () => {
         supportsDryRun: false,
         requiresAuth: true,
         sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "stake", "deposit-goal"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "stake deposit-goal",
+      schema: {
+        options: {
+          properties: {
+            vault: expect.any(Object),
+            token: expect.any(Object),
+            amount: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
       },
     });
 
@@ -779,6 +869,35 @@ describe("agent safety + dry-run + schema", () => {
         supportsDryRun: false,
         requiresAuth: true,
         sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "premium", "claim"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "premium claim",
+      schema: {
+        options: {
+          properties: {
+            escrow: expect.any(Object),
+            recipient: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
       },
     });
   });

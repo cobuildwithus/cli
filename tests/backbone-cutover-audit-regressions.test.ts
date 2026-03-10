@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
 import { createCobuildIncurCli } from "../src/cli-incur.js";
 import { DEFAULT_CHAT_API_URL } from "../src/config.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
@@ -75,11 +79,16 @@ describe("backbone cutover audit regressions", () => {
       fetchResponder: async (input, init) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
-          return await createJsonResponder({ tools: [{ name: "docsSearch" }] })();
+          return await createJsonResponder(createToolCatalogResponse("docsSearch"))();
         }
         if (url.endsWith("/v1/tool-executions")) {
           postedExecutionInput = JSON.parse(String(init?.body)).input as Record<string, unknown>;
-          return await createJsonResponder({ data: [{ filename: "setup.mdx" }] })();
+          return await createJsonResponder(
+            createToolExecutionSuccessResponse(
+              { query: escapedPrefixQuery, count: 1, results: [{ filename: "setup.mdx" }] },
+              "docsSearch"
+            )
+          )();
         }
         return await createJsonResponder({ ok: false }, 500)();
       },
@@ -107,11 +116,16 @@ describe("backbone cutover audit regressions", () => {
       fetchResponder: async (input, init) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
-          return await createJsonResponder({ tools: [{ name: "docsSearch" }] })();
+          return await createJsonResponder(createToolCatalogResponse("docsSearch"))();
         }
         if (url.endsWith("/v1/tool-executions")) {
           postedExecutionInput = JSON.parse(String(init?.body)).input as Record<string, unknown>;
-          return await createJsonResponder({ data: [] })();
+          return await createJsonResponder(
+            createToolExecutionSuccessResponse(
+              { query: malformedEscapedQuery, count: 0, results: [] },
+              "docsSearch"
+            )
+          )();
         }
         return await createJsonResponder({ ok: false }, 500)();
       },

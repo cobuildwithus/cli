@@ -1,3 +1,11 @@
+import {
+  LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH,
+  LIST_WALLET_NOTIFICATIONS_LIMIT_MAX,
+  LIST_WALLET_NOTIFICATIONS_LIMIT_MIN,
+  NOTIFICATION_KINDS,
+  isNotificationKind,
+  type NotificationKind,
+} from "@cobuild/wire/protocol-notifications";
 import type { CliDeps } from "../types.js";
 import { readConfig } from "../config.js";
 import { parseIntegerOption, resolveAgentKey, resolveNetwork } from "./shared.js";
@@ -29,10 +37,6 @@ const WALLET_NOTIFICATIONS_CANONICAL_TOOL_NAMES = [
   "listWalletNotifications",
   "walletNotifications",
 ];
-const NOTIFICATION_KINDS = ["discussion", "payment", "protocol"] as const;
-const NOTIFICATIONS_LIMIT_MIN = 1;
-const NOTIFICATIONS_LIMIT_MAX = 50;
-const NOTIFICATIONS_CURSOR_MAX_LENGTH = 512;
 
 function inferCastIdentifierType(identifier: string): "hash" | "url" {
   return /^https?:\/\//i.test(identifier) ? "url" : "hash";
@@ -127,13 +131,18 @@ export interface ToolsNotificationsListOutput extends Record<string, unknown> {
 function parseNotificationsLimit(value: string | undefined): number | undefined {
   const parsed = parseIntegerOption(value, "--limit");
   if (parsed === undefined) return undefined;
-  if (parsed < NOTIFICATIONS_LIMIT_MIN || parsed > NOTIFICATIONS_LIMIT_MAX) {
-    throw new Error(`--limit must be between ${NOTIFICATIONS_LIMIT_MIN} and ${NOTIFICATIONS_LIMIT_MAX}`);
+  if (
+    parsed < LIST_WALLET_NOTIFICATIONS_LIMIT_MIN ||
+    parsed > LIST_WALLET_NOTIFICATIONS_LIMIT_MAX
+  ) {
+    throw new Error(
+      `--limit must be between ${LIST_WALLET_NOTIFICATIONS_LIMIT_MIN} and ${LIST_WALLET_NOTIFICATIONS_LIMIT_MAX}`
+    );
   }
   return parsed;
 }
 
-function parseNotificationKinds(value: string[] | undefined): (typeof NOTIFICATION_KINDS)[number][] | undefined {
+function parseNotificationKinds(value: string[] | undefined): NotificationKind[] | undefined {
   if (!value || value.length === 0) return undefined;
 
   const normalized = value
@@ -141,12 +150,12 @@ function parseNotificationKinds(value: string[] | undefined): (typeof NOTIFICATI
     .filter((entry) => entry.length > 0);
   if (normalized.length === 0) return undefined;
 
-  const unique = new Set<(typeof NOTIFICATION_KINDS)[number]>();
+  const unique = new Set<NotificationKind>();
   for (const entry of normalized) {
-    if (!NOTIFICATION_KINDS.includes(entry as (typeof NOTIFICATION_KINDS)[number])) {
+    if (!isNotificationKind(entry)) {
       throw new Error('--kind must be one of "discussion", "payment", or "protocol"');
     }
-    unique.add(entry as (typeof NOTIFICATION_KINDS)[number]);
+    unique.add(entry);
   }
   return Array.from(unique);
 }
@@ -156,8 +165,10 @@ function parseNotificationsCursor(value: string | undefined): string | undefined
   if (value.trim().length === 0) {
     throw new Error("--cursor must not be empty");
   }
-  if (value.length > NOTIFICATIONS_CURSOR_MAX_LENGTH) {
-    throw new Error(`--cursor must not exceed ${NOTIFICATIONS_CURSOR_MAX_LENGTH} characters`);
+  if (value.length > LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH) {
+    throw new Error(
+      `--cursor must not exceed ${LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH} characters`
+    );
   }
   return value;
 }

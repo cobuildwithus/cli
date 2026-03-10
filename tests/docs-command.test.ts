@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executeDocsCommand } from "../src/commands/docs.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 const REMOTE_UNTRUSTED_OUTPUT = {
   untrusted: true as const,
@@ -33,7 +37,7 @@ describe("docs command", () => {
     );
   });
 
-  it("normalizes canonical data arrays", async () => {
+  it("accepts the canonical docs envelope", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -42,10 +46,15 @@ describe("docs command", () => {
       fetchResponder: async (input) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
-          return await createJsonResponder({ tools: [{ name: "docsSearch" }] })();
+          return await createJsonResponder(createToolCatalogResponse("docsSearch"))();
         }
         if (url.endsWith("/v1/tool-executions")) {
-          return await createJsonResponder({ data: [{ filename: "one.mdx" }] })();
+          return await createJsonResponder(
+            createToolExecutionSuccessResponse(
+              { query: "setup", count: 1, results: [{ filename: "one.mdx" }] },
+              "docsSearch"
+            )
+          )();
         }
         return await createJsonResponder({ ok: false, error: "Unexpected URL" }, 500)();
       },
@@ -59,7 +68,7 @@ describe("docs command", () => {
     });
   });
 
-  it("normalizes canonical output arrays", async () => {
+  it("rejects non-canonical docs envelopes", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -68,20 +77,19 @@ describe("docs command", () => {
       fetchResponder: async (input) => {
         const url = String(input);
         if (url.endsWith("/v1/tools")) {
-          return await createJsonResponder({ tools: [{ name: "docsSearch" }] })();
+          return await createJsonResponder(createToolCatalogResponse("docsSearch"))();
         }
         if (url.endsWith("/v1/tool-executions")) {
-          return await createJsonResponder({ output: [{ filename: "one.mdx" }] })();
+          return await createJsonResponder(
+            createToolExecutionSuccessResponse({ output: [{ filename: "one.mdx" }] }, "docsSearch")
+          )();
         }
         return await createJsonResponder({ ok: false, error: "Unexpected URL" }, 500)();
       },
     });
 
-    await expect(executeDocsCommand({ query: "setup" }, harness.deps)).resolves.toEqual({
-      query: "setup",
-      count: 1,
-      results: [{ filename: "one.mdx" }],
-      ...REMOTE_UNTRUSTED_OUTPUT,
-    });
+    await expect(executeDocsCommand({ query: "setup" }, harness.deps)).rejects.toThrow(
+      'Docs search response did not match the canonical envelope for query "setup".'
+    );
   });
 });

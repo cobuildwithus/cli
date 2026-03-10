@@ -1,6 +1,6 @@
 # CLI Agent Docs Index
 
-Last verified: 2026-03-10 (indexed protocol inspect/status CLI surface)
+Last verified: 2026-03-10 (shared protocol plan runtime)
 
 ## Purpose
 
@@ -16,7 +16,7 @@ This index is the table of contents for durable, repository-local context that a
 | `agent-docs/product-specs/index.md`            | Index for CLI product behavior contracts.                             | `agent-docs/product-specs/**`      | CLI Maintainer | Monthly                      | High        | 2026-02-25    |
 | `agent-docs/product-specs/cli-behavior.md`     | User-facing CLI behavior and contract constraints.                    | `src/cli.ts`, `src/commands/**`, `src/transport.ts` | CLI Maintainer | Per behavior-change PR       | High        | 2026-02-25    |
 | `agent-docs/PRODUCT_SENSE.md`                  | Product-level user expectations and contract stability rules.         | CLI command behavior + output contracts | CLI Maintainer | Monthly                      | Medium      | 2026-02-25    |
-| `agent-docs/cli-architecture.md`               | CLI-specific boundary and command model detail.                       | `src/cli.ts`, `src/commands/**`   | CLI Maintainer | Per command/runtime change   | High        | 2026-03-10    |
+| `agent-docs/cli-architecture.md`               | CLI-specific boundary and command model detail.                       | `src/cli.ts`, `src/commands/**`, `src/protocol-plan/**` | CLI Maintainer | Per command/runtime change   | High        | 2026-03-10    |
 | `agent-docs/RELIABILITY.md`                    | Reliability invariants, failure modes, and verification matrix.       | Runtime behavior + scripts        | CLI Maintainer | Per reliability-affecting PR | High        | 2026-02-25    |
 | `agent-docs/SECURITY.md`                       | Security trust boundaries, threat model notes, and escalation cues.   | Config/auth handling + API calls  | CLI Maintainer | Per auth/security change     | High        | 2026-02-25    |
 | `agent-docs/QUALITY_SCORE.md`                  | Quality posture rubric with evidence and follow-ups.                  | Docs + scripts + verification     | CLI Maintainer | Bi-weekly                    | Medium      | 2026-03-07    |
@@ -26,7 +26,7 @@ This index is the table of contents for durable, repository-local context that a
 | `agent-docs/prompts/task-finish-review.md`     | Reusable final completion audit prompt for correctness/security.      | Agent completion workflow         | CLI Maintainer | Per process change           | Medium      | 2026-02-24    |
 | `agent-docs/references/README.md`              | Internal reference pack map for implementation details.               | `agent-docs/references/**`        | CLI Maintainer | Monthly                      | Medium      | 2026-02-24    |
 | `agent-docs/references/module-boundary-map.md` | Layer ownership and dependency-direction map for CLI surfaces.        | `src/cli.ts`, `src/config.ts`, `src/transport.ts`, scripts | CLI Maintainer | Per architecture-boundary PR | High        | 2026-02-24    |
-| `agent-docs/references/cli-command-and-data-flow.md` | Command topology + data flow map.                                | `src/cli.ts`, `src/commands/**`   | CLI Maintainer | Per route/data-flow change   | High        | 2026-03-10    |
+| `agent-docs/references/cli-command-and-data-flow.md` | Command topology + data flow map.                                | `src/cli.ts`, `src/commands/**`, `src/protocol-plan/**` | CLI Maintainer | Per route/data-flow change   | High        | 2026-03-10    |
 | `agent-docs/references/testing-ci-map.md`      | Verification, CI, and release enforcement map (including published-wire guards, release verify/docs gates, package/repository metadata guards, pnpm setup behavior, and docs-drift release artifact policy). | `package.json`, `.github/workflows/test-and-coverage.yml`, `.github/workflows/release.yml`, scripts | CLI Maintainer | Per CI/process change        | Medium      | 2026-03-07    |
 | `agent-docs/generated/README.md`               | Generated doc artifacts produced by scripts.                          | `agent-docs/generated/**`         | CLI Maintainer | Per script change            | Medium      | 2026-02-24    |
 | `agent-docs/exec-plans/`                       | Execution plans for active and completed work.                        | Plan docs + lifecycle scripts     | CLI Maintainer | Per multi-file/high-risk PR  | High        | 2026-02-25    |

@@ -441,11 +441,13 @@ describe("transport", () => {
             status: 200,
             text: async () =>
               JSON.stringify({
+                token_type: "Bearer",
                 access_token: "access_after_retry",
                 refresh_token: "rfr_rotated_elsewhere",
                 expires_in: 600,
                 scope: "tools:read offline_access",
                 session_id: "42",
+                can_write: false,
               }),
           };
         }

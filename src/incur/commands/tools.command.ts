@@ -1,5 +1,11 @@
 import { Cli, z } from "incur";
 import {
+  LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH,
+  LIST_WALLET_NOTIFICATIONS_LIMIT_MAX,
+  LIST_WALLET_NOTIFICATIONS_LIMIT_MIN,
+  NOTIFICATION_KINDS,
+} from "@cobuild/wire/protocol-notifications";
+import {
   executeToolsCastPreviewCommand,
   executeToolsGetCastCommand,
   executeToolsGetWalletBalancesCommand,
@@ -84,18 +90,22 @@ export function registerToolsCommand(
       extra: z.never().optional(),
     }),
     options: z.object({
-      limit: z.coerce.number().int().min(1).max(50).optional(),
+      limit: z.coerce.number()
+        .int()
+        .min(LIST_WALLET_NOTIFICATIONS_LIMIT_MIN)
+        .max(LIST_WALLET_NOTIFICATIONS_LIMIT_MAX)
+        .optional(),
       cursor: z
         .string()
         .refine((value) => value.trim().length > 0, {
           message: "--cursor must not be empty",
         })
-        .max(512, {
-          message: "--cursor must not exceed 512 characters",
+        .max(LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH, {
+          message: `--cursor must not exceed ${LIST_WALLET_NOTIFICATIONS_CURSOR_MAX_LENGTH} characters`,
         })
         .optional(),
       unreadOnly: z.boolean().optional(),
-      kind: z.array(z.enum(["discussion", "payment", "protocol"])).optional(),
+      kind: z.array(z.enum(NOTIFICATION_KINDS)).optional(),
     }),
     output: notificationsListOutput,
     run(context) {

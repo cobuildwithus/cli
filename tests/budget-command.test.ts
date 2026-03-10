@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executeBudgetInspectCommand } from "../src/commands/budget.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 describe("budget inspect command", () => {
   it("requires an identifier", async () => {
@@ -24,7 +28,7 @@ describe("budget inspect command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-budget" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-budget")),
           };
         }
         const body = JSON.parse(String(init?.body));
@@ -35,7 +39,8 @@ describe("budget inspect command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ budgetAddress: "0xbudget" }),
+          text: async () =>
+            JSON.stringify(createToolExecutionSuccessResponse({ budgetAddress: "0xbudget" }, "get-budget")),
         };
       },
     });

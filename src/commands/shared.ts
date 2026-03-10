@@ -1,6 +1,9 @@
 import type { CliDeps } from "../types.js";
 import { asRecord } from "../transport.js";
-import { normalizeEvmAddress as normalizeWireEvmAddress } from "@cobuild/wire";
+import {
+  normalizeEvmAddress as normalizeWireEvmAddress,
+  parseBaseOnlyNetwork,
+} from "@cobuild/wire";
 import { isHex, type Address } from "viem";
 import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
 import {
@@ -13,10 +16,6 @@ export type CliApiUrlLabel = "Interface URL" | "Chat API URL";
 const CONTROL_CHARS_REGEX = /[\u0000-\u001f\u007f-\u009f]/;
 const SAFE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9._-]+$/;
 const MAX_AGENT_KEY_LENGTH = 64;
-const BASE_ONLY_NETWORK_ALIASES = new Map<string, "base">([
-  ["base", "base"],
-  ["base-mainnet", "base"],
-]);
 
 function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
   return deps.env ?? process.env;
@@ -251,7 +250,7 @@ export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pi
 export function resolveNetwork(inputNetwork: string | undefined, deps: Pick<CliDeps, "env">): string {
   const envNetwork = getEnv(deps).COBUILD_CLI_NETWORK;
   const rawNetwork = inputNetwork ?? envNetwork ?? "base";
-  const normalized = BASE_ONLY_NETWORK_ALIASES.get(rawNetwork.trim().toLowerCase());
+  const normalized = parseBaseOnlyNetwork(rawNetwork);
   if (normalized) {
     return normalized;
   }

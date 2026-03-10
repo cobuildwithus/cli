@@ -74,6 +74,110 @@ const MOCK_PAYMENT_OVERRIDE = mockXPayment("payment-override");
 const MOCK_PAYMENT_MIGRATE = mockXPayment("payment-migrate");
 const MOCK_PAYMENT_TIMEOUT = mockXPayment("payment-timeout");
 const MOCK_PAYMENT_REPLY = mockXPayment("reply-payment");
+const HOSTED_PAYER_ADDRESS = "0x0000000000000000000000000000000000000009";
+const HOSTED_X402_VALID_BEFORE = 4_102_444_800;
+const SIGNUP_TX_HASH = `0x${"aa".repeat(32)}`;
+
+function hostedX402Result(
+  xPayment: string,
+  overrides: Partial<{
+    agentKey: string;
+    payerAddress: string;
+    payTo: string;
+    token: string;
+    amount: string;
+    network: "base";
+    validAfter: number;
+    validBefore: number;
+  }> = {}
+) {
+  return {
+    xPayment,
+    payerAddress: overrides.payerAddress ?? HOSTED_PAYER_ADDRESS,
+    payTo: overrides.payTo ?? "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1",
+    token: overrides.token ?? "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    amount: overrides.amount ?? "1000",
+    network: overrides.network ?? "base",
+    validAfter: overrides.validAfter ?? 0,
+    validBefore: overrides.validBefore ?? HOSTED_X402_VALID_BEFORE,
+    agentKey: overrides.agentKey ?? "default",
+  };
+}
+
+function hostedX402Response(
+  xPayment: string,
+  overrides: Partial<{
+    agentKey: string;
+    payerAddress: string;
+    payTo: string;
+    token: string;
+    amount: string;
+    network: "base";
+    validAfter: number;
+    validBefore: number;
+  }> = {}
+) {
+  return {
+    ok: true,
+    result: hostedX402Result(xPayment, overrides),
+  };
+}
+
+function signupCompleteResponse(
+  overrides: Partial<{
+    ownerAddress: string;
+    custodyAddress: string;
+    recoveryAddress: string;
+    fid: string;
+    idGatewayPriceWei: string;
+    txHash: string;
+  }> = {}
+) {
+  return {
+    ok: true,
+    result: {
+      status: "complete" as const,
+      network: "optimism" as const,
+      ownerAddress: overrides.ownerAddress ?? "0x0000000000000000000000000000000000000001",
+      custodyAddress: overrides.custodyAddress ?? "0x0000000000000000000000000000000000000002",
+      recoveryAddress: overrides.recoveryAddress ?? "0x0000000000000000000000000000000000000001",
+      fid: overrides.fid ?? "123",
+      idGatewayPriceWei: overrides.idGatewayPriceWei ?? "7000000000000000",
+      txHash: overrides.txHash ?? SIGNUP_TX_HASH,
+    },
+  };
+}
+
+function signupNeedsFundingResponse(
+  overrides: Partial<{
+    ownerAddress: string;
+    custodyAddress: string;
+    recoveryAddress: string;
+    idGatewayPriceWei: string;
+    idGatewayPriceEth: string;
+    balanceWei: string;
+    balanceEth: string;
+    requiredWei: string;
+    requiredEth: string;
+  }> = {}
+) {
+  return {
+    ok: true,
+    result: {
+      status: "needs_funding" as const,
+      network: "optimism" as const,
+      ownerAddress: overrides.ownerAddress ?? "0x0000000000000000000000000000000000000001",
+      custodyAddress: overrides.custodyAddress ?? "0x0000000000000000000000000000000000000002",
+      recoveryAddress: overrides.recoveryAddress ?? "0x0000000000000000000000000000000000000009",
+      idGatewayPriceWei: overrides.idGatewayPriceWei ?? "7000000000000000",
+      idGatewayPriceEth: overrides.idGatewayPriceEth ?? "0.007",
+      balanceWei: overrides.balanceWei ?? "0",
+      balanceEth: overrides.balanceEth ?? "0",
+      requiredWei: overrides.requiredWei ?? "7200000000000000",
+      requiredEth: overrides.requiredEth ?? "0.0072",
+    },
+  };
+}
 
 function createJsonResponder(body: unknown, status = 200) {
   return async () => ({
@@ -721,18 +825,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_1,
-                  agentKey: "stored-agent",
-                  payerAddress: "0x0000000000000000000000000000000000000009",
-                  token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-                  amount: "1000",
-                  network: "base",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_1, { agentKey: "stored-agent" })),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -849,14 +942,11 @@ describe("farcaster command", () => {
             ok: true,
             status: 200,
             text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment,
-                  agentKey: "default",
+              JSON.stringify(
+                hostedX402Response(xPayment, {
                   payerAddress: "0x0000000000000000000000000000000000000007",
-                },
-              }),
+                })
+              ),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -920,14 +1010,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_RESUME,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_RESUME)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1042,14 +1125,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_VERIFY,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_VERIFY)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1132,14 +1208,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_POLL,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_POLL)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1205,14 +1274,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_POLL_FAIL,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_POLL_FAIL)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1267,14 +1329,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_NONE,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_NONE)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1714,14 +1769,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_OVERRIDE,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_OVERRIDE)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1785,14 +1833,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_REPLY,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_REPLY)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1866,14 +1907,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_MIGRATE,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_MIGRATE)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -1941,14 +1975,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_1,
-                  agentKey: "token-agent",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_1, { agentKey: "token-agent" })),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -2213,7 +2240,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ ok: true, result: {} }),
+            text: async () => JSON.stringify({ ok: true, result: { ...hostedX402Result(MOCK_PAYMENT_1), xPayment: "" } }),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -2248,9 +2275,7 @@ describe("farcaster command", () => {
         ],
         harness.deps
       )
-    ).rejects.toThrow(
-      `Build-bot x402 payment response did not include xPayment. (idempotency key: ${idempotencyKey})`
-    );
+    ).rejects.toThrow(`result.xPayment must be a non-empty string. (idempotency key: ${idempotencyKey})`);
 
     harness.fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -2258,7 +2283,14 @@ describe("farcaster command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ ok: true, result: { xPayment: MOCK_PAYMENT_1 } }),
+          text: async () =>
+            JSON.stringify({
+              ok: true,
+              result: {
+                ...hostedX402Result(MOCK_PAYMENT_1),
+                agentKey: "",
+              },
+            }),
         };
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -2276,9 +2308,7 @@ describe("farcaster command", () => {
         ],
         harness.deps
       )
-    ).rejects.toThrow(
-      `Build-bot x402 payment response did not include agentKey. (idempotency key: ${idempotencyKey})`
-    );
+    ).rejects.toThrow(`result.agentKey must be a non-empty string. (idempotency key: ${idempotencyKey})`);
 
     harness.fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -2286,8 +2316,7 @@ describe("farcaster command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () =>
-            JSON.stringify({ ok: true, result: { xPayment: MOCK_PAYMENT_1, agentKey: "default" } }),
+          text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_1)),
         };
       }
       if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -2342,7 +2371,21 @@ describe("farcaster command", () => {
       )
     );
 
-    const invalidCases: Array<{ key: string; xPayment: string; expected: string }> = [
+    const invalidCases: Array<{
+      key: string;
+      xPayment: string;
+      expected: string;
+      responseOverrides?: Partial<{
+        agentKey: string;
+        payerAddress: string;
+        payTo: string;
+        token: string;
+        amount: string;
+        network: "base";
+        validAfter: number;
+        validBefore: number;
+      }>;
+    }> = [
       {
         key: "11111111-1111-4111-8111-111111111111",
         xPayment: "not-base64-json",
@@ -2391,7 +2434,7 @@ describe("farcaster command", () => {
           const auth = inner.authorization as Record<string, unknown>;
           auth.validBefore = { unexpected: true };
         }),
-        expected: "x402 payment header from hosted source is missing payload.authorization.validBefore.",
+        expected: "x402 payment header from hosted source has invalid payload.authorization.validBefore",
       },
       {
         key: "67676767-6767-4676-8676-676767676767",
@@ -2404,6 +2447,31 @@ describe("farcaster command", () => {
         xPayment: mockXPayment("expired", { validBefore: "1" }),
         expected: "x402 payment header from hosted source has expired (validBefore=1).",
       },
+      {
+        key: "78787878-7878-4787-8787-787878787878",
+        xPayment: MOCK_PAYMENT_1,
+        expected: 'token must be "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".',
+        responseOverrides: {
+          token: "0x000000000000000000000000000000000000dEaD",
+        },
+      },
+      {
+        key: "79797979-7979-4797-8797-797979797979",
+        xPayment: MOCK_PAYMENT_1,
+        expected: 'amount must be "1000".',
+        responseOverrides: {
+          amount: "999",
+        },
+      },
+      {
+        key: "89898989-8989-4898-8898-898989898989",
+        xPayment: MOCK_PAYMENT_1,
+        expected: "validBefore must be greater than or equal to validAfter.",
+        responseOverrides: {
+          validAfter: HOSTED_X402_VALID_BEFORE,
+          validBefore: HOSTED_X402_VALID_BEFORE - 1,
+        },
+      },
     ];
 
     for (const invalidCase of invalidCases) {
@@ -2415,10 +2483,7 @@ describe("farcaster command", () => {
             ok: true,
             status: 200,
             text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: { xPayment: invalidCase.xPayment, agentKey: "default" },
-              }),
+              JSON.stringify(hostedX402Response(invalidCase.xPayment, invalidCase.responseOverrides)),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -2460,14 +2525,7 @@ describe("farcaster command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_TIMEOUT,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_TIMEOUT)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -2516,19 +2574,7 @@ describe("farcaster command", () => {
         token: "bbt_secret",
         agent: "stored-agent",
       },
-      fetchResponder: createJsonResponder({
-        ok: true,
-        result: {
-          status: "complete",
-          network: "optimism",
-          ownerAddress: "0x0000000000000000000000000000000000000001",
-          custodyAddress: "0x0000000000000000000000000000000000000002",
-          recoveryAddress: "0x0000000000000000000000000000000000000001",
-          fid: "123",
-          idGatewayPriceWei: "7000000000000000",
-          txHash: "0xsignup",
-        },
-      }),
+      fetchResponder: createJsonResponder(signupCompleteResponse()),
     });
 
     await runCli(["farcaster", "signup"], harness.deps);
@@ -2578,19 +2624,7 @@ describe("farcaster command", () => {
         token: "bbt_secret",
         agent: "stored-agent",
       },
-      fetchResponder: createJsonResponder({
-        ok: true,
-        result: {
-          status: "complete",
-          network: "optimism",
-          ownerAddress: "0x0000000000000000000000000000000000000001",
-          custodyAddress: "0x0000000000000000000000000000000000000002",
-          recoveryAddress: "0x0000000000000000000000000000000000000001",
-          fid: "123",
-          idGatewayPriceWei: "7000000000000000",
-          txHash: "0xsignup",
-        },
-      }),
+      fetchResponder: createJsonResponder(signupCompleteResponse()),
     });
     harness.files.set(
       "/tmp/cli-tests/.cobuild-cli/agents/stored-agent/wallet/payer.json",
@@ -2612,22 +2646,7 @@ describe("farcaster command", () => {
         url: "https://api.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        ok: true,
-        result: {
-          status: "needs_funding",
-          network: "optimism",
-          ownerAddress: "0x0000000000000000000000000000000000000001",
-          custodyAddress: "0x0000000000000000000000000000000000000002",
-          recoveryAddress: "0x0000000000000000000000000000000000000009",
-          idGatewayPriceWei: "7000000000000000",
-          idGatewayPriceEth: "0.007",
-          balanceWei: "0",
-          balanceEth: "0",
-          requiredWei: "7200000000000000",
-          requiredEth: "0.0072",
-        },
-      }),
+      fetchResponder: createJsonResponder(signupNeedsFundingResponse()),
     });
 
     await runCli(
@@ -2661,16 +2680,7 @@ describe("farcaster command", () => {
         url: "https://api.example",
         token: "bbt_secret",
       },
-      fetchResponder: createJsonResponder({
-        ok: true,
-        result: {
-          status: "complete",
-          network: "optimism",
-          ownerAddress: "0x0000000000000000000000000000000000000001",
-          custodyAddress: "0x0000000000000000000000000000000000000002",
-          recoveryAddress: "0x0000000000000000000000000000000000000001",
-        },
-      }),
+      fetchResponder: createJsonResponder(signupCompleteResponse()),
     });
 
     await runCli(
@@ -2728,6 +2738,50 @@ describe("farcaster command", () => {
 
     await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
       "Farcaster account already exists for this agent wallet (fid=77, custodyAddress=0x0000000000000000000000000000000000000002). Use a different --agent key for a new Farcaster signup."
+    );
+  });
+
+  it("falls back to the generic already-registered signup error when 409 details are malformed", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder(
+        {
+          ok: false,
+          error: "Farcaster account already exists for this agent wallet.",
+          details: {
+            fid: "0",
+            custodyAddress: "not-an-address",
+          },
+        },
+        409
+      ),
+    });
+
+    await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
+      "Farcaster account already exists for this agent wallet. Use a different --agent key for a new Farcaster signup."
+    );
+  });
+
+  it("rejects malformed hosted signup response payloads", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        result: {
+          ...signupCompleteResponse().result,
+          txHash: "0x1234",
+        },
+      }),
+    });
+
+    await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
+      "result.txHash must be a 32-byte hex value (0x + 64 hex chars)."
     );
   });
 

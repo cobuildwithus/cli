@@ -4,11 +4,12 @@ import {
   buildX402PaymentPayload,
   buildX402TypedDataDomain,
   buildX402TypedDataTypes,
+  validateFarcasterHostedX402PaymentResponse,
   decodeAndValidateX402PaymentPayload,
   encodeX402PaymentPayload,
 } from "@cobuild/wire";
 import { privateKeyToAccount } from "viem/accounts";
-import { apiPost, asRecord } from "../transport.js";
+import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import {
   BASE_CHAIN_ID,
@@ -87,37 +88,22 @@ async function requestHostedX402PaymentHeader(params: {
   expectedAgentKey: string;
   fallbackPayerAddress: string | null;
 }): Promise<X402PaymentHeader> {
-  const response = await apiPost(params.deps, "/api/cli/farcaster/x402-payment", {});
-  const payload = asRecord(response);
-  const result = asRecord(payload.result);
-  const xPayment =
-    (typeof result.xPayment === "string" ? result.xPayment : null) ??
-    (typeof payload.xPayment === "string" ? payload.xPayment : null);
-
-  if (!xPayment) {
-    throw new Error("Build-bot x402 payment response did not include xPayment.");
-  }
-
-  const payerAddress =
-    (typeof result.payerAddress === "string" ? result.payerAddress : null) ??
-    params.fallbackPayerAddress;
-  const payerAgentKey = typeof result.agentKey === "string" ? result.agentKey.trim() : "";
-  if (!payerAgentKey) {
-    throw new Error("Build-bot x402 payment response did not include agentKey.");
-  }
-  if (payerAgentKey !== params.expectedAgentKey) {
+  const response = validateFarcasterHostedX402PaymentResponse(
+    await apiPost(params.deps, "/api/cli/farcaster/x402-payment", {})
+  );
+  if (response.result.agentKey !== params.expectedAgentKey) {
     throw new Error(
-      `Configured agent (${params.expectedAgentKey}) does not match authenticated token agent (${payerAgentKey}). Update CLI config or use a token for the same agent.`
+      `Configured agent (${params.expectedAgentKey}) does not match authenticated token agent (${response.result.agentKey}). Update CLI config or use a token for the same agent.`
     );
   }
 
   return {
-    xPayment,
-    payerAddress,
-    payerAgentKey,
-    x402Token: typeof result.token === "string" ? result.token : null,
-    x402Amount: typeof result.amount === "string" ? result.amount : null,
-    x402Network: typeof result.network === "string" ? result.network : null,
+    xPayment: response.result.xPayment,
+    payerAddress: response.result.payerAddress ?? params.fallbackPayerAddress,
+    payerAgentKey: response.result.agentKey,
+    x402Token: response.result.token,
+    x402Amount: response.result.amount,
+    x402Network: response.result.network,
   };
 }
 
@@ -160,42 +146,7 @@ function remapWireX402ValidationError(message: string, source: "local" | "hosted
   return message;
 }
 
-function assertX402PayloadShapeCompatibility(
-  xPaymentBase64: string,
-  source: "local" | "hosted"
-): void {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(Buffer.from(xPaymentBase64, "base64").toString("utf-8"));
-  } catch {
-    throw new Error(`x402 payment header from ${source} source is not valid base64 JSON.`);
-  }
-
-  if (typeof decoded !== "object" || decoded === null) {
-    throw new Error(`x402 payment header from ${source} source is not a JSON object.`);
-  }
-
-  const payload = decoded as Record<string, unknown>;
-  const inner = payload.payload as Record<string, unknown> | undefined;
-  const auth = inner?.authorization as Record<string, unknown> | undefined;
-  if (!auth) {
-    throw new Error(`x402 payment header from ${source} source is missing payload.authorization.`);
-  }
-
-  if (typeof auth.to !== "string" || auth.to.trim().length === 0) {
-    throw new Error(`x402 payment header from ${source} source is missing payload.authorization.to.`);
-  }
-
-  if (typeof auth.validBefore !== "string" && typeof auth.validBefore !== "number") {
-    throw new Error(
-      `x402 payment header from ${source} source is missing payload.authorization.validBefore.`
-    );
-  }
-}
-
 function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "hosted"): void {
-  assertX402PayloadShapeCompatibility(xPaymentBase64, source);
-
   try {
     decodeAndValidateX402PaymentPayload(xPaymentBase64, {
       requiredNetwork: X402_NETWORK,

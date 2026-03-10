@@ -56,5 +56,6 @@ Add a reusable CLI execution/runtime layer for `@cobuild/wire` protocol plans so
 - `pnpm test`
 - `pnpm test:coverage`
 
-Status: in_progress
+Status: completed
 Updated: 2026-03-10
+Completed: 2026-03-10

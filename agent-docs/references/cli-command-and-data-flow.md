@@ -113,6 +113,18 @@
    - local mode: execute local wallet tx path
 6. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed` through shared wire decoders.
 
+## Shared Protocol Plan Runtime Flow
+
+1. A command or helper builds a structural `ProtocolExecutionPlan` object (normally from `@cobuild/wire`).
+2. `executeProtocolPlan(...)` resolves agent key, stored wallet mode, normalized Base network, and a root idempotency key.
+3. The runner derives deterministic child idempotency keys from the root key plus step identity so retries reuse the same per-step ids.
+4. In `--dry-run`, the runner returns one normalized plan envelope with every step labeled, requested tx payload shown, and hosted-vs-local execution target explicit.
+5. In execute mode, steps run sequentially:
+   - hosted mode: POST `/api/cli/exec` with `kind: tx` plus both idempotency headers.
+   - local mode: call the local wallet tx path with the derived child idempotency key.
+6. If a step decoder is configured and a transaction hash is available, the runner fetches the receipt from Base RPC and attaches a serialized receipt summary or decode warning to that step.
+7. On step failure, the runner throws a replay-safe error that names the failed step, the child idempotency key, the root idempotency key, and the retry guidance to rerun with the same root key.
+
 ## Indexed Protocol Inspect Flow
 
 1. Parse the protocol command path and required identifiers:

@@ -17,6 +17,47 @@ export interface TestHarness {
   configFile: string;
 }
 
+export function createToolCatalogResponse(
+  ...names: string[]
+): {
+  tools: Array<Record<string, unknown>>;
+} {
+  return {
+    tools: names.map((name) => ({
+      name,
+      description: `${name} test fixture`,
+      inputSchema: {
+        type: "object",
+        additionalProperties: true,
+      },
+      outputSchema: {
+        type: "object",
+        additionalProperties: true,
+      },
+      scopes: [],
+      authPolicy: {
+        requiredScopes: [],
+        walletBinding: "none",
+      },
+      exposure: "chat-safe",
+      sideEffects: "none",
+      version: "test",
+      deprecated: false,
+    })),
+  };
+}
+
+export function createToolExecutionSuccessResponse(
+  output: unknown,
+  name = "tool"
+): Record<string, unknown> {
+  return {
+    ok: true,
+    name,
+    output,
+  };
+}
+
 export function createHarness(options: CreateHarnessOptions = {}): TestHarness {
   const outputs: string[] = [];
   const errors: string[] = [];

@@ -43,6 +43,7 @@ describe("oauth helpers", () => {
     expect(withLabel.searchParams.get("scope")).toBe(CLI_OAUTH_DEFAULT_SCOPE);
     expect(withLabel.searchParams.get("label")).toBe("laptop-main");
     expect(withLabel.searchParams.get("wallet_mode")).toBe("hosted");
+    expect(withLabel.searchParams.get("payer_mode")).toBeNull();
 
     const withoutLabel = new URL(
       buildCliAuthorizeUrl({
@@ -84,11 +85,13 @@ describe("oauth helpers", () => {
       status: 200,
       text: async () =>
         JSON.stringify({
+          token_type: "Bearer",
           access_token: "access-1",
           refresh_token: "rfr_1",
           expires_in: 600,
           scope: "tools:read offline_access",
           session_id: "11",
+          can_write: false,
         }),
     }));
 
@@ -101,11 +104,13 @@ describe("oauth helpers", () => {
     });
 
     expect(response).toEqual({
+      tokenType: "Bearer",
       accessToken: "access-1",
       refreshToken: "rfr_1",
       expiresIn: 600,
       scope: "tools:read offline_access",
       sessionId: "11",
+      canWrite: false,
     });
     expect(deps.fetch).toHaveBeenCalledWith(
       new URL("https://chat.example/oauth/token"),
@@ -131,9 +136,13 @@ describe("oauth helpers", () => {
       status: 200,
       text: async () =>
         JSON.stringify({
+          token_type: "Bearer",
           access_token: "access-2",
           refresh_token: "rfr_2",
           expires_in: 900,
+          scope: "offline_access tools:read wallet:read",
+          session_id: "22",
+          can_write: false,
         }),
     }));
 
@@ -144,11 +153,13 @@ describe("oauth helpers", () => {
         refreshToken: "rfr_old",
       })
     ).resolves.toEqual({
+      tokenType: "Bearer",
       accessToken: "access-2",
       refreshToken: "rfr_2",
       expiresIn: 900,
-      scope: "",
-      sessionId: null,
+      scope: "offline_access tools:read wallet:read",
+      sessionId: "22",
+      canWrite: false,
     });
     expect(JSON.parse(String(deps.fetch.mock.calls[0]?.[1]?.body))).toEqual({
       grant_type: "refresh_token",
@@ -203,8 +214,12 @@ describe("oauth helpers", () => {
       status: 200,
       text: async () =>
         JSON.stringify({
+          token_type: "Bearer",
           refresh_token: "rfr_bad",
           expires_in: 10,
+          scope: "offline_access tools:read wallet:read",
+          session_id: "22",
+          can_write: false,
         }),
     }));
     await expect(
@@ -214,6 +229,68 @@ describe("oauth helpers", () => {
         refreshToken: "rfr_bad",
       })
     ).rejects.toThrow("OAuth token response did not include access_token.");
+
+    const missingRequiredFieldsDeps = createDeps(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          access_token: "access-1",
+          refresh_token: "rfr_bad",
+          expires_in: 10,
+        }),
+    }));
+    await expect(
+      refreshAccessToken({
+        deps: missingRequiredFieldsDeps,
+        chatApiUrl: "https://chat.example",
+        refreshToken: "rfr_bad",
+      })
+    ).rejects.toThrow("OAuth token response did not include token_type.");
+
+    const missingCanWriteDeps = createDeps(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          token_type: "Bearer",
+          access_token: "access-1",
+          refresh_token: "rfr_bad",
+          expires_in: 10,
+          scope: "offline_access tools:read wallet:read",
+          session_id: "22",
+        }),
+    }));
+    await expect(
+      refreshAccessToken({
+        deps: missingCanWriteDeps,
+        chatApiUrl: "https://chat.example",
+        refreshToken: "rfr_bad",
+      })
+    ).rejects.toThrow("can_write must be a boolean");
+
+    const extraSuccessFieldDeps = createDeps(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          token_type: "Bearer",
+          access_token: "access-1",
+          refresh_token: "rfr_bad",
+          expires_in: 10,
+          scope: "offline_access tools:read wallet:read",
+          session_id: "22",
+          can_write: false,
+          extra: true,
+        }),
+    }));
+    await expect(
+      refreshAccessToken({
+        deps: extraSuccessFieldDeps,
+        chatApiUrl: "https://chat.example",
+        refreshToken: "rfr_bad",
+      })
+    ).rejects.toThrow('OAuth token response includes unsupported field "extra"');
 
     const fallbackErrorDeps = createDeps(async () => ({
       ok: false,
@@ -227,6 +304,24 @@ describe("oauth helpers", () => {
         refreshToken: "rfr_bad",
       })
     ).rejects.toThrow("OAuth token request failed (status 503).");
+
+    const extraErrorFieldDeps = createDeps(async () => ({
+      ok: false,
+      status: 401,
+      text: async () =>
+        JSON.stringify({
+          error: "invalid_client",
+          error_description: "Unsupported client_id",
+          extra: true,
+        }),
+    }));
+    await expect(
+      refreshAccessToken({
+        deps: extraErrorFieldDeps,
+        chatApiUrl: "https://chat.example",
+        refreshToken: "rfr_bad",
+      })
+    ).rejects.toThrow("OAuth token request failed (status 401).");
   });
 
   it("surfaces request transport failures", async () => {

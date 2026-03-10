@@ -1,8 +1,9 @@
 import {
-  parseToolCatalogEntryName,
-  parseToolExecutionResult,
-  parseToolsCatalogEntries,
-} from "../api-response-schemas.js";
+  parseCliToolExecutionSuccessResponse,
+  parseCliToolsListResponse,
+  serializeCliToolExecutionRequest,
+  type CliToolsListResponse,
+} from "@cobuild/wire";
 import { ApiRequestError, apiGet, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 
@@ -18,7 +19,7 @@ interface ExecuteCanonicalToolOptions {
 }
 
 interface CanonicalDiscoveryResult {
-  catalog: unknown | null;
+  catalog: CliToolsListResponse | null;
   routeUnavailable: boolean;
 }
 
@@ -26,17 +27,9 @@ function normalizeToolName(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
 
-function extractCatalogToolName(value: unknown): string | null {
-  return parseToolCatalogEntryName(value);
-}
-
-function extractToolCatalogEntries(payload: unknown): unknown[] {
-  return parseToolsCatalogEntries(payload);
-}
-
 function prioritizedCanonicalToolNames(
   configuredCandidates: string[],
-  discoveredCatalog: unknown
+  discoveredCatalog: CliToolsListResponse | null
 ): string[] {
   const normalizedCandidateKeys = new Set<string>();
   const configured = [] as string[];
@@ -52,9 +45,8 @@ function prioritizedCanonicalToolNames(
   }
 
   const discoveredExactSet = new Set<string>();
-  const discovered = extractToolCatalogEntries(discoveredCatalog)
-    .map(extractCatalogToolName)
-    .filter((name): name is string => typeof name === "string")
+  const discovered = (discoveredCatalog?.tools ?? [])
+    .map((tool) => tool.name)
     .reduce<string[]>((acc, name) => {
       const key = normalizeToolName(name);
       if (normalizedCandidateKeys.has(key) && !discoveredExactSet.has(name)) {
@@ -75,8 +67,14 @@ function prioritizedCanonicalToolNames(
   return deduped;
 }
 
-function extractCanonicalExecutionResult(payload: unknown): unknown {
-  return parseToolExecutionResult(payload);
+function extractCanonicalExecutionResult(payload: unknown, toolName: string): unknown {
+  const parsed = parseCliToolExecutionSuccessResponse(payload);
+  if (parsed.name !== toolName) {
+    throw new Error(
+      `Tool execution response name mismatch: expected "${toolName}", got "${parsed.name}".`
+    );
+  }
+  return parsed.output;
 }
 
 function shouldRetryCanonicalToolCandidate(error: unknown): error is ApiRequestError {
@@ -114,10 +112,10 @@ function isLikelyToolNameMismatchNotFoundDetail(detail: string | null): boolean 
 }
 
 function buildCanonicalExecutionBody(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  return {
+  return serializeCliToolExecutionRequest({
     name: toolName,
     input,
-  };
+  });
 }
 
 async function discoverCanonicalToolCatalog(
@@ -125,7 +123,7 @@ async function discoverCanonicalToolCatalog(
 ): Promise<CanonicalDiscoveryResult> {
   try {
     return {
-      catalog: await apiGet(deps, CANONICAL_TOOLS_DISCOVERY_PATH),
+      catalog: parseCliToolsListResponse(await apiGet(deps, CANONICAL_TOOLS_DISCOVERY_PATH)),
       routeUnavailable: false,
     };
   } catch (error) {
@@ -149,7 +147,7 @@ async function executeCanonicalTool(
     CANONICAL_TOOL_EXECUTIONS_PATH,
     buildCanonicalExecutionBody(toolName, input)
   );
-  return extractCanonicalExecutionResult(payload);
+  return extractCanonicalExecutionResult(payload, toolName);
 }
 
 export async function executeCanonicalToolOnly(

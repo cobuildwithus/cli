@@ -35,6 +35,23 @@ function mockXPayment(label: string): string {
 const MOCK_PAYMENT_VERIFY_ONCE_404 = mockXPayment("payment-verify-once-404");
 const MOCK_PAYMENT_VERIFY_HOSTED_402 = mockXPayment("payment-verify-hosted-402");
 
+function hostedX402Response(xPayment: string) {
+  return {
+    ok: true,
+    result: {
+      xPayment,
+      payerAddress: "0x0000000000000000000000000000000000000009",
+      payTo: "0xa6a8736f18f383f1cc2d938576933e5ea7df01a1",
+      token: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      amount: "1000",
+      network: "base" as const,
+      validAfter: 0,
+      validBefore: 4_102_444_800,
+      agentKey: "default",
+    },
+  };
+}
+
 function setHostedX402PayerConfig(
   harness: ReturnType<typeof createHarness>,
   payerAddress: string | null
@@ -134,14 +151,7 @@ describe("wallet payer coverage audit", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_VERIFY_ONCE_404,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_VERIFY_ONCE_404)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {
@@ -211,14 +221,7 @@ describe("wallet payer coverage audit", () => {
           return {
             ok: true,
             status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                result: {
-                  xPayment: MOCK_PAYMENT_VERIFY_HOSTED_402,
-                  agentKey: "default",
-                },
-              }),
+            text: async () => JSON.stringify(hostedX402Response(MOCK_PAYMENT_VERIFY_HOSTED_402)),
           };
         }
         if (url === "https://hub-api.neynar.com/v1/submitMessage") {

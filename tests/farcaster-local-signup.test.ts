@@ -98,6 +98,8 @@ import {
 
 const PRIVATE_KEY = `0x${"11".repeat(32)}` as `0x${string}`;
 const SIGNER_PUBLIC_KEY = `0x${"22".repeat(32)}` as const;
+const REGISTER_TX_HASH = `0x${"ab".repeat(32)}`;
+const ADD_KEY_TX_HASH = `0x${"cd".repeat(32)}`;
 
 describe("farcaster local signup", () => {
   beforeEach(() => {
@@ -144,11 +146,11 @@ describe("farcaster local signup", () => {
       custodyAddress: "0x00000000000000000000000000000000000000aa",
       recoveryAddress: "0x00000000000000000000000000000000000000aa",
       idGatewayPriceWei: "7",
-      idGatewayPriceEth: "7",
+      idGatewayPriceEth: "0.000000000000000007",
       balanceWei: "2",
-      balanceEth: "2",
+      balanceEth: "0.000000000000000002",
       requiredWei: "5",
-      requiredEth: "5",
+      requiredEth: "0.000000000000000005",
     });
   });
 
@@ -160,7 +162,9 @@ describe("farcaster local signup", () => {
     mocks.getBalanceMock.mockResolvedValue(100n);
     mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
-    mocks.sendTransactionMock.mockResolvedValueOnce("0xabc").mockResolvedValueOnce("0xdef");
+    mocks.sendTransactionMock
+      .mockResolvedValueOnce(REGISTER_TX_HASH)
+      .mockResolvedValueOnce(ADD_KEY_TX_HASH);
     mocks.waitForTransactionReceiptMock.mockResolvedValue({ status: "success" });
 
     const result = await executeLocalFarcasterSignup({
@@ -179,7 +183,7 @@ describe("farcaster local signup", () => {
       recoveryAddress: "0x00000000000000000000000000000000000000bb",
       fid: "123",
       idGatewayPriceWei: "7",
-      txHash: "0xdef",
+      txHash: ADD_KEY_TX_HASH,
     });
     expect(mocks.sendTransactionMock).toHaveBeenCalledTimes(2);
   });
@@ -189,7 +193,7 @@ describe("farcaster local signup", () => {
     mocks.getBalanceMock.mockResolvedValue(100n);
     mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
-    mocks.sendTransactionMock.mockResolvedValue("0xabc");
+    mocks.sendTransactionMock.mockResolvedValue(REGISTER_TX_HASH);
     mocks.waitForTransactionReceiptMock.mockResolvedValue({ status: "reverted" });
 
     await expect(
@@ -198,7 +202,7 @@ describe("farcaster local signup", () => {
         privateKeyHex: PRIVATE_KEY,
         signerPublicKey: SIGNER_PUBLIC_KEY,
       })
-    ).rejects.toThrow("Local Farcaster signup transaction reverted (tx: 0xabc).");
+    ).rejects.toThrow(`Local Farcaster signup transaction reverted (tx: ${REGISTER_TX_HASH}).`);
 
     mocks.readContractMock
       .mockReset()
@@ -208,7 +212,9 @@ describe("farcaster local signup", () => {
     mocks.getBalanceMock.mockResolvedValue(100n);
     mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
-    mocks.sendTransactionMock.mockResolvedValueOnce("0xabc").mockResolvedValueOnce("0xdef");
+    mocks.sendTransactionMock
+      .mockResolvedValueOnce(REGISTER_TX_HASH)
+      .mockResolvedValueOnce(ADD_KEY_TX_HASH);
     mocks.waitForTransactionReceiptMock.mockResolvedValue({ status: "success" });
 
     await expect(

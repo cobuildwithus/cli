@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executePremiumStatusCommand } from "../src/commands/premium.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 describe("premium status command", () => {
   it("requires an identifier", async () => {
@@ -34,7 +38,7 @@ describe("premium status command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-premium-escrow" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-premium-escrow")),
           };
         }
         const body = JSON.parse(String(init?.body));
@@ -44,7 +48,13 @@ describe("premium status command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ premiumEscrowAddress: "0xescrow" }),
+          text: async () =>
+            JSON.stringify(
+              createToolExecutionSuccessResponse(
+                { premiumEscrowAddress: "0xescrow" },
+                "get-premium-escrow"
+              )
+            ),
         };
       },
     });

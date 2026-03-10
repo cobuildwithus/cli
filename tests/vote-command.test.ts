@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { executeVoteStatusCommand } from "../src/commands/vote.js";
-import { createHarness } from "./helpers.js";
+import {
+  createHarness,
+  createToolCatalogResponse,
+  createToolExecutionSuccessResponse,
+} from "./helpers.js";
 
 describe("vote status command", () => {
   it("requires an identifier", async () => {
@@ -34,7 +38,7 @@ describe("vote status command", () => {
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ tools: [{ name: "get-dispute" }] }),
+            text: async () => JSON.stringify(createToolCatalogResponse("get-dispute")),
           };
         }
         const body = JSON.parse(String(init?.body));
@@ -44,7 +48,10 @@ describe("vote status command", () => {
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify({ disputeId: "vote-1", juror }),
+          text: async () =>
+            JSON.stringify(
+              createToolExecutionSuccessResponse({ disputeId: "vote-1", juror }, "get-dispute")
+            ),
         };
       },
     });
