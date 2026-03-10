@@ -1,15 +1,17 @@
 import { base } from "viem/chains";
 import {
   createPublicClient,
-  encodeFunctionData,
   getAddress,
   http,
   isHex,
-  parseEventLogs,
-  type Abi,
   type Hex,
 } from "viem";
-import { goalFactoryAbi as goalFactoryAbiFromWire } from "@cobuild/wire";
+import {
+  buildGoalCreateTransaction,
+  decodeGoalDeployedEvent,
+  extractGoalFactoryDeployParams,
+  serializeGoalDeployedEvent,
+} from "@cobuild/wire";
 import { readConfig } from "../config.js";
 import { asRecord, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
@@ -29,17 +31,9 @@ import { executeLocalTx } from "../wallet/local-exec.js";
 import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
 
 const GOAL_CREATE_USAGE =
-  "Usage: cli goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
+  "Usage: cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
 const GOAL_INSPECT_USAGE = "Usage: cli goal inspect <identifier>";
 const GOAL_CANONICAL_TOOL_NAMES = ["get-goal", "getGoal", "goal.inspect"];
-const GOAL_DEPLOY_REQUIRED_KEYS = [
-  "revnet",
-  "timing",
-  "success",
-  "flowMetadata",
-  "underwriting",
-  "budgetTCR",
-] as const;
 
 const DEFAULT_BASE_RPC_URL = "https://mainnet.base.org";
 
@@ -70,71 +64,62 @@ export interface GoalInspectCommandOutput extends Record<string, unknown> {
   warnings: string[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasOwn(record: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(record, key);
-}
-
-function isGoalDeployParamsShape(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value)) return false;
-  return GOAL_DEPLOY_REQUIRED_KEYS.every((key) => hasOwn(value, key));
-}
-
-function extractDeployParams(raw: Record<string, unknown>): Record<string, unknown> {
-  if (isGoalDeployParamsShape(raw)) return raw;
-
-  for (const key of ["deployParams", "params", "p"]) {
-    const nested = raw[key];
-    if (isGoalDeployParamsShape(nested)) {
-      return nested;
-    }
-  }
-
-  throw new Error(
-    "Goal deploy params must include keys: revnet, timing, success, flowMetadata, underwriting, budgetTCR."
-  );
-}
-
 function resolveRpcUrlForNetwork(deps: Pick<CliDeps, "env">): string {
   const env = deps.env ?? process.env;
   return env.COBUILD_CLI_BASE_RPC_URL?.trim() || DEFAULT_BASE_RPC_URL;
 }
 
-function parseGoalDeploymentLog(
-  abi: Abi,
-  logs: readonly Record<string, unknown>[]
-): Record<string, unknown> | null {
-  const parsed = parseEventLogs({
-    abi,
-    logs: logs as any[],
-    eventName: "GoalDeployed",
-    strict: false,
-  });
-  const latest = parsed.at(-1);
-  if (!latest) return null;
-
-  return normalizeBigInts(latest.args as unknown) as Record<string, unknown>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeBigInts(value: unknown): unknown {
-  if (typeof value === "bigint") return value.toString(10);
-  if (Array.isArray(value)) return value.map((entry) => normalizeBigInts(entry));
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, normalizeBigInts(entry)])
-    );
+function expectRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object.`);
   }
   return value;
+}
+
+function assertBytes32Hex(value: unknown, label: string): void {
+  if (typeof value !== "string" || !isHex(value, { strict: true }) || value.length !== 66) {
+    throw new Error(`${label} must be a 32-byte hex string (0x + 64 hex chars).`);
+  }
+}
+
+function assertCurrentGoalFactoryDeployShape(rawParams: Record<string, unknown>): void {
+  const deployParams = extractGoalFactoryDeployParams(rawParams);
+  const revnet = expectRecord(deployParams.revnet, "deployParams.revnet");
+  const underwriting = expectRecord(
+    deployParams.underwriting,
+    "deployParams.underwriting"
+  );
+  const success = expectRecord(deployParams.success, "deployParams.success");
+  const budgetTcr = expectRecord(deployParams.budgetTCR, "deployParams.budgetTCR");
+
+  if (Object.hasOwn(revnet, "owner")) {
+    throw new Error("deployParams.revnet.owner is not supported.");
+  }
+  if (Object.hasOwn(underwriting, "coverageLambda")) {
+    throw new Error("deployParams.underwriting.coverageLambda is not supported.");
+  }
+  if (!Object.hasOwn(budgetTcr, "budgetSpendPolicy")) {
+    throw new Error("deployParams.budgetTCR.budgetSpendPolicy is required.");
+  }
+
+  assertBytes32Hex(
+    success.successOracleSpecHash,
+    "deployParams.success.successOracleSpecHash"
+  );
+  assertBytes32Hex(
+    success.successAssertionPolicyHash,
+    "deployParams.success.successAssertionPolicyHash"
+  );
 }
 
 async function tryDecodeGoalDeployment(params: {
   deps: Pick<CliDeps, "env">;
   network: string;
   txHash: string;
-  goalFactoryAbi: Abi;
 }): Promise<{ event: Record<string, unknown> | null; decodeError?: string }> {
   const normalizedNetwork = params.network.trim().toLowerCase();
   if (normalizedNetwork !== "base") {
@@ -164,9 +149,10 @@ async function tryDecodeGoalDeployment(params: {
     const receipt = await client.getTransactionReceipt({
       hash: params.txHash as Hex,
     });
+    const event = decodeGoalDeployedEvent(receipt.logs as unknown[]);
 
     return {
-      event: parseGoalDeploymentLog(params.goalFactoryAbi, receipt.logs as unknown as Record<string, unknown>[]),
+      event: event ? serializeGoalDeployedEvent(event) : null,
     };
   } catch (error) {
     return {
@@ -196,7 +182,8 @@ async function resolveGoalDeployParams(
   if (!parsed) {
     throw new Error(`${GOAL_CREATE_USAGE}\nGoal deploy params are required.`);
   }
-  return extractDeployParams(parsed);
+  assertCurrentGoalFactoryDeployShape(parsed);
+  return parsed;
 }
 
 export async function executeGoalInspectCommand(
@@ -222,38 +209,23 @@ export async function executeGoalCreateCommand(
   input: GoalCreateCommandInput,
   deps: CliDeps
 ): Promise<GoalCreateCommandOutput> {
-  if (!input.factory) {
-    throw new Error(GOAL_CREATE_USAGE);
-  }
-
-  const goalFactoryAddress = normalizeEvmAddress(input.factory, "--factory");
-  const goalFactoryAbi = goalFactoryAbiFromWire as unknown as Abi;
-  const deployParams = await resolveGoalDeployParams(input, deps);
-  let data: Hex;
-  try {
-    data = encodeFunctionData({
-      abi: goalFactoryAbi,
-      functionName: "deployGoal",
-      args: [deployParams],
-    });
-  } catch (error) {
-    throw new Error(
-      `Goal deploy params are invalid for GoalFactory.deployGoal: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
   const network = resolveNetwork(input.network, deps);
+  const deployParams = await resolveGoalDeployParams(input, deps);
+  const factoryAddress =
+    input.factory === undefined ? undefined : normalizeEvmAddress(input.factory, "--factory");
+  const goalCreateTx = buildGoalCreateTransaction({
+    deployParams,
+    factoryAddress,
+  });
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
   const requestBody = {
     kind: "tx",
     network,
     agentKey,
-    to: goalFactoryAddress,
-    data,
+    to: goalCreateTx.to,
+    data: goalCreateTx.data,
     valueEth: "0",
   };
 
@@ -267,7 +239,7 @@ export async function executeGoalCreateCommand(
         path: "/api/cli/exec",
         body: requestBody,
       },
-      goalFactory: getAddress(goalFactoryAddress).toLowerCase(),
+      goalFactory: getAddress(goalCreateTx.to).toLowerCase(),
       network,
     } as GoalCreateCommandOutput;
   }
@@ -283,9 +255,9 @@ export async function executeGoalCreateCommand(
           agentKey,
           privateKeyHex,
           network,
-          to: goalFactoryAddress,
+          to: goalCreateTx.to,
           valueEth: "0",
-          data,
+          data: goalCreateTx.data,
           idempotencyKey,
         });
       } catch (error) {
@@ -309,7 +281,7 @@ export async function executeGoalCreateCommand(
   });
 
   const output = withIdempotencyKey(idempotencyKey, response) as GoalCreateCommandOutput;
-  output.goalFactory = getAddress(goalFactoryAddress).toLowerCase();
+  output.goalFactory = getAddress(goalCreateTx.to).toLowerCase();
   output.network = network;
 
   const responseRecord = asRecord(response);
@@ -322,7 +294,6 @@ export async function executeGoalCreateCommand(
     deps,
     network,
     txHash,
-    goalFactoryAbi,
   });
   if (decoded.event) {
     output.goalDeployment = decoded.event;

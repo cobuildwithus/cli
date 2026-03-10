@@ -10,7 +10,7 @@ Usage:
   cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
-  cli goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]
+  cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -41,7 +41,7 @@ Examples:
   cli farcaster post --text "Ship update"
   cli farcaster post --text "Replying on thread" --reply-to 123:0x1111111111111111111111111111111111111111
   cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once
-  cli goal create --factory 0x000000000000000000000000000000000000dEaD --params-file ./goal-deploy.json --network base
+  cli goal create --params-file ./goal-deploy.json --network base
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will

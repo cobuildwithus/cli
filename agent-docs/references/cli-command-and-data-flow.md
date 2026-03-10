@@ -104,13 +104,14 @@
 
 ## Goal Create Flow
 
-1. Parse `goal create` options (`--factory`, exactly one params source, optional `--network`, `--agent`, `--idempotency-key`).
-2. Parse JSON params and extract GoalFactory `DeployParams` payload.
-3. Encode `deployGoal` calldata using GoalFactory ABI exported by `@cobuild/wire`.
-4. Execute transaction through existing wallet split:
+1. Parse `goal create` options (optional `--factory`, exactly one params source, optional `--network`, `--agent`, `--idempotency-key`).
+2. Parse JSON params and hand the raw payload to shared `@cobuild/wire` goal-create normalization/build helpers.
+3. Default to the canonical Base GoalFactory from `@cobuild/wire` unless `--factory` overrides it.
+4. Encode `deployGoal` calldata using the shared `@cobuild/wire` transaction builder.
+5. Execute transaction through existing wallet split:
    - hosted mode: POST `/api/cli/exec` with `kind: tx`
    - local mode: execute local wallet tx path
-5. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed`.
+6. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed` through shared wire decoders.
 
 ## Indexed Protocol Inspect Flow
 

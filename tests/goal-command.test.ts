@@ -1,7 +1,13 @@
 import { createServer } from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeAbiParameters, encodeEventTopics, type Hex } from "viem";
+import {
+  buildGoalCreateTransaction,
+  goalFactoryAbi,
+  goalFactoryAddress,
+} from "@cobuild/wire";
 import { runCli } from "../src/cli.js";
+import { executeGoalCreateCommand } from "../src/commands/goal.js";
 import { createHarness } from "./helpers.js";
 
 const localExecMocks = vi.hoisted(() => ({
@@ -18,161 +24,20 @@ vi.mock("../src/wallet/local-exec.js", async () => {
   };
 });
 
-vi.mock("@cobuild/wire", async () => {
-  const actual = await vi.importActual<typeof import("@cobuild/wire")>("@cobuild/wire");
-  const goalFactoryAbi = [
-    {
-      type: "event",
-      name: "GoalDeployed",
-      anonymous: false,
-      inputs: [
-        { indexed: true, name: "goal", type: "address" },
-        { indexed: false, name: "checkpoints", type: "uint256[]" },
-      ],
-    },
-    {
-      type: "function",
-      name: "deployGoal",
-      stateMutability: "nonpayable",
-      inputs: [
-        {
-          name: "p",
-          type: "tuple",
-          components: [
-            {
-              name: "revnet",
-              type: "tuple",
-              components: [
-                { name: "owner", type: "address" },
-                { name: "name", type: "string" },
-                { name: "ticker", type: "string" },
-                { name: "uri", type: "string" },
-                { name: "initialIssuance", type: "uint112" },
-                { name: "cashOutTaxRate", type: "uint16" },
-                { name: "reservedPercent", type: "uint16" },
-                { name: "durationSeconds", type: "uint32" },
-              ],
-            },
-            {
-              name: "timing",
-              type: "tuple",
-              components: [
-                { name: "minRaise", type: "uint256" },
-                { name: "minRaiseDurationSeconds", type: "uint32" },
-              ],
-            },
-            {
-              name: "success",
-              type: "tuple",
-              components: [
-                { name: "successResolver", type: "address" },
-                { name: "successAssertionLiveness", type: "uint64" },
-                { name: "successAssertionBond", type: "uint256" },
-                { name: "successOracleSpecHash", type: "bytes32" },
-                { name: "successAssertionPolicyHash", type: "bytes32" },
-              ],
-            },
-            {
-              name: "flowMetadata",
-              type: "tuple",
-              components: [
-                { name: "title", type: "string" },
-                { name: "description", type: "string" },
-                { name: "image", type: "string" },
-                { name: "tagline", type: "string" },
-                { name: "url", type: "string" },
-              ],
-            },
-            {
-              name: "underwriting",
-              type: "tuple",
-              components: [
-                { name: "coverageLambda", type: "uint256" },
-                { name: "budgetPremiumPpm", type: "uint32" },
-                { name: "budgetSlashPpm", type: "uint32" },
-              ],
-            },
-            {
-              name: "budgetTCR",
-              type: "tuple",
-              components: [
-                { name: "allocationMechanismAdmin", type: "address" },
-                { name: "invalidRoundRewardsSink", type: "address" },
-                { name: "submissionDepositStrategy", type: "address" },
-                { name: "submissionBaseDeposit", type: "uint256" },
-                { name: "removalBaseDeposit", type: "uint256" },
-                { name: "submissionChallengeBaseDeposit", type: "uint256" },
-                { name: "removalChallengeBaseDeposit", type: "uint256" },
-                { name: "registrationMetaEvidence", type: "string" },
-                { name: "clearingMetaEvidence", type: "string" },
-                { name: "challengePeriodDuration", type: "uint256" },
-                { name: "arbitratorExtraData", type: "bytes" },
-                {
-                  name: "budgetBounds",
-                  type: "tuple",
-                  components: [
-                    { name: "minFundingLeadTime", type: "uint64" },
-                    { name: "maxFundingHorizon", type: "uint64" },
-                    { name: "minExecutionDuration", type: "uint64" },
-                    { name: "maxExecutionDuration", type: "uint64" },
-                    { name: "minActivationThreshold", type: "uint256" },
-                    { name: "maxActivationThreshold", type: "uint256" },
-                    { name: "maxRunwayCap", type: "uint256" },
-                  ],
-                },
-                {
-                  name: "oracleBounds",
-                  type: "tuple",
-                  components: [
-                    { name: "liveness", type: "uint64" },
-                    { name: "bondAmount", type: "uint256" },
-                  ],
-                },
-                { name: "budgetSuccessResolver", type: "address" },
-                {
-                  name: "arbitratorParams",
-                  type: "tuple",
-                  components: [
-                    { name: "votingPeriod", type: "uint256" },
-                    { name: "votingDelay", type: "uint256" },
-                    { name: "revealPeriod", type: "uint256" },
-                    { name: "arbitrationCost", type: "uint256" },
-                    { name: "wrongOrMissedSlashBps", type: "uint256" },
-                    { name: "slashCallerBountyBps", type: "uint256" },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      outputs: [],
-    },
-  ];
-  return {
-    ...actual,
-    goalFactoryAbi,
-  };
-});
-
-import { executeGoalCreateCommand } from "../src/commands/goal.js";
-
 const EXPLICIT_UUID = "75d6e51f-4f27-4f17-b32f-4708fdb0f3be";
 const GOAL_FACTORY = "0x000000000000000000000000000000000000dEaD";
-const GOAL_DEPLOYED_EVENT = {
-  type: "event",
-  name: "GoalDeployed",
-  anonymous: false,
-  inputs: [
-    { indexed: true, name: "goal", type: "address" },
-    { indexed: false, name: "checkpoints", type: "uint256[]" },
-  ],
-} as const;
+const CANONICAL_GOAL_FACTORY = goalFactoryAddress.toLowerCase();
+const GOAL_DEPLOYED_EVENT = goalFactoryAbi.find(
+  (entry) => entry.type === "event" && entry.name === "GoalDeployed"
+);
+
+if (!GOAL_DEPLOYED_EVENT || GOAL_DEPLOYED_EVENT.type !== "event") {
+  throw new Error("GoalDeployed ABI is missing.");
+}
 
 function buildDeployParams(): Record<string, unknown> {
   return {
     revnet: {
-      owner: "0x00000000000000000000000000000000000000aa",
       name: "Goal",
       ticker: "GOAL",
       uri: "ipfs://goal",
@@ -200,7 +65,6 @@ function buildDeployParams(): Record<string, unknown> {
       url: "https://example.com",
     },
     underwriting: {
-      coverageLambda: "0",
       budgetPremiumPpm: "0",
       budgetSlashPpm: "0",
     },
@@ -230,6 +94,7 @@ function buildDeployParams(): Record<string, unknown> {
         bondAmount: "1",
       },
       budgetSuccessResolver: "0x00000000000000000000000000000000000000bb",
+      budgetSpendPolicy: "0x00000000000000000000000000000000000000cc",
       arbitratorParams: {
         votingPeriod: "3600",
         votingDelay: "1",
@@ -239,6 +104,7 @@ function buildDeployParams(): Record<string, unknown> {
         slashCallerBountyBps: "100",
       },
     },
+    goalSpendPolicy: "0x00000000000000000000000000000000000000dd",
   };
 }
 
@@ -418,6 +284,10 @@ describe("goal create command", () => {
     });
 
     const body = JSON.parse(String(init?.body));
+    const expectedTx = buildGoalCreateTransaction({
+      deployParams: buildDeployParams(),
+      factoryAddress: GOAL_FACTORY,
+    });
     expect(body).toMatchObject({
       kind: "tx",
       network: "base",
@@ -425,13 +295,80 @@ describe("goal create command", () => {
       to: GOAL_FACTORY.toLowerCase(),
       valueEth: "0",
     });
-    expect(body.data).toMatch(/^0x9cdeea05/i);
+    expect(body.data).toBe(expectedTx.data);
 
     const output = JSON.parse(harness.outputs.at(-1) ?? "{}");
     expect(output).toMatchObject({
       ok: true,
       idempotencyKey: EXPLICIT_UUID,
       goalFactory: GOAL_FACTORY.toLowerCase(),
+      network: "base",
+    });
+  });
+
+  it("defaults to the canonical Base GoalFactory when --factory is omitted", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true }),
+      }),
+    });
+
+    const result = await executeGoalCreateCommand(
+      {
+        paramsJson: JSON.stringify(buildDeployParams()),
+      },
+      harness.deps
+    );
+
+    const [input, init] = harness.fetchMock.mock.calls[0];
+    expect(String(input)).toBe("https://api.example/api/cli/exec");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      to: CANONICAL_GOAL_FACTORY,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      goalFactory: CANONICAL_GOAL_FACTORY,
+      network: "base",
+    });
+  });
+
+  it("defaults to the canonical Base GoalFactory for local execution when --factory is omitted", async () => {
+    const harness = createHarness({
+      config: {
+        agent: "default",
+      },
+    });
+    setLocalWalletConfig(harness);
+    localExecMocks.executeLocalTxMock.mockResolvedValue({
+      ok: true,
+      kind: "tx",
+    });
+
+    const result = await executeGoalCreateCommand(
+      {
+        paramsJson: JSON.stringify(buildDeployParams()),
+      },
+      harness.deps
+    );
+
+    const expectedTx = buildGoalCreateTransaction({
+      deployParams: buildDeployParams(),
+    });
+    expect(localExecMocks.executeLocalTxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: CANONICAL_GOAL_FACTORY,
+        data: expectedTx.data,
+      })
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      goalFactory: CANONICAL_GOAL_FACTORY,
       network: "base",
     });
   });
@@ -466,10 +403,14 @@ describe("goal create command", () => {
         valueEth: "0",
       })
     );
+    const expectedTx = buildGoalCreateTransaction({
+      deployParams: buildDeployParams(),
+      factoryAddress: GOAL_FACTORY,
+    });
     const localInput = localExecMocks.executeLocalTxMock.mock.calls[0]?.[0] as {
       data: string;
     };
-    expect(localInput.data).toMatch(/^0x9cdeea05/i);
+    expect(localInput.data).toBe(expectedTx.data);
     expect(harness.fetchMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       ok: true,
@@ -489,15 +430,7 @@ describe("goal create command", () => {
     });
 
     await runCli(
-      [
-        "goal",
-        "create",
-        "--factory",
-        GOAL_FACTORY,
-        "--params-json",
-        JSON.stringify(buildDeployParams()),
-        "--dry-run",
-      ],
+      ["goal", "create", "--params-json", JSON.stringify(buildDeployParams()), "--dry-run"],
       harness.deps
     );
 
@@ -507,7 +440,7 @@ describe("goal create command", () => {
       ok: true,
       dryRun: true,
       idempotencyKey: "8e03978e-40d5-43e8-bc93-6894a57f9324",
-      goalFactory: GOAL_FACTORY.toLowerCase(),
+      goalFactory: CANONICAL_GOAL_FACTORY,
       network: "base",
       request: {
         method: "POST",
@@ -516,7 +449,7 @@ describe("goal create command", () => {
           kind: "tx",
           network: "base",
           agentKey: "ops",
-          to: GOAL_FACTORY.toLowerCase(),
+          to: CANONICAL_GOAL_FACTORY,
           valueEth: "0",
         },
       },
@@ -543,19 +476,6 @@ describe("goal create command", () => {
     ).rejects.toThrow("Provide only one of --params-file, --params-json, or --params-stdin.");
   });
 
-  it("rejects missing factory", async () => {
-    const harness = createHarness();
-
-    await expect(
-      executeGoalCreateCommand(
-        {
-          paramsJson: JSON.stringify(buildDeployParams()),
-        },
-        harness.deps
-      )
-    ).rejects.toThrow("Usage: cli goal create --factory");
-  });
-
   it("rejects missing goal params", async () => {
     const harness = createHarness();
 
@@ -567,6 +487,47 @@ describe("goal create command", () => {
         harness.deps
       )
     ).rejects.toThrow("Goal deploy params are required.");
+  });
+
+  it("rejects empty explicit factory input instead of defaulting to the canonical factory", async () => {
+    const harness = createHarness();
+
+    await expect(
+      executeGoalCreateCommand(
+        {
+          factory: "",
+          paramsJson: JSON.stringify(buildDeployParams()),
+        },
+        harness.deps
+      )
+    ).rejects.toThrow("--factory must be a 20-byte hex address");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty --factory CLI value before dispatch", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      runCli(
+        [
+          "goal",
+          "create",
+          "--factory",
+          "",
+          "--params-json",
+          JSON.stringify(buildDeployParams()),
+        ],
+        harness.deps
+      )
+    ).rejects.toThrow("--factory must be a 20-byte hex address");
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
 
   it("reads deploy params from --params-file", async () => {
@@ -733,8 +694,40 @@ describe("goal create command", () => {
         harness.deps
       )
     ).rejects.toThrow(
-      "Goal deploy params must include keys: revnet, timing, success, flowMetadata, underwriting, budgetTCR."
+      "Goal deploy params must include keys: revnet, timing, success, flowMetadata, underwriting, budgetTCR, goalSpendPolicy."
     );
+  });
+
+  it("rejects stale deploy param fields that no longer exist on GoalFactory", async () => {
+    const harness = createHarness();
+    const invalid = buildDeployParams();
+    (invalid.underwriting as Record<string, unknown>).coverageLambda = "0";
+
+    await expect(
+      executeGoalCreateCommand(
+        {
+          factory: GOAL_FACTORY,
+          paramsJson: JSON.stringify(invalid),
+        },
+        harness.deps
+      )
+    ).rejects.toThrow("deployParams.underwriting.coverageLambda is not supported");
+  });
+
+  it("rejects deploy params that omit the now-required budget spend policy", async () => {
+    const harness = createHarness();
+    const invalid = buildDeployParams();
+    delete (invalid.budgetTCR as Record<string, unknown>).budgetSpendPolicy;
+
+    await expect(
+      executeGoalCreateCommand(
+        {
+          factory: GOAL_FACTORY,
+          paramsJson: JSON.stringify(invalid),
+        },
+        harness.deps
+      )
+    ).rejects.toThrow("deployParams.budgetTCR.budgetSpendPolicy is required");
   });
 
   it("rejects invalid generated idempotency keys before dispatch", async () => {
@@ -759,7 +752,7 @@ describe("goal create command", () => {
     expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid deploy param values for ABI encoding", async () => {
+  it("rejects invalid deploy param values during shared wire normalization", async () => {
     const harness = createHarness();
     const invalid = buildDeployParams();
     (invalid.success as Record<string, unknown>).successOracleSpecHash = "0x1234";
@@ -772,7 +765,7 @@ describe("goal create command", () => {
         },
         harness.deps
       )
-    ).rejects.toThrow("Goal deploy params are invalid for GoalFactory.deployGoal");
+    ).rejects.toThrow("deployParams.success.successOracleSpecHash");
   });
 
   it("includes idempotency context when hosted execution fails", async () => {
@@ -903,12 +896,29 @@ describe("goal create command", () => {
 
   it("decodes GoalDeployed event args via real viem JSON-RPC client", async () => {
     const txHash = `0x${"3".repeat(64)}` as Hex;
-    const goalAddress = "0x00000000000000000000000000000000000000bb";
+    const deployedStack = {
+      goalRevnetId: 137n,
+      goalToken: "0x1111111111111111111111111111111111111111",
+      goalSuperToken: "0x1212121212121212121212121212121212121212",
+      goalTreasury: "0x1414141414141414141414141414141414141414",
+      goalFlow: "0x1515151515151515151515151515151515151515",
+      goalFlowAllocationLedgerPipeline: "0x1616161616161616161616161616161616161616",
+      stakeVault: "0x1717171717171717171717171717171717171717",
+      budgetStakeLedger: "0x1818181818181818181818181818181818181818",
+      splitHook: "0x1919191919191919191919191919191919191919",
+      jurorSlasherRouter: "0x1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+      underwriterSlasherRouter: "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+      successResolver: "0x1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c",
+      budgetTCR: "0x1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d",
+      arbitrator: "0x1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+    } as const;
+
     const topicValues = encodeEventTopics({
       abi: [GOAL_DEPLOYED_EVENT],
       eventName: "GoalDeployed",
       args: {
-        goal: goalAddress,
+        caller: "0x00000000000000000000000000000000000000aa",
+        goalRevnetId: 137n,
       },
     });
     const topics = topicValues.map((topic) => {
@@ -918,8 +928,8 @@ describe("goal create command", () => {
       return topic;
     });
     const data = encodeAbiParameters(
-      [{ name: "checkpoints", type: "uint256[]" }],
-      [[1n, 2n, 3n]]
+      GOAL_DEPLOYED_EVENT.inputs.filter((input) => !input.indexed),
+      [deployedStack]
     );
 
     await withRpcServer(
@@ -964,8 +974,25 @@ describe("goal create command", () => {
         );
 
         expect(result.goalDeployment).toEqual({
-          goal: goalAddress.toLowerCase(),
-          checkpoints: ["1", "2", "3"],
+          caller: "0x00000000000000000000000000000000000000aa",
+          goalRevnetId: "137",
+          stack: {
+            goalRevnetId: "137",
+            goalToken: deployedStack.goalToken.toLowerCase(),
+            goalSuperToken: deployedStack.goalSuperToken.toLowerCase(),
+            goalTreasury: deployedStack.goalTreasury.toLowerCase(),
+            goalFlow: deployedStack.goalFlow.toLowerCase(),
+            goalFlowAllocationLedgerPipeline:
+              deployedStack.goalFlowAllocationLedgerPipeline.toLowerCase(),
+            stakeVault: deployedStack.stakeVault.toLowerCase(),
+            budgetStakeLedger: deployedStack.budgetStakeLedger.toLowerCase(),
+            splitHook: deployedStack.splitHook.toLowerCase(),
+            jurorSlasherRouter: deployedStack.jurorSlasherRouter.toLowerCase(),
+            underwriterSlasherRouter: deployedStack.underwriterSlasherRouter.toLowerCase(),
+            successResolver: deployedStack.successResolver.toLowerCase(),
+            budgetTCR: deployedStack.budgetTCR.toLowerCase(),
+            arbitrator: deployedStack.arbitrator.toLowerCase(),
+          },
         });
         expect(result.goalDeploymentDecodeError).toBeUndefined();
       }
