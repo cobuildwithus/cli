@@ -821,7 +821,7 @@ describe("goal create command", () => {
     ).rejects.toThrow(`local tx failed (idempotency key: ${EXPLICIT_UUID})`);
   });
 
-  it("returns decode warning for unsupported network", async () => {
+  it("rejects unsupported networks before dispatch", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -835,16 +835,17 @@ describe("goal create command", () => {
       }),
     });
 
-    const result = await executeGoalCreateCommand(
-      {
-        factory: GOAL_FACTORY,
-        paramsJson: JSON.stringify(buildDeployParams()),
-        network: "optimism",
-      },
-      harness.deps
-    );
-
-    expect(result.goalDeploymentDecodeError).toContain("unsupported network");
+    await expect(
+      executeGoalCreateCommand(
+        {
+          factory: GOAL_FACTORY,
+          paramsJson: JSON.stringify(buildDeployParams()),
+          network: "optimism",
+        },
+        harness.deps
+      )
+    ).rejects.toThrow('Unsupported network "optimism". Only "base" is supported.');
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns decode warning for invalid tx hash", async () => {
@@ -885,14 +886,14 @@ describe("goal create command", () => {
       }),
     });
     harness.deps.env = {
-      COBUILD_CLI_BASE_SEPOLIA_RPC_URL: "http://127.0.0.1:1",
+      COBUILD_CLI_BASE_RPC_URL: "http://127.0.0.1:1",
     };
 
     const result = await executeGoalCreateCommand(
       {
         factory: GOAL_FACTORY,
         paramsJson: JSON.stringify(buildDeployParams()),
-        network: "base-sepolia",
+        network: "base",
       },
       harness.deps
     );

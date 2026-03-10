@@ -1,4 +1,4 @@
-import { base, baseSepolia } from "viem/chains";
+import { base } from "viem/chains";
 import {
   createPublicClient,
   encodeFunctionData,
@@ -13,6 +13,7 @@ import { goalFactoryAbi as goalFactoryAbiFromWire } from "@cobuild/wire";
 import { readConfig } from "../config.js";
 import { asRecord, apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
+import { normalizeKeyedRemoteToolResponse } from "./remote-tool.js";
 import {
   buildIdempotencyHeaders,
   normalizeEvmAddress,
@@ -23,11 +24,14 @@ import {
   throwWithIdempotencyKey,
   withIdempotencyKey,
 } from "./shared.js";
+import { executeCanonicalToolOnly } from "./tool-execution.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
 import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
 
 const GOAL_CREATE_USAGE =
   "Usage: cli goal create --factory <address> [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
+const GOAL_INSPECT_USAGE = "Usage: cli goal inspect <identifier>";
+const GOAL_CANONICAL_TOOL_NAMES = ["get-goal", "getGoal", "goal.inspect"];
 const GOAL_DEPLOY_REQUIRED_KEYS = [
   "revnet",
   "timing",
@@ -38,7 +42,6 @@ const GOAL_DEPLOY_REQUIRED_KEYS = [
 ] as const;
 
 const DEFAULT_BASE_RPC_URL = "https://mainnet.base.org";
-const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 
 export interface GoalCreateCommandInput {
   factory?: string;
@@ -53,6 +56,18 @@ export interface GoalCreateCommandInput {
 
 export interface GoalCreateCommandOutput extends Record<string, unknown> {
   idempotencyKey: string;
+}
+
+export interface GoalInspectCommandInput {
+  identifier?: string;
+}
+
+export interface GoalInspectCommandOutput extends Record<string, unknown> {
+  goal: unknown;
+  ok?: boolean;
+  untrusted: true;
+  source: "remote_tool";
+  warnings: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,15 +98,9 @@ function extractDeployParams(raw: Record<string, unknown>): Record<string, unkno
   );
 }
 
-function resolveRpcUrlForNetwork(
-  network: "base" | "base-sepolia",
-  deps: Pick<CliDeps, "env">
-): string {
+function resolveRpcUrlForNetwork(deps: Pick<CliDeps, "env">): string {
   const env = deps.env ?? process.env;
-  if (network === "base") {
-    return env.COBUILD_CLI_BASE_RPC_URL?.trim() || DEFAULT_BASE_RPC_URL;
-  }
-  return env.COBUILD_CLI_BASE_SEPOLIA_RPC_URL?.trim() || DEFAULT_BASE_SEPOLIA_RPC_URL;
+  return env.COBUILD_CLI_BASE_RPC_URL?.trim() || DEFAULT_BASE_RPC_URL;
 }
 
 function parseGoalDeploymentLog(
@@ -128,7 +137,7 @@ async function tryDecodeGoalDeployment(params: {
   goalFactoryAbi: Abi;
 }): Promise<{ event: Record<string, unknown> | null; decodeError?: string }> {
   const normalizedNetwork = params.network.trim().toLowerCase();
-  if (normalizedNetwork !== "base" && normalizedNetwork !== "base-sepolia") {
+  if (normalizedNetwork !== "base") {
     return {
       event: null,
       decodeError: `Skipping receipt decode for unsupported network "${params.network}".`,
@@ -142,12 +151,11 @@ async function tryDecodeGoalDeployment(params: {
     };
   }
 
-  const chain = normalizedNetwork === "base" ? base : baseSepolia;
-  const rpcUrl = resolveRpcUrlForNetwork(normalizedNetwork, params.deps);
+  const rpcUrl = resolveRpcUrlForNetwork(params.deps);
 
   try {
     const client = createPublicClient({
-      chain,
+      chain: base,
       transport: http(rpcUrl, {
         timeout: 20_000,
         retryCount: 1,
@@ -189,6 +197,25 @@ async function resolveGoalDeployParams(
     throw new Error(`${GOAL_CREATE_USAGE}\nGoal deploy params are required.`);
   }
   return extractDeployParams(parsed);
+}
+
+export async function executeGoalInspectCommand(
+  input: GoalInspectCommandInput,
+  deps: CliDeps
+): Promise<GoalInspectCommandOutput> {
+  const identifier = input.identifier?.trim() ?? "";
+  if (!identifier) {
+    throw new Error(GOAL_INSPECT_USAGE);
+  }
+
+  const response = await executeCanonicalToolOnly(deps, {
+    canonicalToolNames: GOAL_CANONICAL_TOOL_NAMES,
+    input: {
+      identifier,
+    },
+  });
+
+  return normalizeKeyedRemoteToolResponse(response, "goal") as GoalInspectCommandOutput;
 }
 
 export async function executeGoalCreateCommand(

@@ -43,7 +43,7 @@ describe("tx network defaults", () => {
     });
   });
 
-  it("uses explicit --network over COBUILD_CLI_NETWORK", async () => {
+  it("rejects unsupported explicit networks after the Base-only cutover", async () => {
     const harness = createHarness({
       config: {
         url: "https://api.example",
@@ -55,7 +55,9 @@ describe("tx network defaults", () => {
     process.env.COBUILD_CLI_NETWORK = "base";
 
     try {
-      await runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--network", "base-sepolia"], harness.deps);
+      await expect(
+        runCli(["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--network", "base-sepolia"], harness.deps)
+      ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
     } finally {
       if (previous === undefined) {
         delete process.env.COBUILD_CLI_NETWORK;
@@ -63,11 +65,7 @@ describe("tx network defaults", () => {
         process.env.COBUILD_CLI_NETWORK = previous;
       }
     }
-
-    const [, init] = harness.fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      network: "base-sepolia",
-    });
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses COBUILD_CLI_NETWORK when --network is not provided", async () => {
@@ -123,7 +121,7 @@ describe("tx network defaults", () => {
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      network: "base-mainnet",
+      network: "base",
     });
   });
 });

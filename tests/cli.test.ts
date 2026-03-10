@@ -409,7 +409,7 @@ describe("cli", () => {
         "--wallet-mode",
         "hosted",
         "--network",
-        "base-sepolia",
+        "base",
       ],
       harness.deps
     );
@@ -418,7 +418,7 @@ describe("cli", () => {
     expect(String(input)).toBe("https://api.example/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
       agentKey: "default",
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
     });
 
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
@@ -429,7 +429,7 @@ describe("cli", () => {
         agent: "default",
         path: harness.configFile,
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
       walletConfig: expectedHostedWalletConfig(null),
       next: [
@@ -510,7 +510,7 @@ describe("cli", () => {
         "--wallet-mode",
         "hosted",
         "--network",
-        "base-sepolia",
+        "base",
         "--json",
       ],
       harness.deps
@@ -525,7 +525,7 @@ describe("cli", () => {
         agent: "default",
         path: harness.configFile,
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
       walletConfig: expectedHostedWalletConfig(null),
       next: [
@@ -551,7 +551,7 @@ describe("cli", () => {
         "--wallet-mode",
         "hosted",
         "--network",
-        "base-sepolia",
+        "base",
       ],
       harness.deps
     );
@@ -564,7 +564,7 @@ describe("cli", () => {
         agent: "default",
         path: harness.configFile,
       },
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       wallet: { ok: true, address: "0xabc" },
       walletConfig: expectedHostedWalletConfig(null),
       next: [
@@ -640,7 +640,7 @@ describe("cli", () => {
           "--wallet-mode",
           "hosted",
           "--network",
-          "base-sepolia",
+          "base",
         ],
         harness.deps
       )
@@ -672,7 +672,7 @@ describe("cli", () => {
           "--wallet-mode",
           "hosted",
           "--network",
-          "base-sepolia",
+          "base",
         ],
         harness.deps
       )
@@ -821,12 +821,12 @@ describe("cli", () => {
       fetchResponder: createJsonResponder({ ok: true, address: "0xabc" }),
     });
 
-    await runCli(["wallet", "--network", "base-sepolia"], harness.deps);
+    await runCli(["wallet", "--network", "base"], harness.deps);
 
     const [input, init] = harness.fetchMock.mock.calls[0];
     expect(String(input)).toBe("https://api.example/api/cli/wallet");
     expect(JSON.parse(String(init?.body))).toEqual({
-      defaultNetwork: "base-sepolia",
+      defaultNetwork: "base",
       agentKey: "stored-agent",
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
@@ -864,6 +864,7 @@ describe("cli", () => {
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
+      defaultNetwork: "base",
       agentKey: "override",
     });
   });
@@ -1490,7 +1491,7 @@ describe("cli", () => {
         data: { walletAddress: "0xenv" },
       }),
     });
-    harness.deps.env = { COBUILD_CLI_NETWORK: "base-sepolia" };
+    harness.deps.env = { COBUILD_CLI_NETWORK: "base-mainnet" };
 
     await runCli(["tools", "get-wallet-balances"], harness.deps);
     const [, init] = findFetchCallByUrl(
@@ -1501,7 +1502,7 @@ describe("cli", () => {
       name: "get-wallet-balances",
       input: {
         agentKey: "default",
-        network: "base-sepolia",
+        network: "base",
       },
     });
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
@@ -1525,7 +1526,7 @@ describe("cli", () => {
     });
 
     await runCli(
-      ["tools", "get-wallet-balances", "--agent", "override", "--network", "base-sepolia"],
+      ["tools", "get-wallet-balances", "--agent", "override", "--network", "base-mainnet"],
       harness.deps
     );
     const [, init] = findFetchCallByUrl(
@@ -1536,9 +1537,83 @@ describe("cli", () => {
       name: "get-wallet-balances",
       input: {
         agentKey: "override",
-        network: "base-sepolia",
+        network: "base",
       },
     });
+  });
+
+  it("goal inspect and budget inspect execute canonical tool routes and wrap untrusted output", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/v1/tools")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                tools: [{ name: "get-goal" }, { name: "get-budget" }],
+              }),
+          };
+        }
+        if (url.endsWith("/v1/tool-executions")) {
+          const body = JSON.parse(String(init?.body));
+          if (body.name === "get-goal") {
+            expect(body.input).toEqual({ identifier: "alpha.cobuild.eth" });
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ goalAddress: "0xgoal" }),
+            };
+          }
+          expect(body).toEqual({
+            name: "get-budget",
+            input: { identifier: "0xrecipientid1" },
+          });
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ budgetAddress: "0xbudget" }),
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      },
+    });
+
+    await runCli(["goal", "inspect", "alpha.cobuild.eth"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      goal: { goalAddress: "0xgoal" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+
+    await runCli(["budget", "inspect", "0xrecipientid1"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      budget: { budgetAddress: "0xbudget" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+  });
+
+  it("rejects Base Sepolia for wallet and wallet-balance reads after the cutover", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(runCli(["wallet", "--network", "base-sepolia"], harness.deps)).rejects.toThrow(
+      'Unsupported network "base-sepolia". Only "base" is supported.'
+    );
+    await expect(
+      runCli(["tools", "get-wallet-balances", "--network", "base-sepolia"], harness.deps)
+    ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("tools notifications list posts pagination and filter payload", async () => {
@@ -2637,6 +2712,7 @@ describe("cli", () => {
 
     const [, init] = harness.fetchMock.mock.calls[0];
     expect(JSON.parse(String(init?.body))).toEqual({
+      defaultNetwork: "base",
       agentKey: "default",
     });
   });

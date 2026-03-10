@@ -11,7 +11,7 @@ import {
   parseEther,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base, baseSepolia } from "viem/chains";
+import { base } from "viem/chains";
 import {
   defaultRpcUrlForNetwork,
   normalizeCliWalletNetwork,
@@ -46,10 +46,17 @@ type LocalExecFsDeps = Pick<CliDeps, "fs" | "homedir">;
 
 const LOCAL_EXEC_RECEIPT_VERSION = 1;
 
-const BASESCAN_BY_NETWORK: Record<CliWalletNetwork, string> = {
+const BASESCAN_BY_NETWORK: Record<"base", string> = {
   base: "https://basescan.org",
-  "base-sepolia": "https://sepolia.basescan.org",
 };
+
+function normalizeBaseOnlyLocalExecNetwork(network: string): "base" {
+  const normalized = normalizeCliWalletNetwork(network);
+  if (normalized !== "base") {
+    throw new Error(`Unsupported network "${network}". Only "base" is supported.`);
+  }
+  return normalized;
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -85,7 +92,7 @@ function isLocalExecReceipt(value: unknown): value is LocalExecReceipt {
   return (
     record.version === LOCAL_EXEC_RECEIPT_VERSION &&
     (record.kind === "transfer" || record.kind === "tx") &&
-    (record.network === "base" || record.network === "base-sepolia") &&
+    record.network === "base" &&
     typeof record.to === "string" &&
     tokenValid &&
     amountValid &&
@@ -158,7 +165,7 @@ function assertSameReceiptIntent(params: {
 
 function resolveRpcUrl(network: CliWalletNetwork, deps: Pick<CliDeps, "env">): string {
   const env = deps.env ?? process.env;
-  const envKey = network === "base" ? "COBUILD_CLI_BASE_RPC_URL" : "COBUILD_CLI_BASE_SEPOLIA_RPC_URL";
+  const envKey = "COBUILD_CLI_BASE_RPC_URL";
   const configured = env[envKey]?.trim();
   if (configured) {
     return configured;
@@ -167,10 +174,10 @@ function resolveRpcUrl(network: CliWalletNetwork, deps: Pick<CliDeps, "env">): s
 }
 
 function resolveChain(network: CliWalletNetwork) {
-  return network === "base" ? base : baseSepolia;
+  return base;
 }
 
-function explorerUrl(network: CliWalletNetwork, txHash: Hex): string {
+function explorerUrl(network: "base", txHash: Hex): string {
   return `${BASESCAN_BY_NETWORK[network]}/tx/${txHash}`;
 }
 
@@ -229,7 +236,7 @@ export async function executeLocalTransfer(params: {
   decimals?: number;
   idempotencyKey: string;
 }): Promise<Record<string, unknown>> {
-  const network = normalizeCliWalletNetwork(params.network);
+  const network = normalizeBaseOnlyLocalExecNetwork(params.network);
   const recipient = normalizeEvmAddress(params.to, "to");
   const token = normalizeCliWalletSendToken(params.token);
   const amountAtomic = parseCliWalletSendAmountAtomic({
@@ -336,7 +343,7 @@ export async function executeLocalTx(params: {
   data: string;
   idempotencyKey: string;
 }): Promise<Record<string, unknown>> {
-  const network = normalizeCliWalletNetwork(params.network);
+  const network = normalizeBaseOnlyLocalExecNetwork(params.network);
   const to = normalizeEvmAddress(params.to, "--to");
   const valueWei = parseEther(params.valueEth);
   if (valueWei < 0n) {
@@ -417,7 +424,7 @@ export function buildLocalWalletSummary(params: {
   network: string;
   privateKeyHex: HexString;
 }): Record<string, unknown> {
-  const network = normalizeCliWalletNetwork(params.network);
+  const network = normalizeBaseOnlyLocalExecNetwork(params.network);
   const account = privateKeyToAccount(params.privateKeyHex);
   return {
     ok: true,
@@ -451,4 +458,3 @@ export function formatNeedsFundingResult(params: {
     requiredEth: formatEther(params.requiredWei),
   };
 }
-

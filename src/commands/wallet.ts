@@ -53,7 +53,7 @@ export async function executeWalletCommand(input: WalletCommandInput, deps: CliD
     }),
     onHosted: async (walletConfig) => {
       const hosted = await apiPost(deps, "/api/cli/wallet", {
-        defaultNetwork: input.network,
+        defaultNetwork: network,
         agentKey,
       });
       const hostedObject = asRecord(hosted);

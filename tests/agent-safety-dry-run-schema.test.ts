@@ -176,7 +176,7 @@ describe("agent safety + dry-run + schema", () => {
           token: "usdc",
           amount: "0.75",
           to: VALID_TO,
-          network: "base-sepolia",
+          network: "base",
           decimals: 6,
           agent: "ops",
           idempotencyKey: "75d6e51f-4f27-4f17-b32f-4708fdb0f3be",
@@ -192,7 +192,7 @@ describe("agent safety + dry-run + schema", () => {
       request: {
         body: {
           kind: "transfer",
-          network: "base-sepolia",
+          network: "base",
           agentKey: "ops",
           token: "usdc",
           amount: "0.75",
@@ -217,7 +217,7 @@ describe("agent safety + dry-run + schema", () => {
           to: VALID_TO,
           data: "0xdeadbeef",
           value: "0",
-          network: "base-sepolia",
+          network: "base",
           agent: "ops",
           idempotencyKey: "75d6e51f-4f27-4f17-b32f-4708fdb0f3be",
         }),
@@ -236,7 +236,7 @@ describe("agent safety + dry-run + schema", () => {
         path: "/api/cli/exec",
         body: {
           kind: "tx",
-          network: "base-sepolia",
+          network: "base",
           agentKey: "ops",
           to: VALID_TO,
           data: "0xdeadbeef",
@@ -260,7 +260,7 @@ describe("agent safety + dry-run + schema", () => {
         token: "usdc",
         amount: "3.5",
         to: VALID_TO,
-        network: "base-sepolia",
+        network: "base",
         decimals: "6",
         agent: "from-file",
       })
@@ -273,7 +273,7 @@ describe("agent safety + dry-run + schema", () => {
       request: {
         body: {
           kind: "transfer",
-          network: "base-sepolia",
+          network: "base",
           agentKey: "from-file",
           token: "usdc",
           amount: "3.5",
@@ -606,6 +606,60 @@ describe("agent safety + dry-run + schema", () => {
         mutating: false,
         supportsDryRun: false,
         requiresAuth: true,
+      },
+    });
+
+    await runCli(["schema", "goal", "inspect"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "goal inspect",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            goal: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "budget", "inspect"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "budget inspect",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            budget: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
       },
     });
   });

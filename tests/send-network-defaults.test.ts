@@ -97,9 +97,24 @@ describe("send network defaults", () => {
       }
     }
 
-    const [, init] = harness.fetchMock.mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      network: "base-mainnet",
+    const [, normalizedInit] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(normalizedInit?.body))).toMatchObject({
+      network: "base",
     });
+  });
+
+  it("rejects explicit unsupported networks before sending", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      runCli(["send", "usdc", "1.0", VALID_TO, "--network", "base-sepolia"], harness.deps)
+    ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
+
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 });

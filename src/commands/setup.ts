@@ -10,6 +10,7 @@ import {
   normalizeTokenInput,
   readTokenFromFile,
   readTokenFromStdin,
+  resolveNetwork,
   validateAgentKey,
 } from "./shared.js";
 import { executeWalletInitCommand } from "./wallet.js";
@@ -232,12 +233,12 @@ async function runSetupCommand(
   }
 
   let networkSource: SetupValueSource = "default";
-  let defaultNetwork = "base";
+  let defaultNetwork = resolveNetwork(undefined, deps);
   if (typeof input.network === "string") {
-    defaultNetwork = input.network;
+    defaultNetwork = resolveNetwork(input.network, deps);
     networkSource = "flag";
   } else if (envNetwork) {
-    defaultNetwork = envNetwork;
+    defaultNetwork = resolveNetwork(undefined, deps);
     networkSource = "env";
   }
   let token = tokenFromOption ?? (storedToken || undefined);

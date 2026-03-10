@@ -41,13 +41,13 @@ cli mcp add
 Run:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>]
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>]
 ```
 
 For deterministic agent automation, run setup in machine mode:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] --json
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>] --json
 ```
 
 `--json` can also be placed before the command (`cli --json setup ...`) and is remapped to setup machine mode.
@@ -56,7 +56,7 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 For local developer installs, add `--link` to setup to run `pnpm link --global` and make `cli` available on PATH:
 
 ```bash
-cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] --link
+cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <network> --agent <agent> --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>] --link
 ```
 
 ## Resolution Rules
@@ -65,16 +65,16 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 
 - URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
 - Chat API URL: `--chat-api-url` -> saved config `chatApiUrl` (when interface origin is unchanged) -> fallback to CLI defaults (`https://chat-api.co.build`, or `http://localhost:4000` for loopback interface hosts).
-- Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+- Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
 - Token: exactly one of `--token|--token-file|--token-stdin` -> saved config secret ref (`auth.tokenRef`) -> interactive browser/manual flow.
 - `config set` token source: exactly one of `--token|--token-file|--token-stdin|--token-env|--token-exec|--token-ref-json`.
-- payer mode (optional): `--payer-mode` -> interactive prompt in setup when TTY is available -> default skip in non-interactive mode.
-- payer local-key source: exactly one of `--payer-private-key-stdin|--payer-private-key-file`, and only with `--payer-mode local-key`.
+- wallet mode: `--wallet-mode` -> interactive prompt in setup when TTY is available -> required in non-interactive mode.
+- wallet local-key source: exactly one of `--wallet-private-key-stdin|--wallet-private-key-file`, and only with `--wallet-mode local-key`.
 
 Runtime precedence:
 
 - Agent key: `--agent` -> saved config `agent` -> `default`.
-- `send`/`tx` network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+- `send`/`tx` network: `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
 
 ## Core Commands
 
@@ -82,6 +82,8 @@ Runtime precedence:
 cli wallet --network <network> --agent <agent>
 cli wallet payer init --agent <agent> --mode hosted|local-generate|local-key [--private-key-stdin|--private-key-file <path>] [--no-prompt]
 cli wallet payer status --agent <agent>
+cli goal inspect <identifier>
+cli budget inspect <identifier>
 cli docs <query> [--limit <n>]
 cli tools get-user <fname>
 cli tools get-cast <identifier> [--type <hash|url>]

@@ -44,14 +44,14 @@ npx @cobuild/cli --help
 
 ```bash
 # 1) Configure and bootstrap wallet access
-pnpm start -- setup --url http://localhost:3000 --network base-sepolia --agent default
-# or: pnpm start -- setup --dev --network base-sepolia --agent default
+pnpm start -- setup --url http://localhost:3000 --network base --agent default
+# or: pnpm start -- setup --dev --network base --agent default
 
 # 2) Verify config (token is masked)
 pnpm start -- config show
 
 # 3) Check wallet
-pnpm start -- wallet --network base-sepolia --agent default
+pnpm start -- wallet --network base --agent default
 ```
 
 If `cli` is on your PATH, you can drop `pnpm start --` and run `cli <command>` directly.
@@ -77,7 +77,7 @@ install-skill-from-github.py --repo <owner>/<repo> --path skills/cli
 
 1. Restart Codex after installing the skill.
 2. Confirm the skill folder exists at `${CODEX_HOME:-$HOME/.codex}/skills/cli`.
-3. Invoke with prompts like: `Use $cli to run wallet on base-sepolia`.
+3. Invoke with prompts like: `Use $cli to run wallet on base`.
 
 ## Setup Details
 
@@ -86,16 +86,16 @@ It defaults to:
 - interface URL: `https://co.build` (or `http://localhost:3000` with `--dev`)
 
 ```bash
-cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--payer-mode hosted|local-generate|local-key|skip] [--payer-private-key-stdin|--payer-private-key-file <path>] [--json] [--link]
+cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <pat>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>] [--json] [--link]
 ```
 
 - Browser approval flow:
   - Opens `/home` in your interface app and waits for one-time localhost callback approval.
   - Falls back to hidden manual token prompt only if approval fails or times out.
-- Optional wallet payer setup (same setup command):
-  - `--payer-mode hosted` uses backend wallet access for paid requests.
-  - `--payer-mode local-generate` creates and stores a local payer key.
-  - `--payer-mode local-key` uses `--payer-private-key-stdin` or `--payer-private-key-file`.
+- Optional wallet setup (same setup command):
+  - `--wallet-mode hosted` uses backend wallet access for paid requests.
+  - `--wallet-mode local-generate` creates and stores a local wallet key.
+  - `--wallet-mode local-key` uses `--wallet-private-key-stdin` or `--wallet-private-key-file`.
 - Machine output:
   - Command result payloads are emitted on stdout as JSON.
   - Setup wizard/progress/prompts are emitted on stderr so stdout remains parseable.
@@ -108,13 +108,13 @@ cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--tok
 For `setup`, values resolve in this order:
 
 1. Interface URL: `--url` -> saved config URL -> `COBUILD_CLI_URL` -> default (`https://co.build`, or `http://localhost:3000` with `--dev`).
-2. Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+2. Network: `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
 3. Token: exactly one of `--token`/`--token-file`/`--token-stdin` -> saved secret ref in config (`auth.tokenRef`) -> interactive browser approval/manual prompt.
 
 For runtime commands:
 
 - Agent key: `--agent` -> saved config `agent` -> `default`.
-- Exec network (`send`/`tx`): `--network` -> `COBUILD_CLI_NETWORK` -> `base-sepolia`.
+- Exec network (`send`/`tx`): `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
 
 ## `/v1` Route Ownership
 
@@ -169,6 +169,8 @@ cli completions zsh
 cli wallet [--network <network>] [--agent <key>]
 cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
 cli wallet payer status [--agent <key>]
+cli goal inspect <identifier>
+cli budget inspect <identifier>
 cli docs <query> [--limit <n>]
 cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
 cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
@@ -177,13 +179,15 @@ cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agen
 Examples:
 
 ```bash
-cli wallet --network base-sepolia --agent default
+cli wallet --network base --agent default
 cli wallet payer init --agent default --mode local-generate
 cli wallet payer status --agent default
+cli goal inspect alpha.cobuild.eth
+cli budget inspect 0xrecipientid1
 cli docs setup approval flow --limit 5
 cli docs -- --token-stdin
-cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base-sepolia --agent default
-cli tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base-sepolia --agent default
+cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base --agent default
+cli tx --to 0x000000000000000000000000000000000000dEaD --data 0x --value 0 --network base --agent default
 ```
 
 If your query starts with a dash (for example, `--token-stdin`), insert `--` before the query so the CLI treats it as text, not flags.

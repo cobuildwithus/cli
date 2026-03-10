@@ -292,7 +292,7 @@ describe("tools branch coverage", () => {
     });
 
     const output = await executeToolsGetWalletBalancesCommand(
-      { agent: "override", network: "base-sepolia" },
+      { agent: "override", network: "base-mainnet" },
       harness.deps
     );
     expect(output).toEqual(withUntrustedMetadata({
@@ -304,7 +304,7 @@ describe("tools branch coverage", () => {
         name: "get-wallet-balances",
         input: {
           agentKey: "override",
-          network: "base-sepolia",
+          network: "base",
         },
       },
     ]);
@@ -383,7 +383,7 @@ describe("tools branch coverage", () => {
         };
       },
     });
-    harness.deps.env = { COBUILD_CLI_NETWORK: "base-sepolia" };
+    harness.deps.env = { COBUILD_CLI_NETWORK: "base-mainnet" };
 
     const output = await executeToolsGetWalletBalancesCommand({}, harness.deps);
     expect(output).toEqual(withUntrustedMetadata({
@@ -395,7 +395,7 @@ describe("tools branch coverage", () => {
         name: "get-wallet-balances",
         input: {
           agentKey: "default",
-          network: "base-sepolia",
+          network: "base",
         },
       },
     ]);

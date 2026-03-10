@@ -32,7 +32,6 @@ vi.mock("viem/accounts", () => ({
 
 vi.mock("viem/chains", () => ({
   base: { id: 8453 },
-  baseSepolia: { id: 84532 },
 }));
 
 vi.mock("@cobuild/wire", async (importOriginal) => {
@@ -41,15 +40,13 @@ vi.mock("@cobuild/wire", async (importOriginal) => {
     ...actual,
     defaultRpcUrlForNetwork: (network: string) => `https://${network}.rpc.example`,
     normalizeCliWalletNetwork: (network: string) => {
-      if (network === "base" || network === "base-sepolia") return network;
+      if (network === "base" || network === "base-mainnet") return "base";
+      if (network === "base-sepolia") return "base-sepolia";
       throw new Error(`Unsupported network: ${network}`);
     },
     normalizeCliWalletSendToken: (token: string) => token.toLowerCase(),
     parseCliWalletSendAmountAtomic: ({ amount }: { amount: string }) => BigInt(amount),
-    usdcContractForNetwork: (network: string) =>
-      network === "base"
-        ? "0x0000000000000000000000000000000000000013"
-        : "0x0000000000000000000000000000000000000014",
+    usdcContractForNetwork: () => "0x0000000000000000000000000000000000000013",
   };
 });
 
@@ -125,7 +122,7 @@ describe("wallet local exec", () => {
       deps: harness.deps,
       agentKey: "alice",
       privateKeyHex: PRIVATE_KEY,
-      network: "base-sepolia",
+      network: "base",
       token: "usdc",
       amount: "2",
       to: TO,
@@ -136,7 +133,7 @@ describe("wallet local exec", () => {
       ok: true,
       kind: "transfer",
       transactionHash: "0xdef",
-      explorerUrl: "https://sepolia.basescan.org/tx/0xdef",
+      explorerUrl: "https://basescan.org/tx/0xdef",
     });
 
     await expect(
@@ -151,6 +148,23 @@ describe("wallet local exec", () => {
         idempotencyKey: "33333333-3333-4333-8333-333333333333",
       })
     ).rejects.toThrow("amount must be greater than 0");
+  });
+
+  it("rejects unsupported local-exec networks after the Base-only cutover", async () => {
+    const harness = createHarness();
+
+    await expect(
+      executeLocalTransfer({
+        deps: harness.deps,
+        agentKey: "alice",
+        privateKeyHex: PRIVATE_KEY,
+        network: "base-sepolia",
+        token: "usdc",
+        amount: "2",
+        to: TO,
+        idempotencyKey: "23222222-2222-4222-8222-222222222222",
+      })
+    ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
   });
 
   it("rejects conflicting idempotency receipts and malformed receipt content", async () => {

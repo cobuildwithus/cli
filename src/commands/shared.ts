@@ -13,6 +13,10 @@ export type CliApiUrlLabel = "Interface URL" | "Chat API URL";
 const CONTROL_CHARS_REGEX = /[\u0000-\u001f\u007f-\u009f]/;
 const SAFE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9._-]+$/;
 const MAX_AGENT_KEY_LENGTH = 64;
+const BASE_ONLY_NETWORK_ALIASES = new Map<string, "base">([
+  ["base", "base"],
+  ["base-mainnet", "base"],
+]);
 
 function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
   return deps.env ?? process.env;
@@ -246,7 +250,13 @@ export function resolveExecIdempotencyKey(inputKey: string | undefined, deps: Pi
 
 export function resolveNetwork(inputNetwork: string | undefined, deps: Pick<CliDeps, "env">): string {
   const envNetwork = getEnv(deps).COBUILD_CLI_NETWORK;
-  return inputNetwork || envNetwork || "base";
+  const rawNetwork = inputNetwork ?? envNetwork ?? "base";
+  const normalized = BASE_ONLY_NETWORK_ALIASES.get(rawNetwork.trim().toLowerCase());
+  if (normalized) {
+    return normalized;
+  }
+
+  throw new Error(`Unsupported network "${rawNetwork}". Only "base" is supported.`);
 }
 
 export function parseIntegerOption(value: string | undefined, optionName: string): number | undefined {

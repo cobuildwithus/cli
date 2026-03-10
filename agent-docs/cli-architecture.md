@@ -81,7 +81,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Calls `/api/cli/exec` with `kind: transfer` envelope.
 - Validates amount and destination address format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
-- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
+- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base`).
 
 ### `tx`
 
@@ -89,7 +89,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Calls `/api/cli/exec` with `kind: tx` envelope.
 - Validates address/calldata/value format before request dispatch.
 - Enforces UUID v4 idempotency keys, forwards both idempotency headers, includes the key in success output, and appends it to request-failure errors.
-- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base-sepolia`).
+- Always forwards explicit network (`--network`, else `COBUILD_CLI_NETWORK`, else `base`).
 
 ## Boundary Rules
 

@@ -3,6 +3,7 @@ import { executeSendCommand } from "./commands/send.js";
 import { executeSetupCommand } from "./commands/setup.js";
 import { executeTxCommand } from "./commands/tx.js";
 import { registerConfigCommand } from "./incur/commands/config.command.js";
+import { registerBudgetCommand } from "./incur/commands/budget.command.js";
 import { registerDocsCommand } from "./incur/commands/docs.command.js";
 import { registerFarcasterCommand } from "./incur/commands/farcaster.command.js";
 import { registerGoalCommand } from "./incur/commands/goal.command.js";
@@ -319,6 +320,12 @@ const DEFAULT_COMMAND_SCHEMA_METADATA: CommandSchemaMetadata = {
 };
 
 const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
+  "budget inspect": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
   "config set": {
     mutating: true,
     supportsDryRun: false,
@@ -354,6 +361,12 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     supportsDryRun: true,
     requiresAuth: true,
     sideEffects: ["network", "onchain_transaction"],
+  },
+  "goal inspect": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
   },
   schema: {
     mutating: false,
@@ -507,6 +520,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   });
 
   registerConfigCommand(root, deps);
+  registerBudgetCommand(root, deps);
   registerWalletCommand(root, deps);
   registerFarcasterCommand(root, deps);
   registerGoalCommand(root, deps);
