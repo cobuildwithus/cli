@@ -7,6 +7,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ## Module Map
 
 - Entrypoint: `src/index.ts`
+- Local source-run entry: `pnpm cli:src -- <args>` executes `src/index.ts` through `tsx` without a build step.
 - Runtime composition + command tree: `src/cli-incur.ts`
 - Process lifecycle adapters: `src/cli.ts`
 - Command handlers: `src/commands/*.ts`
@@ -119,6 +120,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Incur owns command discovery/help/introspection surfaces (`--help`, compact `--llms`, full `--llms-full`, built-in `--schema`, `completions`, output filtering/token pagination globals, and built-in skills/MCP commands).
 - Incur command schemas own primary argument/option parsing; command executors own domain validation and response payloads.
 - Help and error text should remain explicit and action-oriented.
+- Production runtime types stay scoped to the source TypeScript project; Vitest globals live only in the test TypeScript project.
 
 2. Local config boundary
 

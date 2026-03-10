@@ -1,6 +1,6 @@
 # Quality Score
 
-Snapshot date: 2026-02-25
+Snapshot date: 2026-03-10
 
 Scoring rubric:
 
@@ -16,8 +16,8 @@ Scoring rubric:
 | Config storage and compatibility     | 4           | Centralized typed config boundary (`src/config.ts`) with masked display. | Add explicit migration/validation strategy if schema expands.          |
 | API envelope and transport handling  | 5           | Shared typed `apiPost` path + endpoint normalization + error contracts.  | Add contract checks if remote API payload fields evolve.               |
 | Error normalization and UX feedback  | 4           | Uniform process-level catch path with actionable CLI errors.              | Expand tests for additional malformed payload edge cases.              |
-| Agent docs/process governance        | 5           | Drift checks, doc gardening, plan lifecycle scripts, and documented verification gates stay aligned in-repo. | Keep required docs list aligned as architecture docs evolve.           |
-| Verification posture                 | 5           | Published-wire guard + `typecheck` + Vitest + per-file coverage gates + GitHub CI workflow, with release verify using a single coverage-inclusive test run. | Maintain thresholds as module count and complexity grows.              |
+| Agent docs/process governance        | 5           | Drift checks, doc gardening, plan lifecycle scripts, and documented verification/runtime-entry gates stay aligned in-repo. | Keep required docs list aligned as architecture docs evolve.           |
+| Verification posture                 | 5           | Published-wire guard + solution-style `tsc -b` typecheck + Vitest + per-file coverage gates + GitHub CI workflow, with release verify using a single coverage-inclusive test run. | Maintain thresholds as module count and complexity grows.              |
 
 ## Top Risk Register
 

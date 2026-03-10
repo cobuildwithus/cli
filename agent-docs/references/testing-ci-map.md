@@ -9,6 +9,20 @@
 - `bash scripts/check-agent-docs-drift.sh`
 - `bash scripts/doc-gardening.sh --fail-on-issues`
 
+## TypeScript Project Layout
+
+- Root `tsconfig.json` is a solution-style project that references `src/tsconfig.json` and `tests/tsconfig.json`.
+- `src/tsconfig.json` keeps production typechecking scoped to Node-only runtime types.
+- `tests/tsconfig.json` owns `vitest/globals` and includes `../src/**/*.ts` so test-only globals do not leak into production modules.
+- `pnpm typecheck` runs `tsc -b` across both referenced projects.
+- `pnpm build` still emits from `tsconfig.build.json`, which extends the source project and targets `dist/`.
+
+## Local Runtime Entry
+
+- Built CLI entry remains `dist/index.js` (`pnpm build`, `pnpm start`).
+- Direct source-run entry is `pnpm cli:src -- <args>`, implemented via `node --import tsx src/index.ts`.
+- `pnpm dev` aliases `pnpm cli:src` for local iteration against the TypeScript sources without a rebuild.
+
 ## Script Enforcement
 
 - Drift checks: `scripts/check-agent-docs-drift.sh` (allows release-artifacts-only commit shape: `package.json` + `CHANGELOG.md` + `release-notes/v<semver>.md` where `<semver>` may include prerelease suffixes)
