@@ -6,6 +6,10 @@ import type { CliDeps } from "../types.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
 import { executeWithConfiguredWallet } from "../wallet/payer-config.js";
 import {
+  formatProtocolPlanResumeHint,
+  formatProtocolPlanStepLabel,
+} from "../protocol-plan/labels.js";
+import {
   buildIdempotencyHeaders,
   normalizeEvmAddress,
   resolveAgentKey,
@@ -96,6 +100,31 @@ export interface ParticipantPlanCommandOutput extends Record<string, unknown> {
   agentKey?: string;
   expectedEvents?: string[];
   executedStepCount?: number;
+}
+
+class HostedExecutionPendingError extends Error {}
+
+function isHostedPendingResponse(response: Record<string, unknown>): boolean {
+  return response.pending === true || response.status === "pending";
+}
+
+function formatHostedPendingMessage(params: {
+  step: ParticipantPlanStepResult;
+  stepCount: number;
+  rootIdempotencyKey: string;
+  response: Record<string, unknown>;
+}): string {
+  const displayLabel = formatProtocolPlanStepLabel({
+    stepNumber: params.step.index,
+    stepCount: params.stepCount,
+    label: params.step.label,
+  });
+  const userOpHash =
+    typeof params.response.userOpHash === "string" && params.response.userOpHash.length > 0
+      ? params.response.userOpHash
+      : "unknown";
+
+  return `${displayLabel} is still pending on the hosted wallet (step idempotency key: ${params.step.idempotencyKey}, root idempotency key: ${params.rootIdempotencyKey}, userOpHash: ${userOpHash}). ${formatProtocolPlanResumeHint(params.rootIdempotencyKey)}`;
 }
 
 function normalizeProtocolBigInt(value: BigintLike, label: string): bigint {
@@ -339,13 +368,25 @@ export async function executeParticipantProtocolPlan(params: {
       onHosted: async () => {
         const results: ParticipantPlanStepResult[] = [];
         for (const step of steps) {
-          const response = await apiPost(params.deps, "/api/cli/exec", step.request.body, {
-            headers: buildIdempotencyHeaders(step.idempotencyKey),
-          });
+          const response = asRecord(
+            await apiPost(params.deps, "/api/cli/exec", step.request.body, {
+              headers: buildIdempotencyHeaders(step.idempotencyKey),
+            })
+          );
           results.push({
             ...step,
-            response: asRecord(response),
+            response,
           });
+          if (isHostedPendingResponse(response)) {
+            throw new HostedExecutionPendingError(
+              formatHostedPendingMessage({
+                step,
+                stepCount: steps.length,
+                rootIdempotencyKey: idempotencyKey,
+                response,
+              })
+            );
+          }
         }
         return results;
       },
@@ -386,6 +427,9 @@ export async function executeParticipantProtocolPlan(params: {
       steps: stepResults,
     } satisfies ParticipantPlanCommandOutput;
   } catch (error) {
+    if (error instanceof HostedExecutionPendingError) {
+      throw error;
+    }
     throwWithIdempotencyKey(error, idempotencyKey);
   }
 }

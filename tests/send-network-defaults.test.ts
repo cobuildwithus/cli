@@ -117,4 +117,31 @@ describe("send network defaults", () => {
 
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
+
+  it("preserves pending hosted transfer responses", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        pending: true,
+        status: "pending",
+        transactionHash: null,
+        userOpHash: "0xpending-transfer",
+      }),
+    });
+
+    await runCli(["send", "usdc", "1.0", VALID_TO], harness.deps);
+
+    expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toMatchObject({
+      ok: true,
+      pending: true,
+      status: "pending",
+      transactionHash: null,
+      userOpHash: "0xpending-transfer",
+      idempotencyKey: GENERATED_UUID,
+    });
+  });
 });

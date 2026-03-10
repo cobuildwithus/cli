@@ -124,4 +124,34 @@ describe("tx network defaults", () => {
       network: "base",
     });
   });
+
+  it("preserves pending hosted tx responses", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        pending: true,
+        status: "pending",
+        transactionHash: null,
+        userOpHash: "0xpending-tx",
+      }),
+    });
+
+    await runCli(
+      ["tx", "--to", VALID_TO, "--data", "0xdeadbeef", "--idempotency-key", EXPLICIT_UUID],
+      harness.deps
+    );
+
+    expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toMatchObject({
+      ok: true,
+      pending: true,
+      status: "pending",
+      transactionHash: null,
+      userOpHash: "0xpending-tx",
+      idempotencyKey: EXPLICIT_UUID,
+    });
+  });
 });

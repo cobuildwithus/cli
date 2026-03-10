@@ -342,6 +342,102 @@ describe("protocol participant commands", () => {
     });
   });
 
+  it("halts hosted execution when a step returns a pending user operation", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async () => ({
+        ok: true,
+        status: 202,
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            pending: true,
+            status: "pending",
+            userOpHash: "0xpending-user-op",
+          }),
+      }),
+    });
+
+    await expect(
+      executeParticipantProtocolPlan({
+        deps: harness.deps,
+        input: {
+          idempotencyKey: EXPLICIT_UUID,
+        },
+        plan: {
+          family: "stake",
+          action: "stake.pending",
+          riskClass: "stake",
+          summary: "Pending hosted plan",
+          preconditions: [],
+          steps: [
+            buildParticipantContractCallStep({
+              contract: "ERC20",
+              functionName: "approve",
+              label: "Approve token",
+              to: TOKEN,
+              abi: erc20Abi,
+              args: [REGISTRY, 1n],
+            }),
+            buildParticipantContractCallStep({
+              contract: "ERC20",
+              functionName: "approve",
+              label: "Deposit stake",
+              to: REGISTRY,
+              abi: erc20Abi,
+              args: [RECIPIENT, 2n],
+            }),
+          ],
+        },
+      })
+    ).rejects.toThrow(
+      `Step 1/2: Approve token is still pending on the hosted wallet (step idempotency key: ${deriveParticipantStepIdempotencyKey(EXPLICIT_UUID, 0)}, root idempotency key: ${EXPLICIT_UUID}, userOpHash: 0xpending-user-op). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
+    );
+
+    expect(harness.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unsupported participant networks before hosted execution starts", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await expect(
+      executeParticipantProtocolPlan({
+        deps: harness.deps,
+        input: {
+          idempotencyKey: EXPLICIT_UUID,
+          network: "base-sepolia",
+        },
+        plan: {
+          family: "stake",
+          action: "stake.pending",
+          riskClass: "stake",
+          summary: "Unsupported hosted network",
+          preconditions: [],
+          steps: [
+            buildParticipantContractCallStep({
+              contract: "ERC20",
+              functionName: "approve",
+              label: "Approve token",
+              to: TOKEN,
+              abi: erc20Abi,
+              args: [REGISTRY, 1n],
+            }),
+          ],
+        },
+      })
+    ).rejects.toThrow('Unsupported network "base-sepolia". Only "base" is supported.');
+
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("computes arbitrator vote commit hashes during dry-run", async () => {
     const harness = createHarness({
       config: {
