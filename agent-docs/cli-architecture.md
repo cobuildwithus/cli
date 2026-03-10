@@ -64,6 +64,17 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - If canonical `/v1/*` routes are unavailable, returns actionable guidance to configure `--chat-api-url` (or edge `/v1/*` rewrites) to Chat API.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
+### `protocol inspect/status`
+
+- `goal inspect <identifier>`
+- `budget inspect <identifier>`
+- `tcr inspect <identifier>`
+- `vote status <identifier> [--juror <address>]`
+- `stake status <identifier> <account>`
+- `premium status <identifier> [--account <address>]`
+- Call canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through configured chat-api routing (`chatApiUrl` when set, otherwise `url`).
+- Return untrusted wrapped tool data so downstream agents treat the payload as data rather than executable instructions.
+
 ### `tools`
 
 - `tools get-user <fname>`

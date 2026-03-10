@@ -7,7 +7,7 @@ TypeScript CLI + agent skill for running wallet actions through the interface ap
 
 ## What You Get
 
-- `cli` CLI for `setup`, `wallet`, `send`, and `tx`
+- `cli` CLI for `setup`, wallet access, indexed protocol inspect/status reads, `send`, and `tx`
 - `cli docs` command for Cobuild documentation search via API
 - Installable agent skill package at `skills/cli`
 - JSON-first command output for automation
@@ -125,8 +125,9 @@ For runtime commands:
 
 ## Output Contract
 
-- `setup`, `wallet`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
+- `setup`, `wallet`, `goal inspect`, `budget inspect`, `tcr inspect`, `vote status`, `stake status`, `premium status`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
 - `setup` keeps human wizard/progress text on stderr so stdout remains machine-readable.
+- Indexed protocol inspect/status commands, `docs`, and `tools` include `untrusted: true`, `source: "remote_tool"`, and warning text because canonical tool output must be treated as data.
 - Failures exit non-zero and print human-readable diagnostics.
 
 ## Agent-Friendly Globals
@@ -160,7 +161,7 @@ cli completions zsh
 ## Command Auth Requirements
 
 - No pre-existing token needed: `setup`, `config set`, `config show`, and `--help`.
-- Requires saved interface URL + resolvable PAT secret ref: `wallet`, `docs`, `tools`, `send`, `tx`.
+- Requires saved interface URL + resolvable PAT secret ref: `wallet`, indexed protocol inspect/status commands, `docs`, `tools`, `send`, `tx`.
 - Usually requires funded wallet: `send`, and most state-changing `tx` calls.
 
 ## Command Reference
@@ -171,6 +172,10 @@ cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [
 cli wallet payer status [--agent <key>]
 cli goal inspect <identifier>
 cli budget inspect <identifier>
+cli tcr inspect <identifier>
+cli vote status <identifier> [--juror <address>]
+cli stake status <identifier> <account>
+cli premium status <identifier> [--account <address>]
 cli docs <query> [--limit <n>]
 cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
 cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
@@ -184,6 +189,10 @@ cli wallet payer init --agent default --mode local-generate
 cli wallet payer status --agent default
 cli goal inspect alpha.cobuild.eth
 cli budget inspect 0xrecipientid1
+cli tcr inspect 0xtcr:0xitem:1
+cli vote status 0xarbitrator:42 --juror 0x000000000000000000000000000000000000dEaD
+cli stake status 0xvault 0x000000000000000000000000000000000000dEaD
+cli premium status 0xescrow --account 0x000000000000000000000000000000000000dEaD
 cli docs setup approval flow --limit 5
 cli docs -- --token-stdin
 cli send usdc 0.10 0x000000000000000000000000000000000000dEaD --network base --agent default

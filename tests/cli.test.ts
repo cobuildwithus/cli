@@ -1542,7 +1542,7 @@ describe("cli", () => {
     });
   });
 
-  it("goal inspect and budget inspect execute canonical tool routes and wrap untrusted output", async () => {
+  it("protocol inspect and status commands execute canonical tool routes and wrap untrusted output", async () => {
     const harness = createHarness({
       config: {
         url: "https://interface.example",
@@ -1556,7 +1556,14 @@ describe("cli", () => {
             status: 200,
             text: async () =>
               JSON.stringify({
-                tools: [{ name: "get-goal" }, { name: "get-budget" }],
+                tools: [
+                  { name: "get-goal" },
+                  { name: "get-budget" },
+                  { name: "get-tcr-request" },
+                  { name: "get-dispute" },
+                  { name: "get-stake-position" },
+                  { name: "get-premium-escrow" },
+                ],
               }),
           };
         }
@@ -1570,14 +1577,67 @@ describe("cli", () => {
               text: async () => JSON.stringify({ goalAddress: "0xgoal" }),
             };
           }
+          if (body.name === "get-budget") {
+            expect(body).toEqual({
+              name: "get-budget",
+              input: { identifier: "0xrecipientid1" },
+            });
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ budgetAddress: "0xbudget" }),
+            };
+          }
+          if (body.name === "get-tcr-request") {
+            expect(body).toEqual({
+              name: "get-tcr-request",
+              input: { identifier: "0xtcr:0xitem:1" },
+            });
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ requestIndex: "1" }),
+            };
+          }
+          if (body.name === "get-dispute") {
+            expect(body).toEqual({
+              name: "get-dispute",
+              input: {
+                identifier: "0xarbitrator:42",
+                juror: "0x00000000000000000000000000000000000000aa",
+              },
+            });
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ disputeId: "42" }),
+            };
+          }
+          if (body.name === "get-stake-position") {
+            expect(body).toEqual({
+              name: "get-stake-position",
+              input: {
+                identifier: "0xvault",
+                account: "0x00000000000000000000000000000000000000bb",
+              },
+            });
+            return {
+              ok: true,
+              status: 200,
+              text: async () => JSON.stringify({ stakeVaultAddress: "0xvault" }),
+            };
+          }
           expect(body).toEqual({
-            name: "get-budget",
-            input: { identifier: "0xrecipientid1" },
+            name: "get-premium-escrow",
+            input: {
+              identifier: "0xescrow",
+              account: "0x00000000000000000000000000000000000000cc",
+            },
           });
           return {
             ok: true,
             status: 200,
-            text: async () => JSON.stringify({ budgetAddress: "0xbudget" }),
+            text: async () => JSON.stringify({ premiumEscrowAddress: "0xescrow" }),
           };
         }
         throw new Error(`Unexpected URL: ${url}`);
@@ -1595,6 +1655,60 @@ describe("cli", () => {
     expect(parseLastJsonOutput(harness.outputs)).toEqual({
       ok: true,
       budget: { budgetAddress: "0xbudget" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+
+    await runCli(["tcr", "inspect", "0xtcr:0xitem:1"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      tcrRequest: { requestIndex: "1" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+
+    await runCli(
+      [
+        "vote",
+        "status",
+        "0xarbitrator:42",
+        "--juror",
+        "0x00000000000000000000000000000000000000aa",
+      ],
+      harness.deps
+    );
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      dispute: { disputeId: "42" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+
+    await runCli(
+      [
+        "stake",
+        "status",
+        "0xvault",
+        "0x00000000000000000000000000000000000000bb",
+      ],
+      harness.deps
+    );
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      stakePosition: { stakeVaultAddress: "0xvault" },
+      ...REMOTE_UNTRUSTED_OUTPUT,
+    });
+
+    await runCli(
+      [
+        "premium",
+        "status",
+        "0xescrow",
+        "--account",
+        "0x00000000000000000000000000000000000000cc",
+      ],
+      harness.deps
+    );
+    expect(parseLastJsonOutput(harness.outputs)).toEqual({
+      ok: true,
+      premiumEscrow: { premiumEscrowAddress: "0xescrow" },
       ...REMOTE_UNTRUSTED_OUTPUT,
     });
   });

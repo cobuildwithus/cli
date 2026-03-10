@@ -8,7 +8,12 @@
   - `config` -> `executeConfigSetCommand` / `executeConfigShowCommand`
   - `wallet` -> `executeWallet*Command`
   - `farcaster` -> `executeFarcaster*Command`
-  - `goal` -> `executeGoalCreateCommand`
+  - `goal` -> `executeGoal*Command`
+  - `budget` -> `executeBudgetInspectCommand`
+  - `tcr` -> `executeTcrInspectCommand`
+  - `vote` -> `executeVoteStatusCommand`
+  - `stake` -> `executeStakeStatusCommand`
+  - `premium` -> `executePremiumStatusCommand`
   - `docs` -> `executeDocsCommand`
   - `tools` -> `executeTools*Command`
   - `send` -> `executeSendCommand`
@@ -26,7 +31,7 @@
 - `farcaster post --verify` normalized to `--verify=once`.
 - `farcaster signup --extra-storage -<n>` normalized to equals form.
 4. Incur resolves command path, parses args/options, and routes directly to structured command executors.
-5. Command modules execute directly from Incur inputs via `execute*Command` APIs (no argv reparse shim for docs/tools/wallet/config/send/tx/setup/goal).
+5. Command modules execute directly from Incur inputs via `execute*Command` APIs (no argv reparse shim for docs/tools/wallet/config/send/tx/setup/protocol inspect commands).
 
 ## Setup Flow
 
@@ -106,6 +111,27 @@
    - hosted mode: POST `/api/cli/exec` with `kind: tx`
    - local mode: execute local wallet tx path
 5. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed`.
+
+## Indexed Protocol Inspect Flow
+
+1. Parse the protocol command path and required identifiers:
+- `goal inspect <identifier>`
+- `budget inspect <identifier>`
+- `tcr inspect <identifier>`
+- `vote status <identifier> [--juror <address>]`
+- `stake status <identifier> <account>`
+- `premium status <identifier> [--account <address>]`
+2. Validate required args/options before any network request.
+3. Optionally GET `/v1/tools` to resolve canonical tool naming.
+4. POST `/v1/tool-executions` with the canonical tool envelope and structured input:
+- `get-goal`
+- `get-budget`
+- `get-tcr-request`
+- `get-dispute`
+- `get-stake-position`
+- `get-premium-escrow`
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
+6. Wrap the response as untrusted remote-tool data before printing JSON.
 
 ## Tools Flow
 

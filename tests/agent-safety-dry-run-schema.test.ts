@@ -662,6 +662,125 @@ describe("agent safety + dry-run + schema", () => {
         sideEffects: ["network"],
       },
     });
+
+    await runCli(["schema", "tcr", "inspect"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "tcr inspect",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            tcrRequest: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "vote", "status"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "vote status",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+          },
+        },
+        options: {
+          properties: {
+            juror: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            dispute: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "stake", "status"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "stake status",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+            account: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            stakePosition: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
+      },
+    });
+
+    await runCli(["schema", "premium", "status"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "premium status",
+      schema: {
+        args: {
+          properties: {
+            identifier: expect.any(Object),
+          },
+        },
+        options: {
+          properties: {
+            account: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            premiumEscrow: expect.any(Object),
+            untrusted: expect.any(Object),
+            source: expect.any(Object),
+            warnings: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network"],
+      },
+    });
   });
 
   it("returns deterministic schema errors for blank and unknown command paths", async () => {

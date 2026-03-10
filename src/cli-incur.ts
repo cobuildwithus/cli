@@ -7,7 +7,11 @@ import { registerBudgetCommand } from "./incur/commands/budget.command.js";
 import { registerDocsCommand } from "./incur/commands/docs.command.js";
 import { registerFarcasterCommand } from "./incur/commands/farcaster.command.js";
 import { registerGoalCommand } from "./incur/commands/goal.command.js";
+import { registerPremiumCommand } from "./incur/commands/premium.command.js";
+import { registerStakeCommand } from "./incur/commands/stake.command.js";
+import { registerTcrCommand } from "./incur/commands/tcr.command.js";
 import { registerToolsCommand } from "./incur/commands/tools.command.js";
+import { registerVoteCommand } from "./incur/commands/vote.command.js";
 import { registerWalletCommand } from "./incur/commands/wallet.command.js";
 import type { CliDeps } from "./types.js";
 
@@ -368,6 +372,12 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     requiresAuth: true,
     sideEffects: ["network"],
   },
+  "premium status": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
   schema: {
     mutating: false,
     supportsDryRun: false,
@@ -380,11 +390,23 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     requiresAuth: true,
     sideEffects: ["network", "onchain_transaction"],
   },
+  "stake status": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
   setup: {
     mutating: true,
     supportsDryRun: false,
     requiresAuth: false,
     sideEffects: ["network", "writes_local_files"],
+  },
+  "tcr inspect": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
   },
   "tools cast-preview": {
     mutating: false,
@@ -417,6 +439,12 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     sideEffects: ["network"],
   },
   "tools notifications list": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
+  "vote status": {
     mutating: false,
     supportsDryRun: false,
     requiresAuth: true,
@@ -521,9 +549,13 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
 
   registerConfigCommand(root, deps);
   registerBudgetCommand(root, deps);
+  registerGoalCommand(root, deps);
+  registerTcrCommand(root, deps);
+  registerVoteCommand(root, deps);
+  registerStakeCommand(root, deps);
+  registerPremiumCommand(root, deps);
   registerWalletCommand(root, deps);
   registerFarcasterCommand(root, deps);
-  registerGoalCommand(root, deps);
   registerDocsCommand(root, deps, decodeEscapedPositional);
   registerToolsCommand(root, deps, decodeEscapedPositional);
 
