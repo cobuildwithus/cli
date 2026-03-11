@@ -94,6 +94,7 @@ If instructions still conflict after applying this order, ask the user before ac
 - Then run a completion audit using `agent-docs/prompts/task-finish-review.md` with full change context.
 - Final handoff remains gated on green required checks; completing audits does not waive verification requirements.
 - Do not skip these audit passes unless the user explicitly instructs skipping them for that turn.
+- Do not rush or interrupt these subagent passes: wait for each `simplify`, `test-coverage-audit`, and `task-finish-review` pass to return, review the result, and resolve or explicitly hand off any follow-up before final handoff.
 - When using a fresh subagent for coverage or completion audits, provide an audit handoff packet that includes:
 - what changed and why (behavior-level summary, not just filenames)
 - expected invariants/assumptions that must still hold
