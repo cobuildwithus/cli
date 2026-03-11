@@ -1,21 +1,19 @@
-import { type Abi } from "viem";
 import {
-  goalStakeVaultAbi,
-  premiumEscrowAbi,
-  normalizeEvmAddress,
+  buildCobuildStakeDepositPlan,
+  buildCobuildStakeWithdrawalPlan,
+  buildGoalStakeDepositPlan,
+  buildGoalStakeWithdrawalPlan,
+  buildPremiumCheckpointPlan,
+  buildPremiumClaimPlan,
+  buildUnderwriterWithdrawalPreparationPlan,
 } from "@cobuild/wire";
 import type { CliDeps } from "../types.js";
+import { resolveNetwork } from "./shared.js";
 import {
-  buildParticipantApprovalPlan,
-  buildParticipantContractCallStep,
   executeParticipantProtocolPlan,
-  type ParticipantExecutionPlan,
   type ParticipantPlanCommandInput,
   type ParticipantPlanCommandOutput,
 } from "./protocol-participant-runtime.js";
-
-const GOAL_STAKE_VAULT_ABI = goalStakeVaultAbi as Abi;
-const PREMIUM_ESCROW_ABI = premiumEscrowAbi as Abi;
 
 const STAKE_DEPOSIT_GOAL_USAGE =
   "Usage: cli stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
@@ -62,26 +60,6 @@ export interface PremiumClaimCommandInput extends ParticipantPlanCommandInput {
   recipient?: string;
 }
 
-function normalizeProtocolBigInt(value: string | number | bigint, label: string): bigint {
-  if (typeof value === "bigint") {
-    if (value < 0n) {
-      throw new Error(`${label} must be a non-negative integer.`);
-    }
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
-      throw new Error(`${label} must be a non-negative integer.`);
-    }
-    return BigInt(value);
-  }
-  const normalized = value.trim();
-  if (!/^\d+$/.test(normalized)) {
-    throw new Error(`${label} must be a non-negative integer.`);
-  }
-  return BigInt(normalized);
-}
-
 function requireString(value: string | undefined, usage: string, label: string): string {
   if (!value || value.trim().length === 0) {
     throw new Error(`${usage}\n${label} is required.`);
@@ -106,88 +84,29 @@ function requireBigintLike(
   return value;
 }
 
-function buildStakePlan(params: {
-  action: string;
-  summary: string;
-  preconditions?: readonly string[];
-  steps: ParticipantExecutionPlan["steps"];
-  expectedEvents: readonly string[];
-}): ParticipantExecutionPlan {
-  return {
-    family: "stake",
-    action: params.action,
-    riskClass: "stake",
-    summary: params.summary,
-    preconditions: params.preconditions ?? [],
-    expectedEvents: params.expectedEvents,
-    steps: params.steps,
-  };
-}
-
-function buildPremiumPlan(params: {
-  action: string;
-  summary: string;
-  steps: ParticipantExecutionPlan["steps"];
-  expectedEvents: readonly string[];
-}): ParticipantExecutionPlan {
-  return {
-    family: "premium",
-    action: params.action,
-    riskClass: "claim",
-    summary: params.summary,
-    preconditions: [],
-    expectedEvents: params.expectedEvents,
-    steps: params.steps,
-  };
+function resolvePlanNetwork(input: ParticipantPlanCommandInput, deps: Pick<CliDeps, "env">): string {
+  return resolveNetwork(input.network, deps);
 }
 
 export async function executeStakeDepositGoalCommand(
   input: StakeDepositCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const stakeVaultAddress = normalizeEvmAddress(
-    requireString(input.vault, STAKE_DEPOSIT_GOAL_USAGE, "--vault"),
-    "stakeVaultAddress"
-  );
-  const goalTokenAddress = normalizeEvmAddress(
-    requireString(input.token, STAKE_DEPOSIT_GOAL_USAGE, "--token"),
-    "goalTokenAddress"
-  );
-  const amount = normalizeProtocolBigInt(
-    requireBigintLike(input.amount, STAKE_DEPOSIT_GOAL_USAGE, "--amount"),
-    "amount"
-  );
-  const approval = buildParticipantApprovalPlan({
-    tokenAddress: goalTokenAddress,
-    spenderAddress: stakeVaultAddress,
-    requiredAmount: amount,
-    tokenLabel: "goal token",
-    spenderLabel: "stake vault",
-    ...(input.approvalMode ? { mode: input.approvalMode } : {}),
-    ...(input.currentAllowance ? { currentAllowance: input.currentAllowance } : {}),
-    ...(input.approvalAmount ? { approvalAmount: input.approvalAmount } : {}),
+  const plan = buildGoalStakeDepositPlan({
+    network: resolvePlanNetwork(input, deps),
+    stakeVaultAddress: requireString(input.vault, STAKE_DEPOSIT_GOAL_USAGE, "--vault"),
+    goalTokenAddress: requireString(input.token, STAKE_DEPOSIT_GOAL_USAGE, "--token"),
+    amount: requireBigintLike(input.amount, STAKE_DEPOSIT_GOAL_USAGE, "--amount"),
+    ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+    ...(input.currentAllowance !== undefined ? { currentAllowance: input.currentAllowance } : {}),
+    ...(input.approvalAmount !== undefined ? { approvalAmount: input.approvalAmount } : {}),
   });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "stake",
     input,
-    plan: buildStakePlan({
-      action: "stake.deposit-goal",
-      summary: `Deposit goal tokens into stake vault ${stakeVaultAddress}.`,
-      preconditions: approval.preconditions,
-      steps: [
-        ...approval.steps,
-        buildParticipantContractCallStep({
-          contract: "GoalStakeVault",
-          functionName: "depositGoal",
-          label: "Deposit goal stake",
-          to: stakeVaultAddress,
-          abi: GOAL_STAKE_VAULT_ABI,
-          args: [amount],
-        }),
-      ],
-      expectedEvents: ["GoalStaked"],
-    }),
+    plan,
   });
 }
 
@@ -195,49 +114,21 @@ export async function executeStakeDepositCobuildCommand(
   input: StakeDepositCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const stakeVaultAddress = normalizeEvmAddress(
-    requireString(input.vault, STAKE_DEPOSIT_COBUILD_USAGE, "--vault"),
-    "stakeVaultAddress"
-  );
-  const cobuildTokenAddress = normalizeEvmAddress(
-    requireString(input.token, STAKE_DEPOSIT_COBUILD_USAGE, "--token"),
-    "cobuildTokenAddress"
-  );
-  const amount = normalizeProtocolBigInt(
-    requireBigintLike(input.amount, STAKE_DEPOSIT_COBUILD_USAGE, "--amount"),
-    "amount"
-  );
-  const approval = buildParticipantApprovalPlan({
-    tokenAddress: cobuildTokenAddress,
-    spenderAddress: stakeVaultAddress,
-    requiredAmount: amount,
-    tokenLabel: "cobuild token",
-    spenderLabel: "stake vault",
-    ...(input.approvalMode ? { mode: input.approvalMode } : {}),
-    ...(input.currentAllowance ? { currentAllowance: input.currentAllowance } : {}),
-    ...(input.approvalAmount ? { approvalAmount: input.approvalAmount } : {}),
+  const plan = buildCobuildStakeDepositPlan({
+    network: resolvePlanNetwork(input, deps),
+    stakeVaultAddress: requireString(input.vault, STAKE_DEPOSIT_COBUILD_USAGE, "--vault"),
+    cobuildTokenAddress: requireString(input.token, STAKE_DEPOSIT_COBUILD_USAGE, "--token"),
+    amount: requireBigintLike(input.amount, STAKE_DEPOSIT_COBUILD_USAGE, "--amount"),
+    ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+    ...(input.currentAllowance !== undefined ? { currentAllowance: input.currentAllowance } : {}),
+    ...(input.approvalAmount !== undefined ? { approvalAmount: input.approvalAmount } : {}),
   });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "stake",
     input,
-    plan: buildStakePlan({
-      action: "stake.deposit-cobuild",
-      summary: `Deposit cobuild tokens into stake vault ${stakeVaultAddress}.`,
-      preconditions: approval.preconditions,
-      steps: [
-        ...approval.steps,
-        buildParticipantContractCallStep({
-          contract: "GoalStakeVault",
-          functionName: "depositCobuild",
-          label: "Deposit cobuild stake",
-          to: stakeVaultAddress,
-          abi: GOAL_STAKE_VAULT_ABI,
-          args: [amount],
-        }),
-      ],
-      expectedEvents: ["CobuildStaked"],
-    }),
+    plan,
   });
 }
 
@@ -245,37 +136,21 @@ export async function executeStakePrepareUnderwriterWithdrawalCommand(
   input: StakePrepareUnderwriterWithdrawalCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const stakeVaultAddress = normalizeEvmAddress(
-    requireString(input.vault, STAKE_PREPARE_UNDERWRITER_WITHDRAWAL_USAGE, "--vault"),
-    "stakeVaultAddress"
-  );
-  const maxBudgets = normalizeProtocolBigInt(
-    requireBigintLike(
+  const plan = buildUnderwriterWithdrawalPreparationPlan({
+    network: resolvePlanNetwork(input, deps),
+    stakeVaultAddress: requireString(input.vault, STAKE_PREPARE_UNDERWRITER_WITHDRAWAL_USAGE, "--vault"),
+    maxBudgets: requireBigintLike(
       input.maxBudgets,
       STAKE_PREPARE_UNDERWRITER_WITHDRAWAL_USAGE,
       "--max-budgets"
     ),
-    "maxBudgets"
-  );
+  });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "stake",
     input,
-    plan: buildStakePlan({
-      action: "stake.prepare-underwriter-withdrawal",
-      summary: `Prepare underwriter withdrawal batches on stake vault ${stakeVaultAddress}.`,
-      steps: [
-        buildParticipantContractCallStep({
-          contract: "GoalStakeVault",
-          functionName: "prepareUnderwriterWithdrawal",
-          label: "Prepare underwriter withdrawal",
-          to: stakeVaultAddress,
-          abi: GOAL_STAKE_VAULT_ABI,
-          args: [maxBudgets],
-        }),
-      ],
-      expectedEvents: ["UnderwriterWithdrawalPrepared"],
-    }),
+    plan,
   });
 }
 
@@ -283,37 +158,18 @@ export async function executeStakeWithdrawGoalCommand(
   input: StakeWithdrawCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const stakeVaultAddress = normalizeEvmAddress(
-    requireString(input.vault, STAKE_WITHDRAW_GOAL_USAGE, "--vault"),
-    "stakeVaultAddress"
-  );
-  const recipient = normalizeEvmAddress(
-    requireString(input.recipient, STAKE_WITHDRAW_GOAL_USAGE, "--recipient"),
-    "recipient"
-  );
-  const amount = normalizeProtocolBigInt(
-    requireBigintLike(input.amount, STAKE_WITHDRAW_GOAL_USAGE, "--amount"),
-    "amount"
-  );
+  const plan = buildGoalStakeWithdrawalPlan({
+    network: resolvePlanNetwork(input, deps),
+    stakeVaultAddress: requireString(input.vault, STAKE_WITHDRAW_GOAL_USAGE, "--vault"),
+    amount: requireBigintLike(input.amount, STAKE_WITHDRAW_GOAL_USAGE, "--amount"),
+    recipient: requireString(input.recipient, STAKE_WITHDRAW_GOAL_USAGE, "--recipient"),
+  });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "stake",
     input,
-    plan: buildStakePlan({
-      action: "stake.withdraw-goal",
-      summary: `Withdraw goal stake from vault ${stakeVaultAddress} to ${recipient}.`,
-      steps: [
-        buildParticipantContractCallStep({
-          contract: "GoalStakeVault",
-          functionName: "withdrawGoal",
-          label: "Withdraw goal stake",
-          to: stakeVaultAddress,
-          abi: GOAL_STAKE_VAULT_ABI,
-          args: [amount, recipient],
-        }),
-      ],
-      expectedEvents: ["GoalWithdrawn"],
-    }),
+    plan,
   });
 }
 
@@ -321,37 +177,18 @@ export async function executeStakeWithdrawCobuildCommand(
   input: StakeWithdrawCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const stakeVaultAddress = normalizeEvmAddress(
-    requireString(input.vault, STAKE_WITHDRAW_COBUILD_USAGE, "--vault"),
-    "stakeVaultAddress"
-  );
-  const recipient = normalizeEvmAddress(
-    requireString(input.recipient, STAKE_WITHDRAW_COBUILD_USAGE, "--recipient"),
-    "recipient"
-  );
-  const amount = normalizeProtocolBigInt(
-    requireBigintLike(input.amount, STAKE_WITHDRAW_COBUILD_USAGE, "--amount"),
-    "amount"
-  );
+  const plan = buildCobuildStakeWithdrawalPlan({
+    network: resolvePlanNetwork(input, deps),
+    stakeVaultAddress: requireString(input.vault, STAKE_WITHDRAW_COBUILD_USAGE, "--vault"),
+    amount: requireBigintLike(input.amount, STAKE_WITHDRAW_COBUILD_USAGE, "--amount"),
+    recipient: requireString(input.recipient, STAKE_WITHDRAW_COBUILD_USAGE, "--recipient"),
+  });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "stake",
     input,
-    plan: buildStakePlan({
-      action: "stake.withdraw-cobuild",
-      summary: `Withdraw cobuild stake from vault ${stakeVaultAddress} to ${recipient}.`,
-      steps: [
-        buildParticipantContractCallStep({
-          contract: "GoalStakeVault",
-          functionName: "withdrawCobuild",
-          label: "Withdraw cobuild stake",
-          to: stakeVaultAddress,
-          abi: GOAL_STAKE_VAULT_ABI,
-          args: [amount, recipient],
-        }),
-      ],
-      expectedEvents: ["CobuildWithdrawn"],
-    }),
+    plan,
   });
 }
 
@@ -359,33 +196,17 @@ export async function executePremiumCheckpointCommand(
   input: PremiumCheckpointCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const escrow = normalizeEvmAddress(
-    requireString(input.escrow, PREMIUM_CHECKPOINT_USAGE, "--escrow"),
-    "premiumEscrowAddress"
-  );
-  const account = normalizeEvmAddress(
-    requireString(input.account, PREMIUM_CHECKPOINT_USAGE, "--account"),
-    "account"
-  );
+  const plan = buildPremiumCheckpointPlan({
+    network: resolvePlanNetwork(input, deps),
+    premiumEscrowAddress: requireString(input.escrow, PREMIUM_CHECKPOINT_USAGE, "--escrow"),
+    account: requireString(input.account, PREMIUM_CHECKPOINT_USAGE, "--account"),
+  });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "premium",
     input,
-    plan: buildPremiumPlan({
-      action: "premium.checkpoint",
-      summary: `Checkpoint premium state for ${account} on escrow ${escrow}.`,
-      steps: [
-        buildParticipantContractCallStep({
-          contract: "PremiumEscrow",
-          functionName: "checkpoint",
-          label: "Checkpoint premium state",
-          to: escrow,
-          abi: PREMIUM_ESCROW_ABI,
-          args: [account],
-        }),
-      ],
-      expectedEvents: ["AccountCheckpointed"],
-    }),
+    plan,
   });
 }
 
@@ -393,32 +214,16 @@ export async function executePremiumClaimCommand(
   input: PremiumClaimCommandInput,
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
-  const escrow = normalizeEvmAddress(
-    requireString(input.escrow, PREMIUM_CLAIM_USAGE, "--escrow"),
-    "premiumEscrowAddress"
-  );
-  const recipient = normalizeEvmAddress(
-    requireString(input.recipient, PREMIUM_CLAIM_USAGE, "--recipient"),
-    "recipient"
-  );
+  const plan = buildPremiumClaimPlan({
+    network: resolvePlanNetwork(input, deps),
+    premiumEscrowAddress: requireString(input.escrow, PREMIUM_CLAIM_USAGE, "--escrow"),
+    recipient: requireString(input.recipient, PREMIUM_CLAIM_USAGE, "--recipient"),
+  });
 
   return executeParticipantProtocolPlan({
     deps,
+    family: "premium",
     input,
-    plan: buildPremiumPlan({
-      action: "premium.claim",
-      summary: `Claim premium from escrow ${escrow} to ${recipient}.`,
-      steps: [
-        buildParticipantContractCallStep({
-          contract: "PremiumEscrow",
-          functionName: "claim",
-          label: "Claim premium",
-          to: escrow,
-          abi: PREMIUM_ESCROW_ABI,
-          args: [recipient],
-        }),
-      ],
-      expectedEvents: ["Claimed"],
-    }),
+    plan,
   });
 }

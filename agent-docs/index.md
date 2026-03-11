@@ -1,6 +1,6 @@
 # CLI Agent Docs Index
 
-Last verified: 2026-03-10 (shared protocol plan runtime)
+Last verified: 2026-03-10 (wire participant plan cutover)
 
 ## Purpose
 
@@ -29,7 +29,7 @@ This index is the table of contents for durable, repository-local context that a
 | `agent-docs/references/cli-command-and-data-flow.md` | Command topology + data flow map.                                | `src/cli.ts`, `src/commands/**`, `src/protocol-plan/**` | CLI Maintainer | Per route/data-flow change   | High        | 2026-03-10    |
 | `agent-docs/references/testing-ci-map.md`      | Verification, CI, and release enforcement map (including published-wire guards, release verify/docs gates, package/repository metadata guards, pnpm setup behavior, TypeScript project layout, and docs-drift release artifact policy). | `package.json`, `.github/workflows/test-and-coverage.yml`, `.github/workflows/release.yml`, scripts | CLI Maintainer | Per CI/process change        | Medium      | 2026-03-10    |
 | `agent-docs/generated/README.md`               | Generated doc artifacts produced by scripts.                          | `agent-docs/generated/**`         | CLI Maintainer | Per script change            | Medium      | 2026-02-24    |
-| `agent-docs/exec-plans/`                       | Execution plans for active and completed work.                        | Plan docs + lifecycle scripts     | CLI Maintainer | Per multi-file/high-risk PR  | High        | 2026-02-25    |
+| `agent-docs/exec-plans/`                       | Execution plans for active and completed work.                        | Plan docs + lifecycle scripts     | CLI Maintainer | Per multi-file/high-risk PR  | High        | 2026-03-10    |
 | `agent-docs/exec-plans/tech-debt-tracker.md`   | Rolling debt register with owner/priority/status.                     | Audits and reviews                | CLI Maintainer | Bi-weekly                    | Medium      | 2026-02-24    |
 
 ## Conventions

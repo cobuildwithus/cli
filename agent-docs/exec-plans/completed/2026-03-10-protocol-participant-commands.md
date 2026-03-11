@@ -1,5 +1,9 @@
 # 2026-03-10 Protocol Participant Commands
 
+Status: completed
+Updated: 2026-03-10
+Completed: 2026-03-10
+
 ## Goal
 
 Expose a first-class CLI participant write surface for normal protocol actions while keeping keeper/operator maintenance flows and raw-selector escape hatches clearly separated.
@@ -56,6 +60,12 @@ Expose a first-class CLI participant write surface for normal protocol actions w
 4. Standardize output, dry-run, and failure behavior across all participant commands.
 5. Update CLI docs, usage text, and tests to lock the participant command contract.
 
+## Current Slice
+
+- Completed on 2026-03-10: replaced the remaining CLI-local governance/stake/premium planner logic with direct `@cobuild/wire` planner usage.
+- These commands now run through the shared `src/protocol-plan/runner.ts` contract instead of the bespoke participant runtime module.
+- Command/runtime docs and tests now reflect the canonical wire-plan output shape and idempotency derivation.
+
 ## Success Criteria
 
 - The CLI exposes a coherent participant-only protocol write surface without forcing users through raw `tx`.
@@ -68,6 +78,3 @@ Expose a first-class CLI participant write surface for normal protocol actions w
 - `pnpm typecheck`
 - `pnpm test`
 - `pnpm test:coverage`
-
-Status: in_progress
-Updated: 2026-03-10

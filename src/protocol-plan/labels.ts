@@ -10,6 +10,15 @@ export function formatProtocolPlanResumeHint(rootIdempotencyKey: string): string
   return `Re-run the same command with --idempotency-key ${rootIdempotencyKey} to resume safely.`;
 }
 
+export function formatProtocolPlanPendingMessage(params: {
+  displayLabel: string;
+  stepIdempotencyKey: string;
+  rootIdempotencyKey: string;
+  userOpHash: string;
+}): string {
+  return `${params.displayLabel} is still pending on the hosted wallet (step idempotency key: ${params.stepIdempotencyKey}, root idempotency key: ${params.rootIdempotencyKey}, userOpHash: ${params.userOpHash}). ${formatProtocolPlanResumeHint(params.rootIdempotencyKey)}`;
+}
+
 export function formatProtocolPlanStepFailureMessage(params: {
   displayLabel: string;
   stepIdempotencyKey: string;
