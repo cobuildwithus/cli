@@ -1,7 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@farcaster/hub-nodejs";
+const localSignupMocks = vi.hoisted(() => {
+  class LocalFarcasterAlreadyRegisteredError extends Error {
+    readonly fid: string;
+    readonly custodyAddress: `0x${string}`;
+
+    constructor(params: { fid: bigint; custodyAddress: `0x${string}` }) {
+      super(
+        `Farcaster account already exists for this agent wallet (fid: ${params.fid.toString()}).`
+      );
+      this.fid = params.fid.toString();
+      this.custodyAddress = params.custodyAddress;
+    }
+  }
+
+  return {
+    executeLocalFarcasterSignupMock: vi.fn(),
+    LocalFarcasterAlreadyRegisteredError,
+  };
+});
+
+vi.mock("../src/farcaster/local-signup.js", () => ({
+  executeLocalFarcasterSignup: (...args: unknown[]) =>
+    localSignupMocks.executeLocalFarcasterSignupMock(...args),
+  LocalFarcasterAlreadyRegisteredError: localSignupMocks.LocalFarcasterAlreadyRegisteredError,
+}));
+
 import { runCli } from "../src/cli.js";
 import { createHarness } from "./helpers.js";
+
+afterEach(() => {
+  localSignupMocks.executeLocalFarcasterSignupMock.mockReset();
+});
 
 function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
@@ -2703,11 +2733,101 @@ describe("farcaster command", () => {
     expect(harness.files.get(signerPath)).toBeTruthy();
   });
 
+  it("omits extraStorage from the hosted signup request when normalized to zero", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder(signupCompleteResponse()),
+    });
+
+    await runCli(
+      ["farcaster", "signup", "--extra-storage", "0"],
+      harness.deps
+    );
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as { extraStorage?: string };
+    expect(body.extraStorage).toBeUndefined();
+  });
+
+  it("uses local signup execution and saves the signer without posting to the hosted signup route", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "stored-agent",
+      },
+      fetchResponder: async (input) => {
+        throw new Error(`Unexpected URL: ${String(input)}`);
+      },
+    });
+    setLocalX402PayerConfig(harness, "stored-agent");
+    localSignupMocks.executeLocalFarcasterSignupMock.mockResolvedValue({
+      status: "complete",
+      network: "optimism",
+      ownerAddress: "0x0000000000000000000000000000000000000001",
+      custodyAddress: "0x0000000000000000000000000000000000000002",
+      recoveryAddress: "0x0000000000000000000000000000000000000001",
+      fid: "123",
+      idGatewayPriceWei: "7000000000000000",
+      txHash: SIGNUP_TX_HASH,
+    });
+
+    await runCli(["farcaster", "signup"], harness.deps);
+
+    expect(localSignupMocks.executeLocalFarcasterSignupMock).toHaveBeenCalledTimes(1);
+    expect(
+      harness.fetchMock.mock.calls.some(([input]) =>
+        String(input).endsWith("/api/cli/farcaster/signup")
+      )
+    ).toBe(false);
+    const output = parseLastJsonOutput(harness.outputs) as {
+      signer?: { publicKey?: string; saved?: boolean; file?: string };
+    };
+    expect(output.signer?.saved).toBe(true);
+    expect(output.signer?.publicKey).toMatch(/^0x[0-9a-f]{64}$/);
+
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/stored-agent/farcaster/ed25519-signer.json";
+    expect(harness.files.get(signerPath)).toBeTruthy();
+  });
+
+  it("keeps local signup signer unsaved when the shared planner returns needs_funding", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        throw new Error(`Unexpected URL: ${String(input)}`);
+      },
+    });
+    setLocalX402PayerConfig(harness);
+    localSignupMocks.executeLocalFarcasterSignupMock.mockResolvedValue(
+      signupNeedsFundingResponse().result
+    );
+
+    await runCli(["farcaster", "signup"], harness.deps);
+
+    expect(localSignupMocks.executeLocalFarcasterSignupMock).toHaveBeenCalledTimes(1);
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    const output = parseLastJsonOutput(harness.outputs) as {
+      signer?: { saved?: boolean };
+    };
+    expect(output.signer?.saved).toBe(false);
+    const signerPath = "/tmp/cli-tests/.cobuild-cli/agents/default/farcaster/ed25519-signer.json";
+    expect(harness.files.get(signerPath)).toBeUndefined();
+  });
+
   it("validates extra storage, recovery, and out-dir", async () => {
     const harness = createHarness();
 
     await expect(runCli(["farcaster", "signup", "--extra-storage", "-1"], harness.deps)).rejects.toThrow(
       "--extra-storage must be a non-negative integer"
+    );
+    await expect(runCli(["farcaster", "signup", "--extra-storage", "11"], harness.deps)).rejects.toThrow(
+      "--extra-storage max is 10"
     );
     await expect(runCli(["farcaster", "signup", "--recovery", "0xdeadbeef"], harness.deps)).rejects.toThrow(
       "--recovery must be a 20-byte hex address"
@@ -2739,6 +2859,30 @@ describe("farcaster command", () => {
     await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
       "Farcaster account already exists for this agent wallet (fid=77, custodyAddress=0x0000000000000000000000000000000000000002). Use a different --agent key for a new Farcaster signup."
     );
+  });
+
+  it("surfaces the local already-registered signup error with fid and custody details", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: async (input) => {
+        throw new Error(`Unexpected URL: ${String(input)}`);
+      },
+    });
+    setLocalX402PayerConfig(harness);
+    localSignupMocks.executeLocalFarcasterSignupMock.mockRejectedValue(
+      new localSignupMocks.LocalFarcasterAlreadyRegisteredError({
+        fid: 77n,
+        custodyAddress: "0x0000000000000000000000000000000000000002",
+      })
+    );
+
+    await expect(runCli(["farcaster", "signup"], harness.deps)).rejects.toThrow(
+      "Farcaster account already exists for this agent wallet (fid=77, custodyAddress=0x0000000000000000000000000000000000000002). Use a different --agent key for a new Farcaster signup."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("falls back to the generic already-registered signup error when 409 details are malformed", async () => {

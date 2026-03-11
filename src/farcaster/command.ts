@@ -1,6 +1,7 @@
 import * as ed from "@noble/ed25519";
 import {
   buildFarcasterSignupResponse,
+  normalizeFarcasterExtraStorage,
   validateFarcasterSignupAlreadyRegisteredErrorResponse,
   validateFarcasterSignupResponse,
 } from "@cobuild/wire";
@@ -49,7 +50,6 @@ import {
   generateEd25519PrivateKey,
   normalizeDirectoryOption,
   normalizeSignerFileOption,
-  parseExtraStorage,
   parseFidString,
   readStoredSigner,
   resolveSignerFilePath,
@@ -193,7 +193,7 @@ export async function executeFarcasterSignupCommand(
   const recoveryInput = input.recovery?.trim();
   const recovery = recoveryInput ? normalizeEvmAddress(recoveryInput, "--recovery") : null;
 
-  const extraStorage = parseExtraStorage(input.extraStorage);
+  const extraStorage = normalizeFarcasterExtraStorage(input.extraStorage, "--extra-storage");
   const outDir = normalizeDirectoryOption(input.outDir, "--out-dir");
   const outputDirectory = resolveSignerOutputDirectory({
     deps,
@@ -229,7 +229,7 @@ export async function executeFarcasterSignupCommand(
         privateKeyHex,
         signerPublicKey,
         ...(recovery ? { recoveryAddress: recovery } : {}),
-        ...(extraStorage ? { extraStorage } : {}),
+        ...(extraStorage > 0n ? { extraStorage } : {}),
       });
     } catch (error) {
       if (error instanceof LocalFarcasterAlreadyRegisteredError) {
@@ -267,7 +267,7 @@ export async function executeFarcasterSignupCommand(
     response = await apiPost(deps, "/api/cli/farcaster/signup", {
       signerPublicKey,
       ...(recovery ? { recoveryAddress: recovery } : {}),
-      ...(extraStorage ? { extraStorage } : {}),
+      ...(extraStorage > 0n ? { extraStorage: extraStorage.toString() } : {}),
     });
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 409) {

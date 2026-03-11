@@ -2621,6 +2621,9 @@ describe("cli", () => {
       runCli(["farcaster", "signup", "--extra-storage", "-1"], harness.deps)
     ).rejects.toThrow("--extra-storage must be a non-negative integer");
     await expect(
+      runCli(["farcaster", "signup", "--extra-storage", "11"], harness.deps)
+    ).rejects.toThrow("--extra-storage max is 10");
+    await expect(
       runCli(["farcaster", "signup", "--recovery", "0xdeadbeef"], harness.deps)
     ).rejects.toThrow("--recovery must be a 20-byte hex address");
   });
@@ -2667,6 +2670,38 @@ describe("cli", () => {
 
     const signerPath = "/tmp/cli-tests/custom-farcaster/ed25519-signer.json";
     expect(harness.files.get(signerPath)).toBeTruthy();
+  });
+
+  it("farcaster signup omits extra storage when normalized to zero", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({
+        ok: true,
+        result: {
+          status: "complete",
+          network: "optimism",
+          ownerAddress: "0x0000000000000000000000000000000000000001",
+          custodyAddress: "0x0000000000000000000000000000000000000002",
+          recoveryAddress: "0x0000000000000000000000000000000000000001",
+          fid: "123",
+          idGatewayPriceWei: "7000000000000000",
+          txHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+        },
+      }),
+    });
+
+    await runCli(["farcaster", "signup", "--extra-storage", "0"], harness.deps);
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body)) as {
+      signerPublicKey: string;
+      extraStorage?: string;
+    };
+    expect(body.signerPublicKey).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(body.extraStorage).toBeUndefined();
   });
 
   it("farcaster signup validates out-dir and reports existing fid/custody on 409", async () => {

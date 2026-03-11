@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   waitForTransactionReceiptMock: vi.fn(),
   sendTransactionMock: vi.fn(),
   signTypedDataMock: vi.fn(),
-  evaluatePreflightMock: vi.fn(),
+  planFarcasterSignupMock: vi.fn(),
 }));
 
 vi.mock("viem", async (importOriginal) => {
@@ -56,38 +56,7 @@ vi.mock("@cobuild/wire", async (importOriginal) => {
     FARCASTER_ID_GATEWAY_ABI: [],
     FARCASTER_ID_REGISTRY_ABI: [],
     FARCASTER_SIGNUP_NETWORK: "optimism",
-    buildFarcasterSignedKeyRequestMetadata: () => "0xmetadata",
-    buildFarcasterSignedKeyRequestTypedData: () => ({
-      domain: { name: "SignedKeyRequestValidator", version: "1", chainId: 10, verifyingContract: "0xabc" },
-      types: {
-        EIP712Domain: [],
-        SignedKeyRequest: [],
-      },
-      primaryType: "SignedKeyRequest",
-      message: {
-        requestFid: 0n,
-        key: `0x${"11".repeat(32)}`,
-        deadline: 123n,
-      },
-    }),
-    buildFarcasterSignupCallPlan: () => ({
-      registerCall: {
-        to: "0x0000000000000000000000000000000000000003",
-        value: 7n,
-        data: "0xaaa",
-      },
-      addKeyCall: {
-        to: "0x0000000000000000000000000000000000000004",
-        value: 0n,
-        data: "0xbbb",
-      },
-    }),
-    buildFarcasterSignupExecutableCalls: (plan: {
-      registerCall: { to: `0x${string}`; value: bigint; data: `0x${string}` };
-      addKeyCall: { to: `0x${string}`; value: bigint; data: `0x${string}` };
-    }) => [plan.registerCall, plan.addKeyCall],
-    computeFarcasterSignedKeyRequestDeadline: () => 123n,
-    evaluateFarcasterSignupPreflight: mocks.evaluatePreflightMock,
+    planFarcasterSignup: (...args: unknown[]) => mocks.planFarcasterSignupMock(...args),
   };
 });
 
@@ -101,6 +70,59 @@ const SIGNER_PUBLIC_KEY = `0x${"22".repeat(32)}` as const;
 const REGISTER_TX_HASH = `0x${"ab".repeat(32)}`;
 const ADD_KEY_TX_HASH = `0x${"cd".repeat(32)}`;
 
+function buildReadyPlan() {
+  return {
+    status: "ready" as const,
+    network: "optimism" as const,
+    ownerAddress: "0x00000000000000000000000000000000000000aa",
+    custodyAddress: "0x00000000000000000000000000000000000000aa",
+    recoveryAddress: "0x00000000000000000000000000000000000000bb",
+    extraStorage: "2",
+    idGatewayPriceWei: "7",
+    typedData: {
+      domain: {
+        name: "SignedKeyRequestValidator",
+        version: "1",
+        chainId: 10,
+        verifyingContract: "0xabc",
+      },
+      types: {
+        EIP712Domain: [],
+        SignedKeyRequest: [],
+      },
+      primaryType: "SignedKeyRequest" as const,
+      message: {
+        requestFid: 0n,
+        key: SIGNER_PUBLIC_KEY,
+        deadline: 123n,
+      },
+    },
+    buildExecution: vi.fn(),
+    buildExecutableCalls: vi.fn(() => [
+      {
+        to: "0x0000000000000000000000000000000000000003",
+        value: 7n,
+        data: "0xaaa",
+      },
+      {
+        to: "0x0000000000000000000000000000000000000004",
+        value: 0n,
+        data: "0xbbb",
+      },
+    ]),
+    buildCompletedResult: vi.fn(({ fid, txHash }: { fid: bigint; txHash: `0x${string}` }) => ({
+      status: "complete" as const,
+      network: "optimism" as const,
+      ownerAddress: "0x00000000000000000000000000000000000000aa",
+      custodyAddress: "0x00000000000000000000000000000000000000aa",
+      recoveryAddress: "0x00000000000000000000000000000000000000bb",
+      fid: fid.toString(),
+      idGatewayPriceWei: "7",
+      txHash,
+    })),
+  };
+}
+
 describe("farcaster local signup", () => {
   beforeEach(() => {
     mocks.readContractMock.mockReset();
@@ -108,7 +130,7 @@ describe("farcaster local signup", () => {
     mocks.waitForTransactionReceiptMock.mockReset();
     mocks.sendTransactionMock.mockReset();
     mocks.signTypedDataMock.mockReset();
-    mocks.evaluatePreflightMock.mockReset();
+    mocks.planFarcasterSignupMock.mockReset();
   });
 
   it("throws LocalFarcasterAlreadyRegisteredError when the custody address already has an fid", async () => {
@@ -128,9 +150,18 @@ describe("farcaster local signup", () => {
       .mockResolvedValueOnce(0n)
       .mockResolvedValueOnce(7n);
     mocks.getBalanceMock.mockResolvedValue(2n);
-    mocks.evaluatePreflightMock.mockReturnValue({
+    mocks.planFarcasterSignupMock.mockReturnValue({
       status: "needs_funding",
+      network: "optimism",
+      ownerAddress: "0x00000000000000000000000000000000000000aa",
+      custodyAddress: "0x00000000000000000000000000000000000000aa",
+      recoveryAddress: "0x00000000000000000000000000000000000000aa",
+      idGatewayPriceWei: "7",
+      idGatewayPriceEth: "0.000000000000000007",
+      balanceWei: "2",
+      balanceEth: "0.000000000000000002",
       requiredWei: "5",
+      requiredEth: "0.000000000000000005",
     });
 
     const result = await executeLocalFarcasterSignup({
@@ -160,7 +191,7 @@ describe("farcaster local signup", () => {
       .mockResolvedValueOnce(7n)
       .mockResolvedValueOnce(123n);
     mocks.getBalanceMock.mockResolvedValue(100n);
-    mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
+    mocks.planFarcasterSignupMock.mockReturnValue(buildReadyPlan());
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
     mocks.sendTransactionMock
       .mockResolvedValueOnce(REGISTER_TX_HASH)
@@ -185,13 +216,46 @@ describe("farcaster local signup", () => {
       idGatewayPriceWei: "7",
       txHash: ADD_KEY_TX_HASH,
     });
+    expect(mocks.planFarcasterSignupMock).toHaveBeenCalledWith({
+      ownerAddress: "0x00000000000000000000000000000000000000aa",
+      custodyAddress: "0x00000000000000000000000000000000000000aa",
+      recoveryAddress: "0x00000000000000000000000000000000000000bb",
+      signerPublicKey: SIGNER_PUBLIC_KEY,
+      existingFid: 0n,
+      idGatewayPriceWei: 7n,
+      balanceWei: 100n,
+      extraStorage: 2n,
+    });
+    expect(mocks.readContractMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        functionName: "price",
+        args: [2n],
+      })
+    );
     expect(mocks.sendTransactionMock).toHaveBeenCalledTimes(2);
+    expect(mocks.sendTransactionMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        to: "0x0000000000000000000000000000000000000003",
+        value: 7n,
+        data: "0xaaa",
+      })
+    );
+    expect(mocks.sendTransactionMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        to: "0x0000000000000000000000000000000000000004",
+        value: 0n,
+        data: "0xbbb",
+      })
+    );
   });
 
   it("surfaces transaction revert and missing assigned fid errors", async () => {
     mocks.readContractMock.mockResolvedValueOnce(0n).mockResolvedValueOnce(7n);
     mocks.getBalanceMock.mockResolvedValue(100n);
-    mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
+    mocks.planFarcasterSignupMock.mockReturnValue(buildReadyPlan());
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
     mocks.sendTransactionMock.mockResolvedValue(REGISTER_TX_HASH);
     mocks.waitForTransactionReceiptMock.mockResolvedValue({ status: "reverted" });
@@ -210,7 +274,7 @@ describe("farcaster local signup", () => {
       .mockResolvedValueOnce(7n)
       .mockResolvedValueOnce(0n);
     mocks.getBalanceMock.mockResolvedValue(100n);
-    mocks.evaluatePreflightMock.mockReturnValue({ status: "ready" });
+    mocks.planFarcasterSignupMock.mockReturnValue(buildReadyPlan());
     mocks.signTypedDataMock.mockResolvedValue(`0x${"33".repeat(65)}`);
     mocks.sendTransactionMock
       .mockResolvedValueOnce(REGISTER_TX_HASH)

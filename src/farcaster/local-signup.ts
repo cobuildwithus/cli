@@ -2,14 +2,8 @@ import {
   FARCASTER_CONTRACTS,
   FARCASTER_ID_GATEWAY_ABI,
   FARCASTER_ID_REGISTRY_ABI,
-  buildFarcasterSignupCompletedResult,
-  buildFarcasterSignupNeedsFundingResult,
-  buildFarcasterSignedKeyRequestMetadata,
-  buildFarcasterSignedKeyRequestTypedData,
-  buildFarcasterSignupCallPlan,
-  buildFarcasterSignupExecutableCalls,
-  computeFarcasterSignedKeyRequestDeadline,
-  evaluateFarcasterSignupPreflight,
+  normalizeFarcasterExtraStorage,
+  planFarcasterSignup,
   type FarcasterSignupResult,
 } from "@cobuild/wire";
 import { createPublicClient, createWalletClient, http } from "viem";
@@ -78,7 +72,7 @@ export async function executeLocalFarcasterSignup(params: {
   privateKeyHex: HexString;
   signerPublicKey: `0x${string}`;
   recoveryAddress?: string;
-  extraStorage?: string;
+  extraStorage?: bigint | number | string;
 }): Promise<FarcasterSignupResult> {
   const rpcUrl = resolveOptimismRpcUrl(params.deps);
   const transport = http(rpcUrl, {
@@ -90,7 +84,7 @@ export async function executeLocalFarcasterSignup(params: {
   const ownerAddress = account.address;
   const custodyAddress = ownerAddress;
   const recoveryAddress = normalizeEvmAddress(params.recoveryAddress ?? ownerAddress, "--recovery");
-  const extraStorage = params.extraStorage ? BigInt(params.extraStorage) : 0n;
+  const extraStorage = normalizeFarcasterExtraStorage(params.extraStorage, "extraStorage");
 
   const publicClient = createPublicClient({
     chain: optimism,
@@ -125,51 +119,38 @@ export async function executeLocalFarcasterSignup(params: {
     address: custodyAddress,
   });
 
-  const preflight = evaluateFarcasterSignupPreflight({
+  const signupPlan = planFarcasterSignup({
+    ownerAddress,
     custodyAddress,
+    recoveryAddress,
+    signerPublicKey: params.signerPublicKey,
     existingFid,
     idGatewayPriceWei: priceWei,
     balanceWei,
+    extraStorage,
   });
-  if (preflight.status === "needs_funding") {
-    return buildFarcasterSignupNeedsFundingResult({
-      ownerAddress,
+  if (signupPlan.status === "needs_funding") {
+    return signupPlan;
+  }
+  if (signupPlan.status === "already_registered") {
+    throw new LocalFarcasterAlreadyRegisteredError({
+      fid: BigInt(signupPlan.existingFid),
       custodyAddress,
-      recoveryAddress,
-      idGatewayPriceWei: priceWei,
-      balanceWei,
-      requiredWei: preflight.requiredWei,
     });
   }
 
-  const deadline = computeFarcasterSignedKeyRequestDeadline();
   const requestSigner = privateKeyToAccount(generatePrivateKey());
-  const typedData = buildFarcasterSignedKeyRequestTypedData({
-    requestFid: 0n,
-    signerPublicKey: params.signerPublicKey,
-    deadline,
-  });
+  const typedData = signupPlan.typedData;
   const signedKeyRequestSignature = await requestSigner.signTypedData({
     domain: typedData.domain,
     types: { SignedKeyRequest: typedData.types.SignedKeyRequest },
     primaryType: typedData.primaryType,
     message: typedData.message,
   });
-  const signedKeyRequestMetadata = buildFarcasterSignedKeyRequestMetadata({
-    requestFid: typedData.message.requestFid,
+  const [registerCall, addKeyCall] = signupPlan.buildExecutableCalls({
     requestSigner: requestSigner.address,
     signature: signedKeyRequestSignature,
-    deadline: typedData.message.deadline,
   });
-
-  const signupCallPlan = buildFarcasterSignupCallPlan({
-    recoveryAddress,
-    extraStorage,
-    idGatewayPriceWei: priceWei,
-    signerPublicKey: params.signerPublicKey,
-    signedKeyRequestMetadata,
-  });
-  const [registerCall, addKeyCall] = buildFarcasterSignupExecutableCalls(signupCallPlan);
 
   await sendAndWaitTx({
     walletClient,
@@ -198,12 +179,8 @@ export async function executeLocalFarcasterSignup(params: {
     throw new Error("Farcaster signup confirmed but FID was not assigned to custody address.");
   }
 
-  return buildFarcasterSignupCompletedResult({
-    ownerAddress,
-    custodyAddress,
-    recoveryAddress,
+  return signupPlan.buildCompletedResult({
     fid: assignedFid,
-    idGatewayPriceWei: priceWei,
     txHash,
   });
 }

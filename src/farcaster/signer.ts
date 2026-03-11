@@ -29,15 +29,6 @@ export function normalizeSignerFileOption(value: string | undefined): string | u
   return normalizeDirectoryOption(value, "--signer-file");
 }
 
-export function parseExtraStorage(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error("--extra-storage must be a non-negative integer");
-  }
-  return trimmed;
-}
-
 export function resolveSignerOutputDirectory(params: {
   deps: Pick<CliDeps, "homedir">;
   agentKey: string;
