@@ -47,7 +47,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 - `farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]`
 - `farcaster post --text <text> [--agent <key>] [--fid <n>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]`
-- `signup` calls `/api/cli/farcaster/signup` and persists Ed25519 signer key material via SecretRef.
+- `signup` calls `/api/cli/farcaster/signup`, then best-effort syncs completed signups through `/v1/farcaster/profiles/link-wallet`, and persists Ed25519 signer key material via SecretRef.
 - `post` submits directly to Neynar hub and selects x402 payment source per agent:
   - `hosted` mode calls `/api/cli/farcaster/x402-payment`.
   - `local` mode signs USDC typed data locally and emits `X-PAYMENT` without backend signing.
@@ -137,6 +137,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `apiPost` handles all command POSTs and `apiGet` handles canonical tool discovery.
 - Endpoint composition goes through `toEndpoint` (never raw string concat in handlers).
 - Transport routes `/v1/*` through `chatApiUrl` when configured; all non-`/v1/*` paths stay on `url`.
+- Farcaster signup remains interface-owned for registration, but the post-signup wallet-link sync uses the chat-api `/v1` boundary.
 - Transport enforces secure base URL policy (`https`, except loopback `http`) and rejects embedded credentials.
 - Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
 - `send`/`tx` include both `X-Idempotency-Key` and `Idempotency-Key`.

@@ -81,7 +81,7 @@ cli/
 - `setup` uses a one-time localhost callback session (loopback-only, state-bound, origin-checked) to receive PAT approval from the interface `/home` flow.
 - `setup` then persists config and performs a wallet bootstrap call to `/api/cli/wallet`.
 - `wallet` always targets `/api/cli/wallet`.
-- `farcaster signup` targets `/api/cli/farcaster/signup`, generates Ed25519 signer keys locally, and stores the private signer key via secret provider refs (metadata-only signer file).
+- `farcaster signup` targets `/api/cli/farcaster/signup`, generates Ed25519 signer keys locally, syncs completed signups to `/v1/farcaster/profiles/link-wallet`, and stores the private signer key via secret provider refs (metadata-only signer file).
 - `wallet payer init` persists per-agent payer mode metadata (`hosted` or `local`) and payer key refs for local mode.
 - `farcaster post` signs cast bytes locally, submits directly to Neynar hub, and resolves `X-PAYMENT` from either hosted backend signing or local typed-data signing depending on payer mode.
 - `farcaster post` verification mode defaults to `none`; `--verify` maps to one delayed check (`once`) and `--verify=poll` performs bounded repeated checks.
@@ -131,7 +131,9 @@ cli/
 2. Resolve agent key from explicit flag or saved config.
 3. Generate an Ed25519 signer keypair locally in the CLI process.
 4. POST signup payload (`signerPublicKey`, optional recovery/storage options) to `/api/cli/farcaster/signup`.
-5. On successful completion, persist signer secret locally to a private file and print JSON result.
+5. If the signup result is `complete`, persist the signer secret locally to a private file.
+6. Then POST `/v1/farcaster/profiles/link-wallet` with the returned `fid` and `custodyAddress`.
+7. Print the JSON result, including partial sync failure details when the follow-up wallet-link call fails.
 
 ### Wallet payer setup/status flow
 

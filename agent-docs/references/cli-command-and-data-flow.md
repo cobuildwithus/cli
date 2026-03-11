@@ -89,6 +89,18 @@
 5. In local mode, persist payer private key via SecretRef file provider by default.
 6. `wallet payer status` reads payer metadata and reports payer address/network/token/cost.
 
+## Farcaster Signup Flow
+
+1. Parse `farcaster signup` options (`--agent`, `--recovery`, `--extra-storage`, `--out-dir`).
+2. Resolve agent key from `--agent` or config default.
+3. Generate an Ed25519 signer keypair locally.
+4. Execute the existing signup path:
+   - hosted path: POST `/api/cli/farcaster/signup`
+   - local path: execute the onchain registration locally
+5. If the signup result is `complete`, persist signer metadata locally.
+6. Then POST `/v1/farcaster/profiles/link-wallet` with the returned `fid` and `custodyAddress`.
+7. If the wallet-link sync fails after signup succeeds, keep the signup result and signer metadata, then attach an explicit partial-failure payload so operators can retry sync separately.
+
 ## Farcaster Post Flow
 
 1. Parse `farcaster post` options (`--agent`, `--text`, `--fid`, `--signer-file`, `--idempotency-key`, `--verify` mode).
