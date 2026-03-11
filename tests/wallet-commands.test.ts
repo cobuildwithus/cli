@@ -27,6 +27,7 @@ describe("wallet command helpers", () => {
         mode: "local",
         network: "base",
         token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
       },
     });
   });
@@ -76,6 +77,9 @@ describe("wallet command helpers", () => {
       walletConfig: {
         mode: "hosted",
         walletAddress: "0x00000000000000000000000000000000000000aa",
+        network: "base",
+        token: "usdc",
+        costPerPaidCallMicroUsdc: "1000",
       },
     });
 

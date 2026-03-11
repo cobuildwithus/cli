@@ -1,40 +1,19 @@
 import {
-  X402_TRANSFER_PRIMARY_TYPE,
-  buildX402AuthorizationPayload,
-  buildX402PaymentPayload,
-  buildX402TypedDataDomain,
-  buildX402TypedDataTypes,
-  validateFarcasterHostedX402PaymentResponse,
+  buildFarcasterX402SigningRequest,
+  buildFarcasterX402Spec,
   decodeAndValidateX402PaymentPayload,
-  encodeX402PaymentPayload,
+  validateFarcasterHostedX402PaymentResponse,
 } from "@cobuild/wire";
 import { privateKeyToAccount } from "viem/accounts";
 import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
-import {
-  BASE_CHAIN_ID,
-  USDC_EIP712_DOMAIN_NAME,
-  USDC_EIP712_DOMAIN_VERSION,
-  X402_AUTH_TTL_SECONDS,
-  X402_NETWORK,
-  X402_PAY_TO_ADDRESS,
-  X402_USDC_CONTRACT,
-  X402_VALUE_MICRO_USDC,
-} from "./constants.js";
 import type {
   HexString,
   ResolvedPostPayer,
   X402PaymentHeader,
 } from "./types.js";
 
-const X402_TYPED_DATA_DOMAIN = buildX402TypedDataDomain({
-  name: USDC_EIP712_DOMAIN_NAME,
-  version: USDC_EIP712_DOMAIN_VERSION,
-  chainId: BASE_CHAIN_ID,
-  verifyingContract: X402_USDC_CONTRACT,
-});
-
-const X402_TYPED_DATA_TYPES = buildX402TypedDataTypes();
+const FARCASTER_X402_SPEC = buildFarcasterX402Spec();
 
 async function buildLocalX402PaymentHeader(params: {
   expectedAgentKey: string;
@@ -45,41 +24,35 @@ async function buildLocalX402PaymentHeader(params: {
   if (params.payerAddress.toLowerCase() !== account.address.toLowerCase()) {
     throw new Error("Local wallet config mismatch: walletAddress does not match private key.");
   }
-  const validBefore = Math.floor(Date.now() / 1000) + X402_AUTH_TTL_SECONDS;
-  const authorization = buildX402AuthorizationPayload({
-    from: account.address,
-    validBefore,
+  const signingRequest = buildFarcasterX402SigningRequest({
+    payerAddress: account.address,
   });
 
   const signature = await account.signTypedData({
-    domain: X402_TYPED_DATA_DOMAIN,
+    domain: signingRequest.domain,
     types: {
-      TransferWithAuthorization: X402_TYPED_DATA_TYPES.TransferWithAuthorization,
+      TransferWithAuthorization: signingRequest.types.TransferWithAuthorization,
     },
-    primaryType: X402_TRANSFER_PRIMARY_TYPE,
+    primaryType: signingRequest.primaryType,
     message: {
-      from: authorization.from,
-      to: authorization.to,
-      value: BigInt(authorization.value),
-      validAfter: BigInt(authorization.validAfter),
-      validBefore: BigInt(authorization.validBefore),
-      nonce: authorization.nonce,
+      from: signingRequest.authorization.from,
+      to: signingRequest.authorization.to,
+      value: BigInt(signingRequest.authorization.value),
+      validAfter: BigInt(signingRequest.authorization.validAfter),
+      validBefore: BigInt(signingRequest.authorization.validBefore),
+      nonce: signingRequest.authorization.nonce,
     },
   });
 
-  const xPaymentPayload = buildX402PaymentPayload({
-    signature,
-    authorization,
-  });
-  const xPayment = encodeX402PaymentPayload(xPaymentPayload);
+  const xPayment = signingRequest.encodePayment(signature);
 
   return {
     xPayment,
-    payerAddress: params.payerAddress,
+    payerAddress: account.address,
     payerAgentKey: params.expectedAgentKey,
-    x402Token: X402_USDC_CONTRACT,
-    x402Amount: X402_VALUE_MICRO_USDC,
-    x402Network: X402_NETWORK,
+    x402Token: FARCASTER_X402_SPEC.token,
+    x402Amount: FARCASTER_X402_SPEC.amount,
+    x402Network: FARCASTER_X402_SPEC.network,
   };
 }
 
@@ -149,9 +122,9 @@ function remapWireX402ValidationError(message: string, source: "local" | "hosted
 function validateX402PaymentPayload(xPaymentBase64: string, source: "local" | "hosted"): void {
   try {
     decodeAndValidateX402PaymentPayload(xPaymentBase64, {
-      requiredNetwork: X402_NETWORK,
-      requiredPayTo: X402_PAY_TO_ADDRESS,
-      requiredValue: X402_VALUE_MICRO_USDC,
+      requiredNetwork: FARCASTER_X402_SPEC.network,
+      requiredPayTo: FARCASTER_X402_SPEC.payTo,
+      requiredValue: FARCASTER_X402_SPEC.amount,
       requireUnexpired: true,
       nowSeconds: Math.floor(Date.now() / 1000),
     });

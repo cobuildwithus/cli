@@ -1,6 +1,7 @@
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
+import { buildFarcasterX402Spec } from "@cobuild/wire";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { parseCliWalletAddressCandidates } from "../api-response-schemas.js";
 import { buildWalletPayerRef, isSecretRef } from "../secrets/ref-contract.js";
@@ -16,12 +17,7 @@ import {
   normalizeOptionalWalletInitMode,
   parseWalletModePromptAnswer,
 } from "../wallet/mode.js";
-import {
-  PAYER_FILE_NAME,
-  X402_NETWORK,
-  X402_TOKEN_SYMBOL,
-  X402_VALUE_MICRO_USDC,
-} from "./constants.js";
+import { PAYER_FILE_NAME } from "./constants.js";
 import type {
   HexString,
   ResolvedPostPayer,
@@ -29,6 +25,8 @@ import type {
   X402InitMode,
   X402PayerSetupResult,
 } from "./types.js";
+
+const FARCASTER_X402_SPEC = buildFarcasterX402Spec();
 
 interface MaskingWriter extends Writable {
   setMuted(value: boolean): void;
@@ -145,8 +143,8 @@ function isStoredX402PayerConfig(value: unknown): value is StoredX402PayerConfig
     record.version === 1 &&
     modeValid &&
     (record.payerAddress === null || isEvmAddress(record.payerAddress)) &&
-    record.network === "base" &&
-    record.token === "usdc" &&
+    record.network === FARCASTER_X402_SPEC.network &&
+    record.token === FARCASTER_X402_SPEC.tokenSymbol &&
     typeof record.createdAt === "string" &&
     refValid
   );
@@ -264,8 +262,8 @@ function saveLocalX402Payer(params: {
       mode: "local",
       payerAddress,
       payerRef,
-      network: X402_NETWORK,
-      token: X402_TOKEN_SYMBOL,
+      network: FARCASTER_X402_SPEC.network,
+      token: FARCASTER_X402_SPEC.tokenSymbol,
       createdAt: new Date().toISOString(),
     },
   });
@@ -296,8 +294,8 @@ async function saveHostedX402Payer(params: {
       version: 1,
       mode: "hosted",
       payerAddress,
-      network: X402_NETWORK,
-      token: X402_TOKEN_SYMBOL,
+      network: FARCASTER_X402_SPEC.network,
+      token: FARCASTER_X402_SPEC.tokenSymbol,
       createdAt: new Date().toISOString(),
     },
   });
@@ -490,6 +488,18 @@ export function resolvePostPayer(params: {
   };
 }
 
+export function getX402WalletPayerMetadata(): {
+  network: typeof FARCASTER_X402_SPEC.network;
+  token: typeof FARCASTER_X402_SPEC.tokenSymbol;
+  costPerPaidCallMicroUsdc: typeof FARCASTER_X402_SPEC.amount;
+} {
+  return {
+    network: FARCASTER_X402_SPEC.network,
+    token: FARCASTER_X402_SPEC.tokenSymbol,
+    costPerPaidCallMicroUsdc: FARCASTER_X402_SPEC.amount,
+  };
+}
+
 export function getX402WalletPayerCostMicroUsdc(): string {
-  return X402_VALUE_MICRO_USDC;
+  return FARCASTER_X402_SPEC.amount;
 }

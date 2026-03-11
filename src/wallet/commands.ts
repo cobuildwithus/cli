@@ -2,7 +2,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { readConfig } from "../config.js";
 import {
   fetchHostedPayerAddress,
-  getX402WalletPayerCostMicroUsdc,
+  getX402WalletPayerMetadata,
   printX402FundingHints,
   readStoredX402PayerConfig,
   resolveLocalPayerPrivateKey,
@@ -30,6 +30,7 @@ export async function executeWalletInitCommand(
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
+  const walletMetadata = getX402WalletPayerMetadata();
   const setup = await runX402InitWorkflow({
     deps,
     currentConfig: current,
@@ -47,9 +48,9 @@ export async function executeWalletInitCommand(
     walletConfig: {
       mode: setup.mode,
       walletAddress: setup.payerAddress,
-      network: "base",
-      token: "usdc",
-      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
+      network: walletMetadata.network,
+      token: walletMetadata.token,
+      costPerPaidCallMicroUsdc: walletMetadata.costPerPaidCallMicroUsdc,
     },
   };
 }
@@ -60,6 +61,7 @@ export async function executeWalletStatusCommand(
 ): Promise<Record<string, unknown>> {
   const current = readConfig(deps);
   const agentKey = resolveAgentKey(input.agent, current.agent);
+  const walletMetadata = getX402WalletPayerMetadata();
   const stored = readStoredX402PayerConfig({
     deps,
     agentKey,
@@ -111,7 +113,7 @@ export async function executeWalletStatusCommand(
       walletAddress: payerAddress,
       network: stored.network,
       token: stored.token,
-      costPerPaidCallMicroUsdc: getX402WalletPayerCostMicroUsdc(),
+      costPerPaidCallMicroUsdc: walletMetadata.costPerPaidCallMicroUsdc,
     },
   };
 }
