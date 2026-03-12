@@ -38,7 +38,6 @@ export const participantProtocolWriteOutputSchema = z
           request: z.unknown(),
           status: z.string(),
           warnings: z.array(z.string()),
-          response: z.unknown().optional(),
           result: z.unknown().optional(),
           transactionHash: z.string().optional(),
           explorerUrl: z.string().optional(),
@@ -51,7 +50,7 @@ export const participantProtocolWriteOutputSchema = z
           spenderAddress: z.string().optional(),
           amount: z.string().optional(),
         })
-        .passthrough()
+        .strict()
     ),
   })
   .passthrough();

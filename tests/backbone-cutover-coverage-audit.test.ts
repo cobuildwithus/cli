@@ -128,10 +128,12 @@ describe("backbone cutover coverage audit", () => {
     };
     const steps = schema.output?.properties?.steps as {
       items?: {
+        additionalProperties?: boolean;
         properties?: Record<string, unknown>;
       };
     };
 
+    expect(steps.items?.additionalProperties).toBe(false);
     expect(steps.items?.properties).toHaveProperty("result");
     expect(steps.items?.properties).not.toHaveProperty("response");
   });
