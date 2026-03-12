@@ -3,6 +3,7 @@ import {
   normalizeEvmAddress,
   validateHexData,
   validateNonNegativeDecimal,
+  withIdempotencyKey,
 } from "./shared.js";
 import {
   readOptionalStringFromInputJson,
@@ -128,5 +129,5 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
     },
   });
 
-  return response as TxCommandOutput;
+  return withIdempotencyKey(execution.idempotencyKey, response) as TxCommandOutput;
 }

@@ -3,6 +3,7 @@ import {
   normalizeEvmAddress,
   parseIntegerOption,
   validateNonNegativeDecimal,
+  withIdempotencyKey,
 } from "./shared.js";
 import {
   readOptionalStringFromInputJson,
@@ -141,5 +142,5 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
     },
   });
 
-  return response as SendCommandOutput;
+  return withIdempotencyKey(execution.idempotencyKey, response) as SendCommandOutput;
 }

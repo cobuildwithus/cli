@@ -9,7 +9,6 @@ import {
   resolveExecIdempotencyKey,
   resolveNetwork,
   throwWithIdempotencyKey,
-  withIdempotencyKey,
 } from "./shared.js";
 
 export interface WalletWriteExecutionInput {
@@ -60,7 +59,7 @@ export async function executeWalletWrite(params: {
   requestBody: Record<string, unknown>;
   onLocal: (context: { walletConfig: StoredX402PayerConfig; privateKeyHex: HexString }) => Promise<unknown>;
 }): Promise<Record<string, unknown>> {
-  const response = await executeWithConfiguredWallet({
+  return (await executeWithConfiguredWallet({
     deps: params.deps,
     currentConfig: params.context.currentConfig,
     agentKey: params.context.agentKey,
@@ -85,7 +84,5 @@ export async function executeWalletWrite(params: {
         throwWithIdempotencyKey(error, params.context.idempotencyKey);
       }
     },
-  });
-
-  return withIdempotencyKey(params.context.idempotencyKey, response) as Record<string, unknown>;
+  })) as Record<string, unknown>;
 }

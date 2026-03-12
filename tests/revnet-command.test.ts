@@ -712,6 +712,12 @@ describe("revnet command integration", () => {
         },
       ],
     });
+    expect(
+      ((result.steps as Array<{ result?: Record<string, unknown> }>)[0]?.result ?? {}).idempotencyKey
+    ).toBeUndefined();
+    expect(
+      ((result.steps as Array<{ result?: Record<string, unknown> }>)[1]?.result ?? {}).idempotencyKey
+    ).toBeUndefined();
     expect((result.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey).not.toBe(
       (result.steps as Array<{ idempotencyKey: string }>)[1]?.idempotencyKey
     );
