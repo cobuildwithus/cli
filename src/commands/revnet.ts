@@ -272,20 +272,20 @@ function formatUuid(bytes: Uint8Array): string {
 
 function deriveRevnetStepIdempotencyKey(params: {
   rootIdempotencyKey: string;
-  network: string;
   key: string;
-  label: string;
-  request: JsonRecord;
+  encoded: {
+    to: `0x${string}`;
+    data: Hex;
+    value: bigint;
+  };
 }): string {
   const seed = [
     "revnet-step",
     params.rootIdempotencyKey,
-    params.network,
     params.key,
-    params.label,
-    String(params.request.to ?? ""),
-    String(params.request.data ?? ""),
-    String(params.request.valueEth ?? ""),
+    params.encoded.to,
+    params.encoded.data,
+    params.encoded.value.toString(10),
   ].join("\n");
   const hash = createHash("sha256").update(seed).digest();
   const bytes = Uint8Array.from(hash.subarray(0, 16));
@@ -635,6 +635,11 @@ export async function executeRevnetLoanCommand(
     ...(preferredLoanToken !== undefined ? { preferredLoanToken } : {}),
   });
 
+  if (context.token.balance < collateralCount) {
+    throw new Error(
+      `Requested collateral count exceeds wallet balance (${context.token.balance.toString()}).`
+    );
+  }
   if (!context.selectedLoanSource || !context.borrowableContext || context.borrowableAmount === null) {
     throw new Error("Loan is not available for this revnet and wallet position.");
   }
@@ -670,10 +675,8 @@ export async function executeRevnetLoanCommand(
     });
     const childIdempotencyKey = deriveRevnetStepIdempotencyKey({
       rootIdempotencyKey: idempotencyKey,
-      network,
       key: step.key,
-      label: step.label,
-      request: requestBody,
+      encoded,
     });
 
     if (input.dryRun === true) {

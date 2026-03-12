@@ -336,6 +336,9 @@ describe("revnet command integration", () => {
       });
     mocks.getRevnetBorrowContextMock.mockResolvedValue({
       projectId: 138n,
+      token: {
+        balance: 9n,
+      },
       selectedLoanSource: {
         token: "0x00000000000000000000000000000000000000ee",
         terminal: "0x00000000000000000000000000000000000000ff",
@@ -621,6 +624,9 @@ describe("revnet command integration", () => {
 
     mocks.getRevnetBorrowContextMock.mockResolvedValue({
       projectId: 138n,
+      token: {
+        balance: 20n,
+      },
       selectedLoanSource: {
         token: "0x00000000000000000000000000000000000000ee",
         terminal: "0x00000000000000000000000000000000000000ff",
@@ -708,6 +714,124 @@ describe("revnet command integration", () => {
     });
     expect((result.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey).not.toBe(
       (result.steps as Array<{ idempotencyKey: string }>)[1]?.idempotencyKey
+    );
+  });
+
+  it("keeps child loan-step idempotency keys stable across label-only copy edits", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "default",
+      },
+    });
+    setHostedWalletConfig(harness);
+
+    mocks.getRevnetBorrowContextMock.mockResolvedValue({
+      projectId: 138n,
+      token: {
+        balance: 20n,
+      },
+      selectedLoanSource: {
+        token: "0x00000000000000000000000000000000000000ee",
+        terminal: "0x00000000000000000000000000000000000000ff",
+      },
+      borrowableContext: {
+        token: "0x00000000000000000000000000000000000000ee",
+      },
+      borrowableAmount: 200n,
+      feeConfig: {
+        minPrepaidFeePercent: 10n,
+        maxPrepaidFeePercent: 100n,
+        liquidationDurationSeconds: 31_536_000n,
+      },
+      needsBorrowPermission: true,
+      permissionsAddress: "0x0000000000000000000000000000000000000011",
+      revLoansAddress: "0x0000000000000000000000000000000000000012",
+    });
+    mocks.getRevnetPrepaidFeePercentMock.mockReturnValue(42n);
+    mocks.buildRevnetBorrowPlanFromContextMock
+      .mockReturnValueOnce({
+        projectId: 138n,
+        permissionRequired: true,
+        preconditions: [],
+        quote: {
+          netBorrowableAmount: 150n,
+        },
+        steps: [
+          {
+            key: "permission",
+            label: "Grant REV loan permission",
+            intent: { address: "0x1", abi: [], functionName: "setPermissionsFor", args: [] },
+          },
+          {
+            key: "borrow",
+            label: "Borrow from REV loan source",
+            intent: { address: "0x2", abi: [], functionName: "borrowFrom", args: [] },
+          },
+        ],
+      })
+      .mockReturnValueOnce({
+        projectId: 138n,
+        permissionRequired: true,
+        preconditions: [],
+        quote: {
+          netBorrowableAmount: 150n,
+        },
+        steps: [
+          {
+            key: "permission",
+            label: "Grant loan permission",
+            intent: { address: "0x1", abi: [], functionName: "setPermissionsFor", args: [] },
+          },
+          {
+            key: "borrow",
+            label: "Borrow from source",
+            intent: { address: "0x2", abi: [], functionName: "borrowFrom", args: [] },
+          },
+        ],
+      });
+    mocks.encodeWriteIntentMock.mockImplementation(
+      ({ functionName }: { functionName: string }) =>
+        functionName === "setPermissionsFor"
+          ? {
+              to: "0x0000000000000000000000000000000000000011",
+              data: "0xperm",
+              value: 0n,
+            }
+          : {
+              to: "0x0000000000000000000000000000000000000012",
+              data: "0xborrow",
+              value: 0n,
+            }
+    );
+
+    const first = await executeRevnetLoanCommand(
+      {
+        collateralCount: "9",
+        repayYears: "1",
+        dryRun: true,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      },
+      harness.deps
+    );
+    const second = await executeRevnetLoanCommand(
+      {
+        collateralCount: "9",
+        repayYears: "1",
+        dryRun: true,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      },
+      harness.deps
+    );
+
+    expect((first.steps as Array<{ label: string }>).map((step) => step.label)).not.toEqual(
+      (second.steps as Array<{ label: string }>).map((step) => step.label)
+    );
+    expect(
+      (first.steps as Array<{ idempotencyKey: string }>).map((step) => step.idempotencyKey)
+    ).toEqual(
+      (second.steps as Array<{ idempotencyKey: string }>).map((step) => step.idempotencyKey)
     );
   });
 
@@ -825,6 +949,41 @@ describe("revnet command integration", () => {
 
     mocks.getRevnetBorrowContextMock.mockResolvedValue({
       projectId: 138n,
+      token: {
+        balance: 8n,
+      },
+      selectedLoanSource: {
+        token: "0x00000000000000000000000000000000000000ee",
+        terminal: "0x00000000000000000000000000000000000000ff",
+      },
+      borrowableContext: {
+        token: "0x00000000000000000000000000000000000000ee",
+      },
+      borrowableAmount: 200n,
+      feeConfig: {
+        minPrepaidFeePercent: 10n,
+        maxPrepaidFeePercent: 100n,
+        liquidationDurationSeconds: 31_536_000n,
+      },
+      needsBorrowPermission: false,
+    });
+
+    await expect(
+      executeRevnetLoanCommand(
+        {
+          collateralCount: "9",
+          repayYears: "1",
+        },
+        invalidLoanHarness.deps
+      )
+    ).rejects.toThrow("Requested collateral count exceeds wallet balance");
+    expect(mocks.buildRevnetBorrowPlanFromContextMock).not.toHaveBeenCalled();
+
+    mocks.getRevnetBorrowContextMock.mockResolvedValue({
+      projectId: 138n,
+      token: {
+        balance: 20n,
+      },
       selectedLoanSource: {
         token: "0x00000000000000000000000000000000000000ee",
         terminal: "0x00000000000000000000000000000000000000ff",
