@@ -220,5 +220,10 @@ describe("wallet config helper", () => {
         payerAddress: "0x87F6433eae757DF1f471bF9Ce03fe32d751Ff9a0",
       },
     });
+
+    const stored = JSON.parse(
+      harness.files.get("/tmp/cli-tests/.cobuild-cli/agents/default/wallet/payer.json") ?? "{}"
+    ) as { payerAddress?: string | null };
+    expect(stored.payerAddress).toBe("0x87F6433eae757DF1f471bF9Ce03fe32d751Ff9a0");
   });
 });

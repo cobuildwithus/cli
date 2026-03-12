@@ -9,6 +9,47 @@ function parseLastJsonOutput(outputs: string[]): unknown {
   return JSON.parse(outputs.at(-1) ?? "null");
 }
 
+async function expectParticipantWriteSchema(
+  harness: ReturnType<typeof createHarness>,
+  commandPath: string[],
+  optionKeys: string[]
+): Promise<void> {
+  const optionProperties: Record<string, unknown> = {
+    network: expect.any(Object),
+    agent: expect.any(Object),
+    idempotencyKey: expect.any(Object),
+    dryRun: expect.any(Object),
+  };
+  for (const key of optionKeys) {
+    optionProperties[key] = expect.any(Object);
+  }
+
+  await runCli(["schema", ...commandPath], harness.deps);
+  expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+    ok: true,
+    command: commandPath.join(" "),
+    schema: {
+      options: {
+        properties: optionProperties,
+      },
+      output: {
+        properties: {
+          idempotencyKey: expect.any(Object),
+          family: expect.any(Object),
+          action: expect.any(Object),
+          steps: expect.any(Object),
+        },
+      },
+    },
+    metadata: {
+      mutating: true,
+      supportsDryRun: true,
+      requiresAuth: true,
+      sideEffects: ["network", "onchain_transaction"],
+    },
+  });
+}
+
 function setFarcasterSignerFixture(
   harness: ReturnType<typeof createHarness>,
   agentKey = "default",
@@ -62,7 +103,7 @@ describe("agent safety + dry-run + schema", () => {
         token: "bbt_secret",
       },
     });
-    await expect(runCli(["wallet", "--agent", ".."], walletHarness.deps)).rejects.toThrow(
+    await expect(runCli(["wallet", "status", "--agent", ".."], walletHarness.deps)).rejects.toThrow(
       'agent key must not be "." or "..".'
     );
     expect(walletHarness.fetchMock).not.toHaveBeenCalled();
@@ -88,7 +129,7 @@ describe("agent safety + dry-run + schema", () => {
       },
     });
 
-    await expect(runCli(["wallet", "--agent="], harness.deps)).rejects.toThrow(
+    await expect(runCli(["wallet", "status", "--agent="], harness.deps)).rejects.toThrow(
       "agent key cannot be empty."
     );
     expect(harness.fetchMock).not.toHaveBeenCalled();
@@ -312,6 +353,124 @@ describe("agent safety + dry-run + schema", () => {
           valueEth: "0.01",
         },
       },
+    });
+  });
+
+  it("supports dry-run JSON input for goal/community terminal writes without network calls", async () => {
+    const goalHarness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await runCli(
+      [
+        "goal",
+        "pay",
+        "--input-json",
+        JSON.stringify({
+          terminal: VALID_TO,
+          projectId: "11",
+          amount: "1000000000000000000",
+          beneficiary: VALID_TO,
+        }),
+        "--dry-run",
+      ],
+      goalHarness.deps
+    );
+    expect(goalHarness.fetchMock).not.toHaveBeenCalled();
+    expect(parseLastJsonOutput(goalHarness.outputs)).toMatchObject({
+      ok: true,
+      dryRun: true,
+      family: "goal",
+      action: "goal.pay",
+      steps: [
+        {
+          request: {
+            kind: "tx",
+            to: VALID_TO,
+            valueEth: "1",
+          },
+        },
+      ],
+    });
+
+    const communityHarness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await runCli(
+      [
+        "community",
+        "pay",
+        "--input-json",
+        JSON.stringify({
+          terminal: VALID_TO,
+          projectId: "12",
+          amount: "1000000000000000000",
+          beneficiary: VALID_TO,
+        }),
+        "--dry-run",
+      ],
+      communityHarness.deps
+    );
+    expect(communityHarness.fetchMock).not.toHaveBeenCalled();
+    expect(parseLastJsonOutput(communityHarness.outputs)).toMatchObject({
+      ok: true,
+      dryRun: true,
+      family: "community",
+      action: "community.pay",
+      steps: [
+        {
+          request: {
+            kind: "tx",
+            to: VALID_TO,
+            valueEth: "1",
+          },
+        },
+      ],
+    });
+
+    const addToBalanceHarness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await runCli(
+      [
+        "community",
+        "add-to-balance",
+        "--input-json",
+        JSON.stringify({
+          terminal: VALID_TO,
+          projectId: "13",
+          amount: "1000000000000000",
+        }),
+        "--dry-run",
+      ],
+      addToBalanceHarness.deps
+    );
+    expect(addToBalanceHarness.fetchMock).not.toHaveBeenCalled();
+    expect(parseLastJsonOutput(addToBalanceHarness.outputs)).toMatchObject({
+      ok: true,
+      dryRun: true,
+      family: "community",
+      action: "community.add-to-balance",
+      steps: [
+        {
+          request: {
+            kind: "tx",
+            to: VALID_TO,
+            valueEth: "0.001",
+          },
+        },
+      ],
     });
   });
 
@@ -551,11 +710,44 @@ describe("agent safety + dry-run + schema", () => {
   it("supports command-level schema introspection", async () => {
     const harness = createHarness();
 
-    await runCli(["schema", "wallet"], harness.deps);
+    await runCli(["schema", "wallet", "status"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
-      command: "wallet",
+      command: "wallet status",
       schema: {
+        options: {
+          properties: {
+            agent: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            walletConfig: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: false,
+        supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network", "reads_local_files"],
+      },
+    });
+
+    await runCli(["schema", "wallet", "init"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "wallet init",
+      schema: {
+        options: {
+          properties: {
+            agent: expect.any(Object),
+            mode: expect.any(Object),
+            privateKeyStdin: expect.any(Object),
+            privateKeyFile: expect.any(Object),
+            prompt: expect.any(Object),
+          },
+        },
         output: {
           properties: {
             walletConfig: expect.any(Object),
@@ -565,6 +757,8 @@ describe("agent safety + dry-run + schema", () => {
       metadata: {
         mutating: true,
         supportsDryRun: false,
+        requiresAuth: true,
+        sideEffects: ["network", "writes_local_files"],
       },
     });
 
@@ -636,6 +830,96 @@ describe("agent safety + dry-run + schema", () => {
       },
     });
 
+    await runCli(["schema", "goal", "pay"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "goal pay",
+      schema: {
+        options: {
+          properties: {
+            inputJson: expect.any(Object),
+            inputFile: expect.any(Object),
+            inputStdin: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
+    await runCli(["schema", "community", "pay"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "community pay",
+      schema: {
+        options: {
+          properties: {
+            inputJson: expect.any(Object),
+            inputFile: expect.any(Object),
+            inputStdin: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
+    await runCli(["schema", "community", "add-to-balance"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "community add-to-balance",
+      schema: {
+        options: {
+          properties: {
+            inputJson: expect.any(Object),
+            inputFile: expect.any(Object),
+            inputStdin: expect.any(Object),
+            dryRun: expect.any(Object),
+          },
+        },
+        output: {
+          properties: {
+            idempotencyKey: expect.any(Object),
+            family: expect.any(Object),
+            action: expect.any(Object),
+            steps: expect.any(Object),
+          },
+        },
+      },
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
     await runCli(["schema", "budget", "inspect"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
       ok: true,
@@ -662,6 +946,38 @@ describe("agent safety + dry-run + schema", () => {
         sideEffects: ["network"],
       },
     });
+
+    await runCli(["schema", "budget", "activate"], harness.deps);
+    expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
+      ok: true,
+      command: "budget activate",
+      metadata: {
+        mutating: true,
+        supportsDryRun: true,
+        requiresAuth: true,
+        sideEffects: ["network", "onchain_transaction"],
+      },
+    });
+
+    await expectParticipantWriteSchema(harness, ["budget", "finalize-removed"], [
+      "controller",
+      "itemId",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["budget", "retry-resolution"], [
+      "controller",
+      "itemId",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["budget", "prune"], [
+      "controller",
+      "budgetTreasury",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["budget", "sync"], [
+      "controller",
+      "itemId",
+    ]);
 
     await runCli(["schema", "tcr", "inspect"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
@@ -839,6 +1155,30 @@ describe("agent safety + dry-run + schema", () => {
         sideEffects: ["network", "onchain_transaction"],
       },
     });
+
+    await expectParticipantWriteSchema(harness, ["stake", "opt-in-juror"], [
+      "vault",
+      "token",
+      "goalAmount",
+      "delegate",
+      "approvalMode",
+      "currentAllowance",
+      "approvalAmount",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["stake", "request-juror-exit"], [
+      "vault",
+      "goalAmount",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["stake", "finalize-juror-exit"], [
+      "vault",
+    ]);
+
+    await expectParticipantWriteSchema(harness, ["stake", "set-juror-delegate"], [
+      "vault",
+      "delegate",
+    ]);
 
     await runCli(["schema", "premium", "status"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
