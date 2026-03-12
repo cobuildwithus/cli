@@ -5,6 +5,7 @@ import {
   executeWalletStatusCommand,
 } from "../../commands/wallet.js";
 import type { CliDeps } from "../../types.js";
+import { mapOptionsToExecutor } from "./command-wrapper-shared.js";
 
 export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
   const walletConfigOutput = z.object({
@@ -22,54 +23,61 @@ export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
       walletConfig: walletConfigOutput.optional(),
     })
     .passthrough();
+  const walletOptions = z.object({
+    network: z.string().optional(),
+    agent: z.string().optional(),
+    mode: z.string().optional(),
+    privateKeyStdin: z.boolean().optional(),
+    privateKeyFile: z.string().optional(),
+    prompt: z.boolean().optional(),
+  });
+  const runWallet = mapOptionsToExecutor(
+    deps,
+    executeWalletCommand,
+    (options: z.infer<typeof walletOptions>) => ({
+      network: options.network,
+      agent: options.agent,
+    })
+  );
+  const runWalletStatus = mapOptionsToExecutor(
+    deps,
+    executeWalletStatusCommand,
+    (options: z.infer<typeof walletOptions>) => ({
+      agent: options.agent,
+    })
+  );
+  const runWalletInit = mapOptionsToExecutor(
+    deps,
+    executeWalletInitCommand,
+    (options: z.infer<typeof walletOptions>) => ({
+      agent: options.agent,
+      mode: options.mode,
+      privateKeyStdin: options.privateKeyStdin,
+      privateKeyFile: options.privateKeyFile,
+      noPrompt: options.prompt === false,
+    })
+  );
 
   root.command("wallet", {
     description: "Fetch wallet details and manage wallet configuration",
     args: z.object({
       action: z.string().optional(),
     }),
-    options: z.object({
-      network: z.string().optional(),
-      agent: z.string().optional(),
-      mode: z.string().optional(),
-      privateKeyStdin: z.boolean().optional(),
-      privateKeyFile: z.string().optional(),
-      prompt: z.boolean().optional(),
-    }),
+    options: walletOptions,
     output: walletOutput,
     run(context) {
       const action = context.args.action?.trim().toLowerCase();
 
       if (action === undefined) {
-        return executeWalletCommand(
-          {
-            network: context.options.network,
-            agent: context.options.agent,
-          },
-          deps
-        ) as Promise<z.infer<typeof walletOutput>>;
+        return runWallet(context) as Promise<z.infer<typeof walletOutput>>;
       }
 
       if (action === "status") {
-        return executeWalletStatusCommand(
-          {
-            agent: context.options.agent,
-          },
-          deps
-        ) as Promise<z.infer<typeof walletOutput>>;
+        return runWalletStatus(context) as Promise<z.infer<typeof walletOutput>>;
       }
 
       if (action === "init") {
-        return executeWalletInitCommand(
-          {
-            agent: context.options.agent,
-            mode: context.options.mode,
-            privateKeyStdin: context.options.privateKeyStdin,
-            privateKeyFile: context.options.privateKeyFile,
-            noPrompt: context.options.prompt === false,
-          },
-          deps
-        ) as Promise<z.infer<typeof walletOutput>>;
+        return runWalletInit(context) as Promise<z.infer<typeof walletOutput>>;
       }
 
       throw new Error(

@@ -154,4 +154,46 @@ describe("tx network defaults", () => {
       idempotencyKey: EXPLICIT_UUID,
     });
   });
+
+  it("preserves dry-run output shape for JSON tx input", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+    });
+
+    await runCli(
+      [
+        "tx",
+        "--input-json",
+        JSON.stringify({
+          to: VALID_TO,
+          data: "0xdeadbeef",
+          idempotencyKey: EXPLICIT_UUID,
+        }),
+        "--dry-run",
+      ],
+      harness.deps
+    );
+
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+    expect(JSON.parse(harness.outputs.at(-1) ?? "{}")).toEqual({
+      ok: true,
+      dryRun: true,
+      idempotencyKey: EXPLICIT_UUID,
+      request: {
+        method: "POST",
+        path: "/api/cli/exec",
+        body: {
+          kind: "tx",
+          network: "base",
+          agentKey: "default",
+          to: VALID_TO,
+          data: "0xdeadbeef",
+          valueEth: "0",
+        },
+      },
+    });
+  });
 });

@@ -17,23 +17,23 @@ import {
   REVNET_SECONDS_PER_YEAR,
 } from "@cobuild/wire";
 import { readConfig } from "../config.js";
-import { apiPost } from "../transport.js";
 import type { CliDeps } from "../types.js";
 import { fetchHostedPayerAddress, resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
 import { normalizeKeyedRemoteToolResponse } from "./remote-tool.js";
 import {
-  buildIdempotencyHeaders,
   normalizeEvmAddress,
-  resolveAgentKey,
-  resolveExecIdempotencyKey,
-  resolveNetwork,
-  throwWithIdempotencyKey,
   validateHexData,
-  withIdempotencyKey,
 } from "./shared.js";
 import { executeCanonicalToolOnly } from "./tool-execution.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
-import { executeWithConfiguredWallet, requireStoredWalletConfig } from "../wallet/payer-config.js";
+import { requireStoredWalletConfig } from "../wallet/payer-config.js";
+import {
+  buildExecDryRunOutput,
+  executeWalletWrite,
+  resolveWalletWriteExecutionContext,
+  type WalletWriteExecutionContext,
+  type WalletWriteExecutionInput,
+} from "./wallet-write-shared.js";
 
 const REVNET_PAY_USAGE =
   "Usage: cli revnet pay --amount <wei> [--project-id <n>] [--beneficiary <address>] [--min-returned-tokens <n>] [--memo <text>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
@@ -114,6 +114,35 @@ export interface RevnetIssuanceTermsCommandOutput extends Record<string, unknown
   source: "remote_tool";
   warnings: string[];
 }
+
+type RevnetWriteCommandInputBase = WalletWriteExecutionInput & {
+  beneficiary?: string;
+  dryRun?: boolean;
+};
+
+type RevnetWriteExecutionContext = WalletWriteExecutionContext & {
+  walletAddress: `0x${string}`;
+  beneficiary: `0x${string}`;
+  dryRun: boolean;
+};
+
+type RevnetEncodedWrite = {
+  to: `0x${string}`;
+  data: Hex;
+  value: bigint;
+};
+
+type RevnetSingleWriteResultExtras = {
+  requestBody: JsonRecord;
+  projectId: bigint | undefined;
+  contextProjectId: bigint;
+  extras?: Record<string, unknown>;
+};
+
+type RevnetProjectReadContext = {
+  projectId: bigint | undefined;
+  client: ReturnType<typeof createBasePublicReadClient>;
+};
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -311,9 +340,7 @@ function buildRawTxRequestBody(params: {
 
 async function executeRawTxRequest(params: {
   deps: CliDeps;
-  currentConfig: ReturnType<typeof readConfig>;
-  agentKey: string;
-  network: string;
+  execution: WalletWriteExecutionContext;
   requestBody: JsonRecord;
   idempotencyKey: string;
 }): Promise<JsonRecord> {
@@ -321,36 +348,25 @@ async function executeRawTxRequest(params: {
   const data = String(params.requestBody.data);
   const valueEth = String(params.requestBody.valueEth);
 
-  return await executeWithConfiguredWallet({
+  return (await executeWalletWrite({
     deps: params.deps,
-    currentConfig: params.currentConfig,
-    agentKey: params.agentKey,
-    onLocal: async ({ privateKeyHex }) => {
-      try {
-        return (await executeLocalTx({
-          deps: params.deps,
-          agentKey: params.agentKey,
-          privateKeyHex,
-          network: params.network,
-          to,
-          valueEth,
-          data,
-          idempotencyKey: params.idempotencyKey,
-        })) as JsonRecord;
-      } catch (error) {
-        throwWithIdempotencyKey(error, params.idempotencyKey);
-      }
+    context: {
+      ...params.execution,
+      idempotencyKey: params.idempotencyKey,
     },
-    onHosted: async () => {
-      try {
-        return (await apiPost(params.deps, "/api/cli/exec", params.requestBody, {
-          headers: buildIdempotencyHeaders(params.idempotencyKey),
-        })) as JsonRecord;
-      } catch (error) {
-        throwWithIdempotencyKey(error, params.idempotencyKey);
-      }
-    },
-  });
+    requestBody: params.requestBody,
+    onLocal: async ({ privateKeyHex }) =>
+      (await executeLocalTx({
+        deps: params.deps,
+        agentKey: params.execution.agentKey,
+        privateKeyHex,
+        network: params.execution.network,
+        to,
+        valueEth,
+        data,
+        idempotencyKey: params.idempotencyKey,
+      })) as JsonRecord,
+  })) as JsonRecord;
 }
 
 function attachSerializedContext<T extends RevnetWriteCommandOutput>(
@@ -359,6 +375,158 @@ function attachSerializedContext<T extends RevnetWriteCommandOutput>(
 ): T {
   Object.assign(output, serializeBigInts(extras));
   return output;
+}
+
+async function resolveRevnetWriteExecutionContext(
+  input: RevnetWriteCommandInputBase,
+  deps: CliDeps
+): Promise<RevnetWriteExecutionContext> {
+  const sharedExecution = resolveWalletWriteExecutionContext(input, deps);
+  const walletAddress = await resolveExecutionWalletAddress({
+    deps,
+    agentKey: sharedExecution.agentKey,
+  });
+
+  return {
+    ...sharedExecution,
+    walletAddress,
+    beneficiary:
+      input.beneficiary !== undefined
+        ? normalizeEvmAddress(input.beneficiary, "--beneficiary")
+        : walletAddress,
+    dryRun: input.dryRun === true,
+  };
+}
+
+function resolveRevnetProjectReadContext(
+  projectIdInput: string | undefined,
+  execution: Pick<RevnetWriteExecutionContext, "network">,
+  deps: Pick<CliDeps, "env" | "fetch">
+): RevnetProjectReadContext {
+  return {
+    projectId: parseProjectId(projectIdInput),
+    client: createBasePublicReadClient(deps, execution.network),
+  };
+}
+
+function createRevnetWriteRequest(params: {
+  execution: Pick<RevnetWriteExecutionContext, "network" | "agentKey">;
+  encoded: RevnetEncodedWrite;
+}): JsonRecord {
+  return buildRawTxRequestBody({
+    network: params.execution.network,
+    agentKey: params.execution.agentKey,
+    to: params.encoded.to,
+    data: params.encoded.data,
+    value: params.encoded.value,
+  });
+}
+
+function finalizeRevnetCommandOutput<T extends RevnetWriteCommandOutput>(
+  output: T,
+  execution: Pick<
+    RevnetWriteExecutionContext,
+    "agentKey" | "network" | "walletAddress" | "beneficiary"
+  >,
+  params: {
+    projectId: bigint | undefined;
+    contextProjectId: bigint;
+    extras?: Record<string, unknown>;
+  }
+): T {
+  return attachSerializedContext(output, {
+    agentKey: execution.agentKey,
+    network: execution.network,
+    walletAddress: execution.walletAddress,
+    beneficiary: execution.beneficiary,
+    projectId: params.projectId ?? params.contextProjectId,
+    ...(params.extras ?? {}),
+  });
+}
+
+async function finalizeSingleRevnetWrite(
+  deps: CliDeps,
+  execution: RevnetWriteExecutionContext,
+  params: RevnetSingleWriteResultExtras
+): Promise<RevnetWriteCommandOutput> {
+  if (execution.dryRun) {
+    return finalizeRevnetCommandOutput(
+      buildExecDryRunOutput({
+        idempotencyKey: execution.idempotencyKey,
+        requestBody: params.requestBody,
+      }) as RevnetWriteCommandOutput,
+      execution,
+      params
+    );
+  }
+
+  const response = await executeRawTxRequest({
+    deps,
+    execution,
+    requestBody: params.requestBody,
+    idempotencyKey: execution.idempotencyKey,
+  });
+  return finalizeRevnetCommandOutput(
+    {
+      ...response,
+      idempotencyKey: execution.idempotencyKey,
+    } as RevnetWriteCommandOutput,
+    execution,
+    params
+  );
+}
+
+async function executeRevnetLoanSteps(params: {
+  deps: CliDeps;
+  execution: RevnetWriteExecutionContext;
+  steps: Array<{
+    key: string;
+    label: string;
+    intent: Parameters<typeof encodeWriteIntent>[0];
+  }>;
+}): Promise<RevnetChildStepOutput[]> {
+  const results: RevnetChildStepOutput[] = [];
+
+  for (const step of params.steps) {
+    const encoded = encodeWriteIntent(step.intent);
+    const requestBody = createRevnetWriteRequest({
+      execution: params.execution,
+      encoded,
+    });
+    const childIdempotencyKey = deriveRevnetStepIdempotencyKey({
+      rootIdempotencyKey: params.execution.idempotencyKey,
+      key: step.key,
+      encoded,
+    });
+
+    if (params.execution.dryRun) {
+      results.push({
+        key: step.key,
+        label: step.label,
+        idempotencyKey: childIdempotencyKey,
+        request: requestBody,
+        status: "dry-run",
+      });
+      continue;
+    }
+
+    const response = await executeRawTxRequest({
+      deps: params.deps,
+      execution: params.execution,
+      requestBody,
+      idempotencyKey: childIdempotencyKey,
+    });
+    results.push({
+      key: step.key,
+      label: step.label,
+      idempotencyKey: childIdempotencyKey,
+      request: requestBody,
+      status: "succeeded",
+      result: response,
+    });
+  }
+
+  return results;
 }
 
 export async function executeRevnetPayCommand(
@@ -370,21 +538,10 @@ export async function executeRevnetPayCommand(
     throw new Error("--amount must be greater than 0.");
   }
 
-  const current = readConfig(deps);
-  const agentKey = resolveAgentKey(input.agent, current.agent);
-  const network = resolveNetwork(input.network, deps);
-  const projectId = parseProjectId(input.projectId);
-  const walletAddress = await resolveExecutionWalletAddress({
-    deps,
-    agentKey,
-  });
-  const beneficiary =
-    input.beneficiary !== undefined
-      ? normalizeEvmAddress(input.beneficiary, "--beneficiary")
-      : walletAddress;
+  const execution = await resolveRevnetWriteExecutionContext(input, deps);
+  const { projectId, client } = resolveRevnetProjectReadContext(input.projectId, execution, deps);
   const minReturnedTokens = parseOptionalBigInt(input.minReturnedTokens, "--min-returned-tokens");
   const metadata = parseOptionalMetadataHex(input.metadata);
-  const client = createBasePublicReadClient(deps, network);
   const context = await getRevnetPaymentContext(client, {
     ...(projectId !== undefined ? { projectId } : {}),
   });
@@ -408,65 +565,24 @@ export async function executeRevnetPayCommand(
     terminalAddress: context.terminalAddress,
     ...(projectId !== undefined ? { projectId } : {}),
     amount,
-    beneficiary,
+    beneficiary: execution.beneficiary,
     ...(minReturnedTokens !== undefined ? { minReturnedTokens } : {}),
     ...(input.memo !== undefined ? { memo: input.memo } : {}),
     ...(metadata !== undefined ? { metadata } : {}),
   });
-  const encoded = encodeWriteIntent(intent);
-  const requestBody = buildRawTxRequestBody({
-    network,
-    agentKey,
-    to: encoded.to,
-    data: encoded.data,
-    value: encoded.value,
+  const requestBody = createRevnetWriteRequest({
+    execution,
+    encoded: encodeWriteIntent(intent),
   });
-  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
-
-  if (input.dryRun === true) {
-    return attachSerializedContext(
-      {
-        ok: true,
-        dryRun: true,
-        idempotencyKey,
-        request: {
-          method: "POST",
-          path: "/api/cli/exec",
-          body: requestBody,
-        },
-      } as RevnetWriteCommandOutput,
-      {
-        agentKey,
-        network,
-        walletAddress,
-        beneficiary,
-        projectId: projectId ?? context.projectId,
-        paymentContext: context,
-        quote,
-      }
-    );
-  }
-
-  const response = await executeRawTxRequest({
-    deps,
-    currentConfig: current,
-    agentKey,
-    network,
+  return finalizeSingleRevnetWrite(deps, execution, {
     requestBody,
-    idempotencyKey,
-  });
-  return attachSerializedContext(
-    withIdempotencyKey(idempotencyKey, response) as RevnetWriteCommandOutput,
-    {
-      agentKey,
-      network,
-      walletAddress,
-      beneficiary,
-      projectId: projectId ?? context.projectId,
+    projectId,
+    contextProjectId: context.projectId,
+    extras: {
       paymentContext: context,
       quote,
-    }
-  );
+    },
+  });
 }
 
 export async function executeRevnetCashOutCommand(
@@ -482,28 +598,17 @@ export async function executeRevnetCashOutCommand(
     throw new Error("--cash-out-count must be greater than 0.");
   }
 
-  const current = readConfig(deps);
-  const agentKey = resolveAgentKey(input.agent, current.agent);
-  const network = resolveNetwork(input.network, deps);
-  const projectId = parseProjectId(input.projectId);
-  const walletAddress = await resolveExecutionWalletAddress({
-    deps,
-    agentKey,
-  });
-  const beneficiary =
-    input.beneficiary !== undefined
-      ? normalizeEvmAddress(input.beneficiary, "--beneficiary")
-      : walletAddress;
+  const execution = await resolveRevnetWriteExecutionContext(input, deps);
+  const { projectId, client } = resolveRevnetProjectReadContext(input.projectId, execution, deps);
   const minReclaimAmount = parseOptionalBigInt(input.minReclaimAmount, "--min-reclaim-amount");
   const metadata = parseOptionalMetadataHex(input.metadata);
   const preferredBaseToken =
     input.preferredBaseToken !== undefined
       ? normalizeEvmAddress(input.preferredBaseToken, "--preferred-base-token")
       : undefined;
-  const client = createBasePublicReadClient(deps, network);
   const context = await getRevnetCashOutContext(client, {
     ...(projectId !== undefined ? { projectId } : {}),
-    account: walletAddress,
+    account: execution.walletAddress,
     ...(preferredBaseToken !== undefined ? { preferredBaseToken } : {}),
   });
 
@@ -524,68 +629,27 @@ export async function executeRevnetCashOutCommand(
   });
   const intent = buildRevnetCashOutIntent({
     terminalAddress: context.quoteTerminal,
-    holder: walletAddress,
+    holder: execution.walletAddress,
     ...(projectId !== undefined ? { projectId } : {}),
     cashOutCount,
     tokenToReclaim: context.quoteAccountingContext.token,
     ...(minReclaimAmount !== undefined ? { minTokensReclaimed: minReclaimAmount } : {}),
-    beneficiary,
+    beneficiary: execution.beneficiary,
     ...(metadata !== undefined ? { metadata } : {}),
   });
-  const encoded = encodeWriteIntent(intent);
-  const requestBody = buildRawTxRequestBody({
-    network,
-    agentKey,
-    to: encoded.to,
-    data: encoded.data,
-    value: encoded.value,
+  const requestBody = createRevnetWriteRequest({
+    execution,
+    encoded: encodeWriteIntent(intent),
   });
-  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
-
-  if (input.dryRun === true) {
-    return attachSerializedContext(
-      {
-        ok: true,
-        dryRun: true,
-        idempotencyKey,
-        request: {
-          method: "POST",
-          path: "/api/cli/exec",
-          body: requestBody,
-        },
-      } as RevnetWriteCommandOutput,
-      {
-        agentKey,
-        network,
-        walletAddress,
-        beneficiary,
-        projectId: projectId ?? context.projectId,
-        cashOutContext: context,
-        quote,
-      }
-    );
-  }
-
-  const response = await executeRawTxRequest({
-    deps,
-    currentConfig: current,
-    agentKey,
-    network,
+  return finalizeSingleRevnetWrite(deps, execution, {
     requestBody,
-    idempotencyKey,
-  });
-  return attachSerializedContext(
-    withIdempotencyKey(idempotencyKey, response) as RevnetWriteCommandOutput,
-    {
-      agentKey,
-      network,
-      walletAddress,
-      beneficiary,
-      projectId: projectId ?? context.projectId,
+    projectId,
+    contextProjectId: context.projectId,
+    extras: {
       cashOutContext: context,
       quote,
-    }
-  );
+    },
+  });
 }
 
 export async function executeRevnetLoanCommand(
@@ -603,18 +667,8 @@ export async function executeRevnetLoanCommand(
 
   const repayYears = parsePositiveNumber(input.repayYears, "--repay-years", REVNET_LOAN_USAGE);
   const permissionMode = parsePermissionMode(input.permissionMode);
-  const current = readConfig(deps);
-  const agentKey = resolveAgentKey(input.agent, current.agent);
-  const network = resolveNetwork(input.network, deps);
-  const projectId = parseProjectId(input.projectId);
-  const walletAddress = await resolveExecutionWalletAddress({
-    deps,
-    agentKey,
-  });
-  const beneficiary =
-    input.beneficiary !== undefined
-      ? normalizeEvmAddress(input.beneficiary, "--beneficiary")
-      : walletAddress;
+  const execution = await resolveRevnetWriteExecutionContext(input, deps);
+  const { projectId, client } = resolveRevnetProjectReadContext(input.projectId, execution, deps);
   const minBorrowAmount = parseOptionalBigInt(input.minBorrowAmount, "--min-borrow-amount");
   const preferredBaseToken =
     input.preferredBaseToken !== undefined
@@ -624,10 +678,9 @@ export async function executeRevnetLoanCommand(
     input.preferredLoanToken !== undefined
       ? normalizeEvmAddress(input.preferredLoanToken, "--preferred-loan-token")
       : undefined;
-  const client = createBasePublicReadClient(deps, network);
   const context = await getRevnetBorrowContext(client, {
     ...(projectId !== undefined ? { projectId } : {}),
-    account: walletAddress,
+    account: execution.walletAddress,
     collateralCount,
     ...(preferredBaseToken !== undefined ? { preferredBaseToken } : {}),
     ...(preferredLoanToken !== undefined ? { preferredLoanToken } : {}),
@@ -655,69 +708,30 @@ export async function executeRevnetLoanCommand(
   });
   const plan = buildRevnetBorrowPlanFromContext(context, {
     prepaidFeePercent,
-    beneficiary,
+    beneficiary: execution.beneficiary,
     ...(minBorrowAmount !== undefined ? { minBorrowAmount } : {}),
     ...(permissionMode !== undefined ? { permissionMode } : {}),
   });
-  const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
-  const steps: RevnetChildStepOutput[] = [];
+  const steps = await executeRevnetLoanSteps({
+    deps,
+    execution,
+    steps: plan.steps.map((step) => ({
+      ...step,
+      intent: step.intent as Parameters<typeof encodeWriteIntent>[0],
+    })),
+  });
 
-  for (const step of plan.steps) {
-    const encoded = encodeWriteIntent(step.intent as Parameters<typeof encodeWriteIntent>[0]);
-    const requestBody = buildRawTxRequestBody({
-      network,
-      agentKey,
-      to: encoded.to,
-      data: encoded.data,
-      value: encoded.value,
-    });
-    const childIdempotencyKey = deriveRevnetStepIdempotencyKey({
-      rootIdempotencyKey: idempotencyKey,
-      key: step.key,
-      encoded,
-    });
-
-    if (input.dryRun === true) {
-      steps.push({
-        key: step.key,
-        label: step.label,
-        idempotencyKey: childIdempotencyKey,
-        request: requestBody,
-        status: "dry-run",
-      });
-      continue;
-    }
-
-    const response = await executeRawTxRequest({
-      deps,
-      currentConfig: current,
-      agentKey,
-      network,
-      requestBody,
-      idempotencyKey: childIdempotencyKey,
-    });
-    steps.push({
-      key: step.key,
-      label: step.label,
-      idempotencyKey: childIdempotencyKey,
-      request: requestBody,
-      status: "succeeded",
-      result: response,
-    });
-  }
-
-  return attachSerializedContext(
+  return finalizeRevnetCommandOutput(
     {
       ok: true,
-      ...(input.dryRun === true ? { dryRun: true as const } : {}),
-      idempotencyKey,
+      ...(execution.dryRun ? { dryRun: true as const } : {}),
+      idempotencyKey: execution.idempotencyKey,
     } as RevnetWriteCommandOutput,
+    execution,
     {
-      agentKey,
-      network,
-      walletAddress,
-      beneficiary,
-      projectId: projectId ?? context.projectId,
+      projectId,
+      contextProjectId: context.projectId,
+      extras: {
       repayYears,
       prepaidFeePercent,
       liquidationYears,
@@ -726,12 +740,13 @@ export async function executeRevnetLoanCommand(
       quote: plan.quote,
       borrowContext: context,
       stepCount: steps.length,
-      executedStepCount: input.dryRun === true ? 0 : steps.length,
+      executedStepCount: execution.dryRun ? 0 : steps.length,
       replayedStepCount:
-        input.dryRun === true
+        execution.dryRun
           ? 0
           : steps.filter((step) => isRecord(step.result) && step.result.replayed === true).length,
       steps,
+      },
     }
   );
 }

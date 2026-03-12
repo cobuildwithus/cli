@@ -4,6 +4,10 @@ import {
   executeFarcasterSignupCommand,
 } from "../../commands/farcaster.js";
 import type { CliDeps } from "../../types.js";
+import {
+  forwardOptionsToExecutor,
+  mapOptionsToExecutor,
+} from "./command-wrapper-shared.js";
 
 export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
   const farcasterSignerOutput = z.object({
@@ -52,58 +56,55 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
         .optional(),
     })
     .passthrough();
+  const farcasterSignupOptions = z.object({
+    agent: z.string().optional(),
+    recovery: z.string().optional(),
+    extraStorage: z.string().optional(),
+    outDir: z.string().optional(),
+  });
+  const farcasterPostOptions = z.object({
+    agent: z.string().optional(),
+    text: z.string().optional(),
+    fid: z.coerce.number().int().positive().optional(),
+    replyTo: z.string().optional(),
+    signerFile: z.string().optional(),
+    idempotencyKey: z.string().optional(),
+    verify: z.enum(["none", "once", "poll"]).optional(),
+    dryRun: z.boolean().optional(),
+  });
+  const runFarcasterSignup = forwardOptionsToExecutor(deps, executeFarcasterSignupCommand);
+  const runFarcasterPost = mapOptionsToExecutor(
+    deps,
+    executeFarcasterPostCommand,
+    (options: z.infer<typeof farcasterPostOptions>) => ({
+      agent: options.agent,
+      text: options.text,
+      fid: options.fid !== undefined ? String(options.fid) : undefined,
+      replyTo: options.replyTo,
+      signerFile: options.signerFile,
+      idempotencyKey: options.idempotencyKey,
+      verify: options.verify,
+      dryRun: options.dryRun,
+    })
+  );
 
   const farcaster = Cli.create("farcaster", {
     description: "Manage Farcaster signup/posting",
   })
     .command("signup", {
       description: "Create Farcaster account and signer metadata",
-      options: z.object({
-        agent: z.string().optional(),
-        recovery: z.string().optional(),
-        extraStorage: z.string().optional(),
-        outDir: z.string().optional(),
-      }),
+      options: farcasterSignupOptions,
       output: farcasterSignupOutput,
       run(context) {
-        return executeFarcasterSignupCommand(
-          {
-            agent: context.options.agent,
-            recovery: context.options.recovery,
-            extraStorage: context.options.extraStorage,
-            outDir: context.options.outDir,
-          },
-          deps
-        ) as Promise<z.infer<typeof farcasterSignupOutput>>;
+        return runFarcasterSignup(context) as Promise<z.infer<typeof farcasterSignupOutput>>;
       },
     })
     .command("post", {
       description: "Submit a cast via Neynar hub",
-      options: z.object({
-        agent: z.string().optional(),
-        text: z.string().optional(),
-        fid: z.coerce.number().int().positive().optional(),
-        replyTo: z.string().optional(),
-        signerFile: z.string().optional(),
-        idempotencyKey: z.string().optional(),
-        verify: z.enum(["none", "once", "poll"]).optional(),
-        dryRun: z.boolean().optional(),
-      }),
+      options: farcasterPostOptions,
       output: farcasterPostOutput,
       run(context) {
-        return executeFarcasterPostCommand(
-          {
-            agent: context.options.agent,
-            text: context.options.text,
-            fid: context.options.fid !== undefined ? String(context.options.fid) : undefined,
-            replyTo: context.options.replyTo,
-            signerFile: context.options.signerFile,
-            idempotencyKey: context.options.idempotencyKey,
-            verify: context.options.verify,
-            dryRun: context.options.dryRun,
-          },
-          deps
-        ) as Promise<z.infer<typeof farcasterPostOutput>>;
+        return runFarcasterPost(context) as Promise<z.infer<typeof farcasterPostOutput>>;
       },
     });
 

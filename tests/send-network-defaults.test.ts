@@ -144,4 +144,39 @@ describe("send network defaults", () => {
       idempotencyKey: GENERATED_UUID,
     });
   });
+
+  it("accepts send JSON input with integer decimals", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+      },
+      fetchResponder: createJsonResponder({ ok: true }),
+    });
+
+    await runCli(
+      [
+        "send",
+        "--input-json",
+        JSON.stringify({
+          token: "usdc",
+          amount: "1.0",
+          to: VALID_TO,
+          decimals: 6,
+        }),
+      ],
+      harness.deps
+    );
+
+    const [, init] = harness.fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      kind: "transfer",
+      network: "base",
+      agentKey: "default",
+      token: "usdc",
+      amount: "1.0",
+      to: VALID_TO,
+      decimals: 6,
+    });
+  });
 });

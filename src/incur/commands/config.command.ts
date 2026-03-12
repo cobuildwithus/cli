@@ -4,6 +4,7 @@ import {
   executeConfigShowCommand,
 } from "../../commands/config.js";
 import type { CliDeps } from "../../types.js";
+import { forwardOptionsToExecutor } from "./command-wrapper-shared.js";
 
 export function registerConfigCommand(root: Cli.Cli, deps: CliDeps): void {
   const configSetOutput = z.object({
@@ -18,40 +19,27 @@ export function registerConfigCommand(root: Cli.Cli, deps: CliDeps): void {
     agent: z.string().nullable(),
     path: z.string(),
   });
+  const configSetOptions = z.object({
+    url: z.string().optional(),
+    chatApiUrl: z.string().optional(),
+    token: z.string().optional(),
+    tokenFile: z.string().optional(),
+    tokenStdin: z.boolean().optional(),
+    tokenEnv: z.string().optional(),
+    tokenExec: z.string().optional(),
+    tokenRefJson: z.string().optional(),
+    agent: z.string().optional(),
+  });
+  const runConfigSet = forwardOptionsToExecutor(deps, executeConfigSetCommand);
 
   const config = Cli.create("config", {
     description: "Read and write local CLI config",
   })
     .command("set", {
       description: "Persist config values",
-      options: z.object({
-        url: z.string().optional(),
-        chatApiUrl: z.string().optional(),
-        token: z.string().optional(),
-        tokenFile: z.string().optional(),
-        tokenStdin: z.boolean().optional(),
-        tokenEnv: z.string().optional(),
-        tokenExec: z.string().optional(),
-        tokenRefJson: z.string().optional(),
-        agent: z.string().optional(),
-      }),
+      options: configSetOptions,
       output: configSetOutput,
-      run(context) {
-        return executeConfigSetCommand(
-          {
-            url: context.options.url,
-            chatApiUrl: context.options.chatApiUrl,
-            token: context.options.token,
-            tokenFile: context.options.tokenFile,
-            tokenStdin: context.options.tokenStdin,
-            tokenEnv: context.options.tokenEnv,
-            tokenExec: context.options.tokenExec,
-            tokenRefJson: context.options.tokenRefJson,
-            agent: context.options.agent,
-          },
-          deps
-        );
-      },
+      run: runConfigSet,
     })
     .command("show", {
       description: "Print effective config and auth metadata",

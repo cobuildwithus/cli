@@ -25,6 +25,7 @@ import {
 } from "@cobuild/wire";
 import type { CliDeps } from "../types.js";
 import { readJsonInputObject, resolveNetwork } from "./shared.js";
+import { requireParticipantString } from "./participant-input-validation.js";
 import {
   executeParticipantProtocolPlan,
   type ParticipantPlanCommandInput,
@@ -138,13 +139,6 @@ export interface VoteInvalidRoundRewardsCommandInput extends ParticipantPlanComm
 export interface VoteExecuteRulingCommandInput extends ParticipantPlanCommandInput {
   arbitrator?: string;
   disputeId?: string;
-}
-
-function requireString(value: string | undefined, usage: string, label: string): string {
-  if (!value || value.trim().length === 0) {
-    throw new Error(`${usage}\n${label} is required.`);
-  }
-  return value.trim();
 }
 
 function pickPayloadOverride(
@@ -270,12 +264,12 @@ export async function executeTcrSubmitBudgetCommand(
     input,
     deps
   );
-  const registryAddress = requireString(
+  const registryAddress = requireParticipantString(
     typeof payload.registry === "string" ? payload.registry : undefined,
     TCR_SUBMIT_BUDGET_USAGE,
     "payload.registry"
   );
-  const depositTokenAddress = requireString(
+  const depositTokenAddress = requireParticipantString(
     typeof payload.depositToken === "string" ? payload.depositToken : undefined,
     TCR_SUBMIT_BUDGET_USAGE,
     "payload.depositToken"
@@ -307,12 +301,12 @@ export async function executeTcrSubmitMechanismCommand(
     input,
     deps
   );
-  const registryAddress = requireString(
+  const registryAddress = requireParticipantString(
     typeof payload.registry === "string" ? payload.registry : undefined,
     TCR_SUBMIT_MECHANISM_USAGE,
     "payload.registry"
   );
-  const depositTokenAddress = requireString(
+  const depositTokenAddress = requireParticipantString(
     typeof payload.depositToken === "string" ? payload.depositToken : undefined,
     TCR_SUBMIT_MECHANISM_USAGE,
     "payload.depositToken"
@@ -344,12 +338,12 @@ export async function executeTcrSubmitRoundSubmissionCommand(
     input,
     deps
   );
-  const registryAddress = requireString(
+  const registryAddress = requireParticipantString(
     typeof payload.registry === "string" ? payload.registry : undefined,
     TCR_SUBMIT_ROUND_SUBMISSION_USAGE,
     "payload.registry"
   );
-  const depositTokenAddress = requireString(
+  const depositTokenAddress = requireParticipantString(
     typeof payload.depositToken === "string" ? payload.depositToken : undefined,
     TCR_SUBMIT_ROUND_SUBMISSION_USAGE,
     "payload.depositToken"
@@ -376,9 +370,9 @@ export async function executeTcrRemoveCommand(
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
   const plan = buildTcrRemoveItemPlan({
-    registryAddress: requireString(input.registry, TCR_REMOVE_USAGE, "--registry"),
-    depositTokenAddress: requireString(input.depositToken, TCR_REMOVE_USAGE, "--deposit-token"),
-    itemId: requireString(input.itemId, TCR_REMOVE_USAGE, "--item-id"),
+    registryAddress: requireParticipantString(input.registry, TCR_REMOVE_USAGE, "--registry"),
+    depositTokenAddress: requireParticipantString(input.depositToken, TCR_REMOVE_USAGE, "--deposit-token"),
+    itemId: requireParticipantString(input.itemId, TCR_REMOVE_USAGE, "--item-id"),
     ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
     costs: (await readRequiredCostsInput(TCR_REMOVE_USAGE, input, deps)) as GeneralizedTcrTotalCostsInput,
   });
@@ -397,11 +391,11 @@ export async function executeTcrChallengeCommand(
   deps: CliDeps
 ): Promise<ParticipantPlanCommandOutput> {
   const plan = buildTcrChallengeRequestPlan({
-    registryAddress: requireString(input.registry, TCR_CHALLENGE_USAGE, "--registry"),
-    depositTokenAddress: requireString(input.depositToken, TCR_CHALLENGE_USAGE, "--deposit-token"),
-    itemId: requireString(input.itemId, TCR_CHALLENGE_USAGE, "--item-id"),
+    registryAddress: requireParticipantString(input.registry, TCR_CHALLENGE_USAGE, "--registry"),
+    depositTokenAddress: requireParticipantString(input.depositToken, TCR_CHALLENGE_USAGE, "--deposit-token"),
+    itemId: requireParticipantString(input.itemId, TCR_CHALLENGE_USAGE, "--item-id"),
     requestType: normalizeChallengeRequestTypeInput(
-      requireString(input.requestType, TCR_CHALLENGE_USAGE, "--request-type"),
+      requireParticipantString(input.requestType, TCR_CHALLENGE_USAGE, "--request-type"),
       TCR_CHALLENGE_USAGE
     ),
     ...(input.evidence !== undefined ? { evidence: input.evidence } : {}),
@@ -432,8 +426,8 @@ export async function executeTcrExecuteCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildTcrExecuteRequestPlan({
-        registryAddress: requireString(input.registry, TCR_EXECUTE_USAGE, "--registry"),
-        itemId: requireString(input.itemId, TCR_EXECUTE_USAGE, "--item-id"),
+        registryAddress: requireParticipantString(input.registry, TCR_EXECUTE_USAGE, "--registry"),
+        itemId: requireParticipantString(input.itemId, TCR_EXECUTE_USAGE, "--item-id"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -451,8 +445,8 @@ export async function executeTcrTimeoutCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildTcrExecuteRequestTimeoutPlan({
-        registryAddress: requireString(input.registry, TCR_TIMEOUT_USAGE, "--registry"),
-        itemId: requireString(input.itemId, TCR_TIMEOUT_USAGE, "--item-id"),
+        registryAddress: requireParticipantString(input.registry, TCR_TIMEOUT_USAGE, "--registry"),
+        itemId: requireParticipantString(input.itemId, TCR_TIMEOUT_USAGE, "--item-id"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -470,9 +464,9 @@ export async function executeTcrEvidenceCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildTcrSubmitEvidencePlan({
-        registryAddress: requireString(input.registry, TCR_EVIDENCE_USAGE, "--registry"),
-        itemId: requireString(input.itemId, TCR_EVIDENCE_USAGE, "--item-id"),
-        evidence: requireString(input.evidence, TCR_EVIDENCE_USAGE, "--evidence"),
+        registryAddress: requireParticipantString(input.registry, TCR_EVIDENCE_USAGE, "--registry"),
+        itemId: requireParticipantString(input.itemId, TCR_EVIDENCE_USAGE, "--item-id"),
+        evidence: requireParticipantString(input.evidence, TCR_EVIDENCE_USAGE, "--evidence"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -490,11 +484,11 @@ export async function executeTcrWithdrawCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildTcrWithdrawFeesAndRewardsPlan({
-        registryAddress: requireString(input.registry, TCR_WITHDRAW_USAGE, "--registry"),
-        beneficiary: requireString(input.beneficiary, TCR_WITHDRAW_USAGE, "--beneficiary"),
-        itemId: requireString(input.itemId, TCR_WITHDRAW_USAGE, "--item-id"),
-        requestIndex: requireString(input.requestIndex, TCR_WITHDRAW_USAGE, "--request-index"),
-        roundIndex: requireString(input.roundIndex, TCR_WITHDRAW_USAGE, "--round-index"),
+        registryAddress: requireParticipantString(input.registry, TCR_WITHDRAW_USAGE, "--registry"),
+        beneficiary: requireParticipantString(input.beneficiary, TCR_WITHDRAW_USAGE, "--beneficiary"),
+        itemId: requireParticipantString(input.itemId, TCR_WITHDRAW_USAGE, "--item-id"),
+        requestIndex: requireParticipantString(input.requestIndex, TCR_WITHDRAW_USAGE, "--request-index"),
+        roundIndex: requireParticipantString(input.roundIndex, TCR_WITHDRAW_USAGE, "--round-index"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -512,8 +506,8 @@ export async function executeVoteCommitCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorCommitVotePlan({
-        arbitratorAddress: requireString(input.arbitrator, VOTE_COMMIT_USAGE, "--arbitrator"),
-        disputeId: requireString(input.disputeId, VOTE_COMMIT_USAGE, "--dispute-id"),
+        arbitratorAddress: requireParticipantString(input.arbitrator, VOTE_COMMIT_USAGE, "--arbitrator"),
+        disputeId: requireParticipantString(input.disputeId, VOTE_COMMIT_USAGE, "--dispute-id"),
         ...(input.commitHash?.trim().length ? { commitHash: input.commitHash } : {}),
         ...(input.round !== undefined ? { round: input.round } : {}),
         ...(input.voter !== undefined ? { voterAddress: input.voter } : {}),
@@ -538,9 +532,9 @@ export async function executeVoteCommitForCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorCommitVoteForPlan({
-        arbitratorAddress: requireString(input.arbitrator, VOTE_COMMIT_FOR_USAGE, "--arbitrator"),
-        disputeId: requireString(input.disputeId, VOTE_COMMIT_FOR_USAGE, "--dispute-id"),
-        voterAddress: requireString(input.voter, VOTE_COMMIT_FOR_USAGE, "--voter"),
+        arbitratorAddress: requireParticipantString(input.arbitrator, VOTE_COMMIT_FOR_USAGE, "--arbitrator"),
+        disputeId: requireParticipantString(input.disputeId, VOTE_COMMIT_FOR_USAGE, "--dispute-id"),
+        voterAddress: requireParticipantString(input.voter, VOTE_COMMIT_FOR_USAGE, "--voter"),
         ...(input.commitHash?.trim().length ? { commitHash: input.commitHash } : {}),
         ...(input.round !== undefined ? { round: input.round } : {}),
         ...(input.choice !== undefined ? { choice: input.choice } : {}),
@@ -564,11 +558,11 @@ export async function executeVoteRevealCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorRevealVotePlan({
-        arbitratorAddress: requireString(input.arbitrator, VOTE_REVEAL_USAGE, "--arbitrator"),
-        disputeId: requireString(input.disputeId, VOTE_REVEAL_USAGE, "--dispute-id"),
-        voterAddress: requireString(input.voter, VOTE_REVEAL_USAGE, "--voter"),
-        choice: requireString(input.choice, VOTE_REVEAL_USAGE, "--choice"),
-        salt: requireString(input.salt, VOTE_REVEAL_USAGE, "--salt"),
+        arbitratorAddress: requireParticipantString(input.arbitrator, VOTE_REVEAL_USAGE, "--arbitrator"),
+        disputeId: requireParticipantString(input.disputeId, VOTE_REVEAL_USAGE, "--dispute-id"),
+        voterAddress: requireParticipantString(input.voter, VOTE_REVEAL_USAGE, "--voter"),
+        choice: requireParticipantString(input.choice, VOTE_REVEAL_USAGE, "--choice"),
+        salt: requireParticipantString(input.salt, VOTE_REVEAL_USAGE, "--salt"),
         ...(input.reason !== undefined ? { reason: input.reason } : {}),
       }),
       resolvePlanNetwork(deps, input.network)
@@ -587,10 +581,10 @@ export async function executeVoteRewardsCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorWithdrawVoterRewardsPlan({
-        arbitratorAddress: requireString(input.arbitrator, VOTE_REWARDS_USAGE, "--arbitrator"),
-        disputeId: requireString(input.disputeId, VOTE_REWARDS_USAGE, "--dispute-id"),
-        round: requireString(input.round, VOTE_REWARDS_USAGE, "--round"),
-        voterAddress: requireString(input.voter, VOTE_REWARDS_USAGE, "--voter"),
+        arbitratorAddress: requireParticipantString(input.arbitrator, VOTE_REWARDS_USAGE, "--arbitrator"),
+        disputeId: requireParticipantString(input.disputeId, VOTE_REWARDS_USAGE, "--dispute-id"),
+        round: requireParticipantString(input.round, VOTE_REWARDS_USAGE, "--round"),
+        voterAddress: requireParticipantString(input.voter, VOTE_REWARDS_USAGE, "--voter"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -608,17 +602,17 @@ export async function executeVoteInvalidRoundRewardsCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorWithdrawInvalidRoundRewardsPlan({
-        arbitratorAddress: requireString(
+        arbitratorAddress: requireParticipantString(
           input.arbitrator,
           VOTE_INVALID_ROUND_REWARDS_USAGE,
           "--arbitrator"
         ),
-        disputeId: requireString(
+        disputeId: requireParticipantString(
           input.disputeId,
           VOTE_INVALID_ROUND_REWARDS_USAGE,
           "--dispute-id"
         ),
-        round: requireString(input.round, VOTE_INVALID_ROUND_REWARDS_USAGE, "--round"),
+        round: requireParticipantString(input.round, VOTE_INVALID_ROUND_REWARDS_USAGE, "--round"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
@@ -636,12 +630,12 @@ export async function executeVoteExecuteRulingCommand(
     input,
     plan: withGovernancePlanNetwork(
       buildArbitratorExecuteRulingPlan({
-        arbitratorAddress: requireString(
+        arbitratorAddress: requireParticipantString(
           input.arbitrator,
           VOTE_EXECUTE_RULING_USAGE,
           "--arbitrator"
         ),
-        disputeId: requireString(input.disputeId, VOTE_EXECUTE_RULING_USAGE, "--dispute-id"),
+        disputeId: requireParticipantString(input.disputeId, VOTE_EXECUTE_RULING_USAGE, "--dispute-id"),
       }),
       resolvePlanNetwork(deps, input.network)
     ),
