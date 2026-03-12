@@ -1,5 +1,12 @@
 import { z } from "incur";
 
+export const participantExecutionOptionShape = {
+  network: z.string().optional().describe("Execution network"),
+  agent: z.string().optional().describe("Agent key"),
+  idempotencyKey: z.string().optional().describe("Idempotency key"),
+  dryRun: z.boolean().optional().describe("Print the execution plan without sending"),
+} as const;
+
 export const participantProtocolWriteOutputSchema = z
   .object({
     ok: z.boolean().optional(),

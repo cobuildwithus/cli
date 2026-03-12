@@ -4,7 +4,11 @@ import {
   executePremiumCheckpointCommand,
   executePremiumClaimCommand,
 } from "../../commands/protocol-participant-stake-premium.js";
-import { participantProtocolWriteOutputSchema } from "./protocol-participant.command-shared.js";
+import { forwardOptionsToExecutor } from "./command-wrapper-shared.js";
+import {
+  participantExecutionOptionShape,
+  participantProtocolWriteOutputSchema,
+} from "./protocol-participant.command-shared.js";
 import type { CliDeps } from "../../types.js";
 
 export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
@@ -17,6 +21,21 @@ export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
       warnings: z.array(z.string()),
     })
     .passthrough();
+  const premiumStatusOptions = z.object({
+    account: z.string().optional().describe("Optional account address"),
+  });
+  const premiumCheckpointOptions = z.object({
+    escrow: z.string().optional().describe("Premium escrow address"),
+    account: z.string().optional().describe("Account address"),
+    ...participantExecutionOptionShape,
+  });
+  const premiumClaimOptions = z.object({
+    escrow: z.string().optional().describe("Premium escrow address"),
+    recipient: z.string().optional().describe("Recipient address"),
+    ...participantExecutionOptionShape,
+  });
+  const runPremiumCheckpoint = forwardOptionsToExecutor(deps, executePremiumCheckpointCommand);
+  const runPremiumClaim = forwardOptionsToExecutor(deps, executePremiumClaimCommand);
 
   const premium = Cli.create("premium", {
     description: "Premium escrow inspection and participant actions",
@@ -26,9 +45,7 @@ export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
       args: z.object({
         identifier: z.string().min(1),
       }),
-      options: z.object({
-        account: z.string().optional().describe("Optional account address"),
-      }),
+      options: premiumStatusOptions,
       output: premiumStatusOutput,
       run(context) {
         return executePremiumStatusCommand(
@@ -42,33 +59,15 @@ export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
     })
     .command("checkpoint", {
       description: "Checkpoint premium state for an account",
-      options: z.object({
-        escrow: z.string().optional().describe("Premium escrow address"),
-        account: z.string().optional().describe("Account address"),
-        network: z.string().optional().describe("Execution network"),
-        agent: z.string().optional().describe("Agent key"),
-        idempotencyKey: z.string().optional().describe("Idempotency key"),
-        dryRun: z.boolean().optional().describe("Print the execution plan without sending"),
-      }),
+      options: premiumCheckpointOptions,
       output: participantProtocolWriteOutputSchema,
-      run(context) {
-        return executePremiumCheckpointCommand(context.options, deps);
-      },
+      run: runPremiumCheckpoint,
     })
     .command("claim", {
       description: "Claim premium to a recipient address",
-      options: z.object({
-        escrow: z.string().optional().describe("Premium escrow address"),
-        recipient: z.string().optional().describe("Recipient address"),
-        network: z.string().optional().describe("Execution network"),
-        agent: z.string().optional().describe("Agent key"),
-        idempotencyKey: z.string().optional().describe("Idempotency key"),
-        dryRun: z.boolean().optional().describe("Print the execution plan without sending"),
-      }),
+      options: premiumClaimOptions,
       output: participantProtocolWriteOutputSchema,
-      run(context) {
-        return executePremiumClaimCommand(context.options, deps);
-      },
+      run: runPremiumClaim,
     });
 
   root.command(premium);
