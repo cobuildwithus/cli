@@ -107,6 +107,27 @@ interface EscapedPositionalFlagConsumption {
   tokens: string[];
 }
 
+function consumeOptionalFlagValueArgvToken(
+  argv: string[],
+  index: number,
+  flag: string
+): EscapedPositionalFlagConsumption | null {
+  if (argv[index] !== flag) {
+    return null;
+  }
+
+  const tokens = [flag];
+  const next = argv[index + 1];
+  if (typeof next === "string") {
+    tokens.push(next);
+  }
+
+  return {
+    consumed: tokens.length,
+    tokens,
+  };
+}
+
 function normalizeEscapedPositionalTailArgv(
   argv: string[],
   prefix: string[],
@@ -158,22 +179,11 @@ function normalizeEscapedPositionalTailArgv(
 
 function normalizeDocsArgv(argv: string[]): string[] {
   return normalizeEscapedPositionalTailArgv(argv, ["docs"], (tokens, index, positionalOnly) => {
-    if (positionalOnly || tokens[index] !== "--limit") {
+    if (positionalOnly) {
       return null;
     }
 
-    const consumedTokens = ["--limit"];
-    const next = tokens[index + 1];
-    let consumed = 1;
-    if (typeof next === "string") {
-      consumedTokens.push(next);
-      consumed += 1;
-    }
-
-    return {
-      consumed,
-      tokens: consumedTokens,
-    };
+    return consumeOptionalFlagValueArgvToken(tokens, index, "--limit");
   });
 }
 
@@ -192,19 +202,9 @@ function normalizeToolsArgv(argv: string[]): string[] {
       }
 
       const current = tokens[index]!;
-      if (current === "--type") {
-        const consumedTokens = ["--type"];
-        const next = tokens[index + 1];
-        let consumed = 1;
-        if (typeof next === "string") {
-          consumedTokens.push(next);
-          consumed += 1;
-        }
-
-        return {
-          consumed,
-          tokens: consumedTokens,
-        };
+      const consumedTypeFlag = consumeOptionalFlagValueArgvToken(tokens, index, "--type");
+      if (consumedTypeFlag) {
+        return consumedTypeFlag;
       }
 
       if (current.startsWith("--type=")) {
