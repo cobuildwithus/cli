@@ -109,6 +109,33 @@ describe("backbone cutover coverage audit", () => {
     expect(schema.output?.properties).toHaveProperty("walletConfig");
   });
 
+  it("emits participant command schemas with result and without stale response fields", async () => {
+    const harness = createHarness();
+    const cli = createCobuildIncurCli(harness.deps);
+    const schemaOutput: string[] = [];
+
+    await cli.serve(["flow", "sync-allocation", "--schema", "--format", "json"], {
+      env: harness.deps.env,
+      stdout: (chunk) => {
+        schemaOutput.push(chunk);
+      },
+    });
+
+    const schema = JSON.parse(schemaOutput.join("")) as {
+      output?: {
+        properties?: Record<string, unknown>;
+      };
+    };
+    const steps = schema.output?.properties?.steps as {
+      items?: {
+        properties?: Record<string, unknown>;
+      };
+    };
+
+    expect(steps.items?.properties).toHaveProperty("result");
+    expect(steps.items?.properties).not.toHaveProperty("response");
+  });
+
   it("rejects setup in MCP runtime because it is not registered", async () => {
     const harness = createHarness();
     const cli = createCobuildIncurCli(harness.deps, { mcpMode: true });
