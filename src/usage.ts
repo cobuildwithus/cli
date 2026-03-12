@@ -6,11 +6,17 @@ Usage:
   cli setup [--url <interface-url>] [--chat-api-url <chat-api-url>] [--dev] [--token <refresh-token>|--token-file <path>|--token-stdin] [--agent <key>] [--network <network>] [--write] [--show-approval-url] --wallet-mode hosted|local-generate|local-key [--wallet-private-key-stdin|--wallet-private-key-file <path>] [--json] [--link]
   cli config set --url <interface-url> [--chat-api-url <chat-api-url>] --token <refresh-token>|--token-file <path>|--token-stdin [--agent <key>]
   cli config show
-  cli wallet [status] [--network <network>] [--agent <key>]
+  cli wallet status [--agent <key>]
   cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
   cli farcaster signup [--agent <key>] [--recovery <0x...>] [--extra-storage <n>] [--out-dir <path>]
   cli farcaster post --text <text> [--fid <n>] [--reply-to <parent-fid:0x-parent-hash>] [--signer-file <path>] [--idempotency-key <key>] [--verify[=once|poll]|--verify=none]
+  cli flow sync-allocation --flow <address> --allocation-key <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli flow sync-allocation-for-account --flow <address> --account <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli flow clear-stale-allocation --flow <address> --allocation-key <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]
+  cli goal pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+  cli community pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+  cli community add-to-balance --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
   cli tcr inspect <identifier>
   cli tcr submit-budget --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
   cli tcr submit-mechanism --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
@@ -31,6 +37,10 @@ Usage:
   cli stake status <identifier> <account>
   cli stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli stake deposit-cobuild --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake opt-in-juror --vault <address> --token <address> --goal-amount <n> --delegate <address> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake request-juror-exit --vault <address> --goal-amount <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake finalize-juror-exit --vault <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli stake set-juror-delegate --vault <address> --delegate <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli stake prepare-underwriter-withdrawal --vault <address> --max-budgets <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli stake withdraw-goal --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli stake withdraw-cobuild --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
@@ -64,18 +74,26 @@ Examples:
   cli setup --url http://localhost:3000 --network base --link
   cli config set --url http://localhost:3000 --chat-api-url http://localhost:4000 --token rfr_xxx --agent default
   cli config set --token-file ./cli.token
-  cli wallet --network base
+  cli wallet status --agent default
   cli wallet init --agent default --mode local-generate
   cli farcaster signup --agent default
   cli farcaster signup --agent default --recovery 0x000000000000000000000000000000000000dEaD
   cli farcaster post --text "Ship update"
   cli farcaster post --text "Replying on thread" --reply-to 123:0x1111111111111111111111111111111111111111
   cli farcaster post --text "Ship update" --fid 123 --idempotency-key 8e03978e-40d5-43e8-bc93-6894a57f9324 --verify=once
+  cli flow sync-allocation --flow 0x000000000000000000000000000000000000dEaD --allocation-key 1 --dry-run
   cli goal create --params-file ./goal-deploy.json --network base
+  cli goal pay --input-file ./goal-pay.json --dry-run
+  cli community pay --input-file ./community-pay.json --dry-run
+  cli community add-to-balance --input-file ./community-balance.json --dry-run
   cli tcr submit-budget --input-file ./budget-tcr-submit.json --dry-run
   cli tcr challenge --registry 0x000000000000000000000000000000000000dEaD --deposit-token 0x00000000000000000000000000000000000000aa --item-id 0x1111111111111111111111111111111111111111111111111111111111111111 --request-type registrationRequested --costs-file ./tcr-costs.json --dry-run
   cli vote commit --arbitrator 0x000000000000000000000000000000000000dEaD --dispute-id 1 --round 0 --voter 0x00000000000000000000000000000000000000aa --choice 1 --salt 0x1111111111111111111111111111111111111111111111111111111111111111 --dry-run
   cli stake deposit-goal --vault 0x000000000000000000000000000000000000dEaD --token 0x00000000000000000000000000000000000000aa --amount 1000000 --dry-run
+  cli stake opt-in-juror --vault 0x000000000000000000000000000000000000dEaD --token 0x00000000000000000000000000000000000000aa --goal-amount 1000000 --delegate 0x00000000000000000000000000000000000000bb --dry-run
+  cli stake request-juror-exit --vault 0x000000000000000000000000000000000000dEaD --goal-amount 250000 --dry-run
+  cli stake finalize-juror-exit --vault 0x000000000000000000000000000000000000dEaD --dry-run
+  cli stake set-juror-delegate --vault 0x000000000000000000000000000000000000dEaD --delegate 0x00000000000000000000000000000000000000bb --dry-run
   cli premium claim --escrow 0x000000000000000000000000000000000000dEaD --recipient 0x00000000000000000000000000000000000000aa --dry-run
   cli revnet pay --amount 1000000000000000 --dry-run
   cli revnet cash-out --cash-out-count 1000000000000000000 --dry-run

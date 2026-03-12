@@ -5,11 +5,15 @@ import {
 } from "../../commands/farcaster.js";
 import type { CliDeps } from "../../types.js";
 import {
+  commandMetadata,
   forwardOptionsToExecutor,
   mapOptionsToExecutor,
+  NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA,
+  NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
 } from "./command-wrapper-shared.js";
 
-export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const farcasterSignerOutput = z.object({
     publicKey: z.string(),
     saved: z.boolean(),
@@ -109,4 +113,9 @@ export function registerFarcasterCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(farcaster);
+
+  return [
+    commandMetadata("farcaster signup", NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA),
+    commandMetadata("farcaster post", NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA),
+  ];
 }

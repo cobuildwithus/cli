@@ -176,6 +176,34 @@ describe("wallet command helpers", () => {
     expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
+  it("preserves local wallet configuration errors without hosted lookup wrapping", async () => {
+    const harness = createHarness({
+      config: {
+        agent: "default",
+      },
+    });
+    harness.files.set(
+      "/tmp/cli-tests/.cobuild-cli/agents/default/wallet/payer.json",
+      JSON.stringify(
+        {
+          version: 1,
+          mode: "local",
+          payerAddress: "0x87F6433eae757DF1f471bF9Ce03fe32d751eaE35",
+          network: "base",
+          token: "usdc",
+          createdAt: "2026-03-03T00:00:00.000Z",
+        },
+        null,
+        2
+      )
+    );
+
+    await expect(executeWalletStatusCommand({}, harness.deps)).rejects.toThrow(
+      "Local payer config is missing payerRef."
+    );
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("skips hosted wallet fetch when payer address is already known", async () => {
     const harness = createHarness({
       config: {

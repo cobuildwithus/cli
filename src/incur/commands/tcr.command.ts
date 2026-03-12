@@ -13,8 +13,14 @@ import {
 } from "../../commands/protocol-participant-governance.js";
 import { participantProtocolWriteOutputSchema } from "./protocol-participant.command-shared.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerTcrCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerTcrCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const tcrInspectOutput = z
     .object({
       tcrRequest: z.unknown(),
@@ -288,4 +294,17 @@ export function registerTcrCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(tcr);
+
+  return [
+    commandMetadata("tcr inspect", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tcr submit-budget", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr submit-mechanism", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr submit-round-submission", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr remove", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr challenge", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr execute", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr timeout", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr evidence", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("tcr withdraw", NETWORK_WRITE_SCHEMA_METADATA),
+  ];
 }

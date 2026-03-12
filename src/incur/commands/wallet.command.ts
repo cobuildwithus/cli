@@ -1,55 +1,62 @@
 import { Cli, z } from "incur";
 import {
-  executeWalletCommand,
   executeWalletInitCommand,
   executeWalletStatusCommand,
-} from "../../commands/wallet.js";
+} from "../../wallet/commands.js";
 import type { CliDeps } from "../../types.js";
-import { mapOptionsToExecutor } from "./command-wrapper-shared.js";
+import {
+  commandMetadata,
+  mapOptionsToExecutor,
+  NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA,
+  NETWORK_AND_LOCAL_READ_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
-  const walletConfigOutput = z.object({
-    mode: z.enum(["hosted", "local"]),
-    walletAddress: z.string().nullable(),
-    network: z.string(),
-    token: z.string(),
-    costPerPaidCallMicroUsdc: z.string().optional(),
-  });
-  const walletOutput = z
+export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
+  const walletConfigOutput = z
     .object({
-      ok: z.boolean().optional(),
-      address: z.string().optional(),
-      agentKey: z.string().optional(),
-      walletConfig: walletConfigOutput.optional(),
+      mode: z.enum(["hosted", "local"]),
+      walletAddress: z.string().nullable(),
+      network: z.string(),
+      token: z.string(),
+      costPerPaidCallMicroUsdc: z.string().optional(),
     })
-    .passthrough();
-  const walletOptions = z.object({
-    network: z.string().optional(),
+    .strict();
+  const walletStatusOutput = z
+    .object({
+      ok: z.literal(true),
+      agentKey: z.string(),
+      walletConfig: walletConfigOutput,
+    })
+    .strict();
+  const walletInitOutput = z
+    .object({
+      ok: z.literal(true),
+      agentKey: z.string(),
+      walletConfig: walletConfigOutput,
+    })
+    .strict();
+  const walletStatusOptions = z.object({
+    agent: z.string().optional(),
+  });
+  const walletInitOptions = z.object({
     agent: z.string().optional(),
     mode: z.string().optional(),
     privateKeyStdin: z.boolean().optional(),
     privateKeyFile: z.string().optional(),
     prompt: z.boolean().optional(),
   });
-  const runWallet = mapOptionsToExecutor(
-    deps,
-    executeWalletCommand,
-    (options: z.infer<typeof walletOptions>) => ({
-      network: options.network,
-      agent: options.agent,
-    })
-  );
   const runWalletStatus = mapOptionsToExecutor(
     deps,
     executeWalletStatusCommand,
-    (options: z.infer<typeof walletOptions>) => ({
+    (options: z.infer<typeof walletStatusOptions>) => ({
       agent: options.agent,
     })
   );
   const runWalletInit = mapOptionsToExecutor(
     deps,
     executeWalletInitCommand,
-    (options: z.infer<typeof walletOptions>) => ({
+    (options: z.infer<typeof walletInitOptions>) => ({
       agent: options.agent,
       mode: options.mode,
       privateKeyStdin: options.privateKeyStdin,
@@ -58,31 +65,30 @@ export function registerWalletCommand(root: Cli.Cli, deps: CliDeps): void {
     })
   );
 
-  root.command("wallet", {
-    description: "Fetch wallet details and manage wallet configuration",
-    args: z.object({
-      action: z.string().optional(),
-    }),
-    options: walletOptions,
-    output: walletOutput,
-    run(context) {
-      const action = context.args.action?.trim().toLowerCase();
+  const wallet = Cli.create("wallet", {
+    description: "Manage wallet configuration",
+  })
+    .command("status", {
+      description: "Print stored wallet configuration and resolved wallet address",
+      options: walletStatusOptions,
+      output: walletStatusOutput,
+      run(context) {
+        return runWalletStatus(context) as Promise<z.infer<typeof walletStatusOutput>>;
+      },
+    })
+    .command("init", {
+      description: "Initialize wallet configuration for hosted or local execution",
+      options: walletInitOptions,
+      output: walletInitOutput,
+      run(context) {
+        return runWalletInit(context) as Promise<z.infer<typeof walletInitOutput>>;
+      },
+    });
 
-      if (action === undefined) {
-        return runWallet(context) as Promise<z.infer<typeof walletOutput>>;
-      }
+  root.command(wallet);
 
-      if (action === "status") {
-        return runWalletStatus(context) as Promise<z.infer<typeof walletOutput>>;
-      }
-
-      if (action === "init") {
-        return runWalletInit(context) as Promise<z.infer<typeof walletOutput>>;
-      }
-
-      throw new Error(
-        "Usage:\n  cli wallet [status] [--network <network>] [--agent <key>]\n  cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]"
-      );
-    },
-  });
+  return [
+    commandMetadata("wallet status", NETWORK_AND_LOCAL_READ_SCHEMA_METADATA),
+    commandMetadata("wallet init", NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA),
+  ];
 }

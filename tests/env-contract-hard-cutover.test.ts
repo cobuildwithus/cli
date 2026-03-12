@@ -72,7 +72,7 @@ describe("env contract hard cutover", () => {
         costPerPaidCallMicroUsdc: "1000",
       },
       next: [
-        "Run: cobuild wallet",
+        "Run: cobuild wallet status",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });
@@ -109,7 +109,7 @@ describe("env contract hard cutover", () => {
         costPerPaidCallMicroUsdc: "1000",
       },
       next: [
-        "Run: cobuild wallet",
+        "Run: cobuild wallet status",
         "Run: cobuild send usdc 0.10 <to> (or cobuild send eth 0.00001 <to>)",
       ],
     });

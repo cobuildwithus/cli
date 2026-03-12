@@ -12,7 +12,7 @@ import {
   resolveNetwork,
   validateAgentKey,
 } from "./shared.js";
-import { executeWalletInitCommand } from "./wallet.js";
+import { executeWalletInitCommand } from "../wallet/commands.js";
 import {
   DEFAULT_DEV_CHAT_API_URL,
   DEFAULT_DEV_INTERFACE_URL,
@@ -448,7 +448,7 @@ async function runSetupCommand(
     wallet: walletResponse,
     walletConfig,
     next: [
-      `Run: ${CLI_PRIMARY_COMMAND} wallet`,
+      `Run: ${CLI_PRIMARY_COMMAND} wallet status`,
       `Run: ${CLI_PRIMARY_COMMAND} send usdc 0.10 <to> (or ${CLI_PRIMARY_COMMAND} send eth 0.00001 <to>)`,
     ],
   };

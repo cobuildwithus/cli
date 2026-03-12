@@ -2,13 +2,11 @@ import type {
   ProtocolExecutionPlanLike,
   ProtocolPlanExecutionOutput,
 } from "../protocol-plan/types.js";
-import {
-  buildRawTxProtocolPlanCommandOutput,
-  executeRawTxProtocolPlan,
-} from "../protocol-plan/executor-shared.js";
+import { executeProtocolPlan } from "../protocol-plan/runner.js";
 import type { CliDeps } from "../types.js";
 import {
   readJsonInputObject,
+  resolveNetwork,
 } from "./shared.js";
 
 export interface TerminalFundingExecutionInput {
@@ -204,17 +202,21 @@ export async function executeTerminalFundingPlan<TFamily extends string>(params:
   plan: ProtocolExecutionPlanLike;
   outputAction?: string;
 }): Promise<TerminalFundingCommandOutput<TFamily>> {
-  const execution = await executeRawTxProtocolPlan({
+  const execution = await executeProtocolPlan({
     deps: params.deps,
-    input: params.input,
     plan: params.plan,
+    mode: "raw-tx",
+    agent: params.input.agent,
+    dryRun: params.input.dryRun,
+    idempotencyKey: params.input.idempotencyKey,
+    resolvePlanNetwork: (plan, deps) => resolveNetwork(params.input.network ?? plan.network, deps),
     formatStepFailureMessage: formatTerminalFundingStepFailureMessage,
     formatPendingMessage: formatTerminalFundingPendingMessage,
   });
 
-  return buildRawTxProtocolPlanCommandOutput({
+  return {
+    ...execution,
     family: params.family,
     action: params.outputAction ?? params.plan.action,
-    execution,
-  });
+  };
 }

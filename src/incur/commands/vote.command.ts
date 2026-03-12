@@ -10,8 +10,14 @@ import {
 } from "../../commands/protocol-participant-governance.js";
 import { participantProtocolWriteOutputSchema } from "./protocol-participant.command-shared.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerVoteCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerVoteCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const voteStatusOutput = z
     .object({
       dispute: z.unknown(),
@@ -238,4 +244,14 @@ export function registerVoteCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(vote);
+
+  return [
+    commandMetadata("vote status", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("vote commit", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("vote commit-for", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("vote reveal", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("vote rewards", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("vote invalid-round-rewards", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("vote execute-ruling", NETWORK_WRITE_SCHEMA_METADATA),
+  ];
 }

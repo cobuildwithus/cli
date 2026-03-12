@@ -9,11 +9,12 @@
   - `wallet` -> `executeWallet*Command`
   - `farcaster` -> `executeFarcaster*Command`
   - `goal` -> `executeGoal*Command`
+  - `community` -> `executeCommunity*Command`
   - `budget` -> `executeBudgetInspectCommand`
   - `tcr` -> `executeTcrInspectCommand`
   - `vote` -> `executeVoteStatusCommand`
-  - `stake` -> `executeStakeStatusCommand`
-  - `premium` -> `executePremiumStatusCommand`
+  - `stake` -> `executeStakeStatusCommand` plus participant write executors for deposit/withdraw, juror lifecycle, and underwriter-withdrawal preparation
+  - `premium` -> `executePremiumStatusCommand` plus participant write executors for checkpoint/claim
   - `revnet` -> `executeRevnet*Command`
   - `docs` -> `executeDocsCommand`
   - `tools` -> `executeTools*Command`
@@ -83,12 +84,12 @@
 
 ## Wallet Payer Init/Status Flow
 
-1. Parse `wallet payer init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
+1. Parse `wallet init` options (`--agent`, `--mode`, `--private-key-stdin|--private-key-file`, `--no-prompt`).
 2. Resolve agent key from `--agent` or config default.
 3. Resolve mode (`hosted`, `local-generate`, `local-key`) with interactive selection when allowed.
 4. Persist per-agent payer metadata at `~/.cobuild-cli/agents/<agent>/wallet/payer.json`.
 5. In local mode, persist payer private key via SecretRef file provider by default.
-6. `wallet payer status` reads payer metadata and reports payer address/network/token/cost.
+6. `wallet status` reads payer metadata and reports payer address/network/token/cost.
 
 ## Farcaster Signup Flow
 
@@ -126,6 +127,19 @@
    - local mode: execute local wallet tx path
 6. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed` through shared wire decoders.
 
+## Goal / Community Terminal Funding Flow
+
+1. Parse `goal pay`, `community pay`, or `community add-to-balance` JSON input from exactly one of `--input-json`, `--input-file`, or `--input-stdin`.
+2. Validate required terminal-funding fields plus optional routing metadata (`route.goalIds`, `route.weights`, `jbMetadata`) for `community pay`.
+3. Build the shared `@cobuild/wire` terminal-funding execution plan (`goal.pay`, `community.pay`, or `community.add-to-balance`).
+4. Resolve agent key, stored wallet mode, normalized Base network, and a root idempotency key through the shared protocol-plan runner in `raw-tx` mode.
+5. Derive deterministic child idempotency keys for every approval/call step so retries preserve the same hosted/local request identities.
+6. In `--dry-run`, return the normalized step-explicit plan envelope with raw `kind: tx` request payloads for each step.
+7. In execute mode, let the shared protocol-plan runner execute each step sequentially:
+   - hosted mode: POST `/api/cli/exec` per step with `kind: tx` plus both idempotency headers
+   - local mode: call the local wallet tx path with the derived child idempotency key
+8. Stop immediately on hosted pending responses or step failures and surface replay-safe retry guidance keyed to the same root idempotency key.
+
 ## Revnet Write Flow
 
 1. Parse `revnet pay`, `revnet cash-out`, or `revnet loan` options.
@@ -150,7 +164,7 @@
 
 ## Shared Protocol Plan Runtime Flow
 
-1. A command or helper builds a structural `ProtocolExecutionPlan` object from `@cobuild/wire`; governance, stake, and premium participant commands no longer assemble CLI-local plan/approval steps.
+1. A command or helper builds a structural `ProtocolExecutionPlan` object from `@cobuild/wire`; governance, stake deposit/withdraw/juror lifecycle, and premium participant commands no longer assemble CLI-local plan/approval steps.
 2. `executeProtocolPlan(...)` resolves agent key, stored wallet mode, normalized Base network, and a root idempotency key.
 3. The runner derives deterministic child idempotency keys from the root key plus step identity so retries reuse the same per-step ids.
 4. In `--dry-run`, the runner returns one normalized plan envelope with every step labeled, requested tx payload shown, and hosted-vs-local execution target explicit.
@@ -160,6 +174,14 @@
 6. If a hosted step returns a pending user operation, the runner stops immediately and throws a replay-safe resume message keyed to the same root idempotency key.
 7. If a step decoder is configured and a transaction hash is available, the runner fetches the receipt from Base RPC and attaches a serialized receipt summary or decode warning to that step.
 8. On step failure, the runner throws a replay-safe error that names the failed step, the child idempotency key, the root idempotency key, and the retry guidance to rerun with the same root key.
+
+## Stake Participant Write Flow
+
+1. `stake status` remains the read-only canonical tool path; every other `stake` subcommand is a participant write executed through the shared protocol-plan runner.
+2. `stake deposit-goal`, `stake deposit-cobuild`, and `stake opt-in-juror` parse vault/token/amount inputs plus optional approval hints (`--approval-mode`, `--current-allowance`, `--approval-amount`) before building the shared `@cobuild/wire` plan.
+3. `stake opt-in-juror` additionally requires `--delegate` and builds the combined goal-lock plus delegate-setting plan surfaced upstream as `stake.opt-in-juror`.
+4. `stake request-juror-exit`, `stake finalize-juror-exit`, and `stake set-juror-delegate` validate the minimal vault-scoped juror lifecycle inputs and build the corresponding `@cobuild/wire` plans (`stake.request-juror-exit`, `stake.finalize-juror-exit`, `stake.set-juror-delegate`).
+5. `stake prepare-underwriter-withdrawal`, `stake withdraw-goal`, and `stake withdraw-cobuild` continue to use the same shared plan runtime, so dry-run, hosted execution, local execution, and idempotent replay behavior stay uniform across the full stake command family.
 
 ## Indexed Protocol Inspect Flow
 

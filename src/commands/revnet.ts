@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { createPublicClient, formatEther, http, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import {
   buildRevnetBorrowPlanFromContext,
@@ -18,7 +17,6 @@ import {
 } from "@cobuild/wire";
 import { readConfig } from "../config.js";
 import type { CliDeps } from "../types.js";
-import { fetchHostedPayerAddress, resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
 import { normalizeKeyedRemoteToolResponse } from "./remote-tool.js";
 import {
   normalizeEvmAddress,
@@ -26,7 +24,7 @@ import {
 } from "./shared.js";
 import { executeCanonicalToolOnly } from "./tool-execution.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
-import { requireStoredWalletConfig } from "../wallet/payer-config.js";
+import { resolveConfiguredWalletContext } from "../wallet/payer-config.js";
 import {
   buildExecDryRunOutput,
   executeWalletWrite,
@@ -256,34 +254,23 @@ async function resolveExecutionWalletAddress(params: {
   agentKey: string;
 }): Promise<`0x${string}`> {
   const current = readConfig(params.deps);
-  const walletConfig = requireStoredWalletConfig({
+  const walletContext = await resolveConfiguredWalletContext({
     deps: params.deps,
+    currentConfig: current,
     agentKey: params.agentKey,
+    refreshHostedAddress: true,
   });
 
-  if (walletConfig.mode === "local") {
-    const privateKeyHex = resolveLocalPayerPrivateKey({
-      deps: params.deps,
-      currentConfig: current,
-      payerConfig: walletConfig,
-    });
-    return privateKeyToAccount(privateKeyHex).address;
+  if (walletContext.walletMode === "local") {
+    return walletContext.payerAddress;
   }
 
-  if (walletConfig.payerAddress) {
-    return normalizeEvmAddress(walletConfig.payerAddress, "stored hosted wallet address");
+  if (walletContext.payerAddress) {
+    return normalizeEvmAddress(walletContext.payerAddress, "stored hosted wallet address");
   }
-
-  const payerAddress = await fetchHostedPayerAddress({
-    deps: params.deps,
-    agentKey: params.agentKey,
-  });
-  if (!payerAddress) {
-    throw new Error(
-      "Hosted wallet address is unavailable. Run `cli wallet status` or pass an explicit beneficiary after the wallet address is known."
-    );
-  }
-  return normalizeEvmAddress(payerAddress, "hosted wallet address");
+  throw new Error(
+    "Hosted wallet address is unavailable. Run `cli wallet status` or pass an explicit beneficiary after the wallet address is known."
+  );
 }
 
 function formatUuid(bytes: Uint8Array): string {

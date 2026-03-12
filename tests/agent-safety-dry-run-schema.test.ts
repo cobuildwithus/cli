@@ -721,7 +721,10 @@ describe("agent safety + dry-run + schema", () => {
           },
         },
         output: {
+          additionalProperties: false,
           properties: {
+            ok: expect.any(Object),
+            agentKey: expect.any(Object),
             walletConfig: expect.any(Object),
           },
         },
@@ -733,6 +736,10 @@ describe("agent safety + dry-run + schema", () => {
         sideEffects: ["network", "reads_local_files"],
       },
     });
+    const walletStatusSchema = parseLastJsonOutput(harness.outputs) as {
+      schema?: { output?: { properties?: Record<string, unknown> } };
+    };
+    expect(walletStatusSchema.schema?.output?.properties).not.toHaveProperty("address");
 
     await runCli(["schema", "wallet", "init"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({
@@ -749,7 +756,10 @@ describe("agent safety + dry-run + schema", () => {
           },
         },
         output: {
+          additionalProperties: false,
           properties: {
+            ok: expect.any(Object),
+            agentKey: expect.any(Object),
             walletConfig: expect.any(Object),
           },
         },
@@ -761,6 +771,10 @@ describe("agent safety + dry-run + schema", () => {
         sideEffects: ["network", "writes_local_files"],
       },
     });
+    const walletInitSchema = parseLastJsonOutput(harness.outputs) as {
+      schema?: { output?: { properties?: Record<string, unknown> } };
+    };
+    expect(walletInitSchema.schema?.output?.properties).not.toHaveProperty("address");
 
     await runCli(["schema", "farcaster", "post"], harness.deps);
     expect(parseLastJsonOutput(harness.outputs)).toMatchObject({

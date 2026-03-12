@@ -75,7 +75,7 @@ describe("backbone cutover coverage audit", () => {
     };
 
     const commands = Array.isArray(manifest.commands) ? manifest.commands : [];
-    const wallet = commands.find((entry) => entry.name === "wallet");
+    const wallet = commands.find((entry) => entry.name === "wallet status");
     const farcasterSignup = commands.find((entry) => entry.name === "farcaster signup");
     const farcasterPost = commands.find((entry) => entry.name === "farcaster post");
 
@@ -93,7 +93,7 @@ describe("backbone cutover coverage audit", () => {
     const cli = createCobuildIncurCli(harness.deps);
     const schemaOutput: string[] = [];
 
-    await cli.serve(["wallet", "--schema", "--format", "json"], {
+    await cli.serve(["wallet", "status", "--schema", "--format", "json"], {
       env: harness.deps.env,
       stdout: (chunk) => {
         schemaOutput.push(chunk);
@@ -105,7 +105,7 @@ describe("backbone cutover coverage audit", () => {
       output?: { properties?: Record<string, unknown> };
     };
 
-    expect(schema.options?.properties).toHaveProperty("network");
+    expect(schema.options?.properties).toHaveProperty("agent");
     expect(schema.output?.properties).toHaveProperty("walletConfig");
   });
 

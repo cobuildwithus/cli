@@ -16,6 +16,16 @@ import { registerTcrCommand } from "./incur/commands/tcr.command.js";
 import { registerToolsCommand } from "./incur/commands/tools.command.js";
 import { registerVoteCommand } from "./incur/commands/vote.command.js";
 import { registerWalletCommand } from "./incur/commands/wallet.command.js";
+import {
+  addRegisteredCommandMetadata,
+  commandMetadata,
+  DEFAULT_COMMAND_SCHEMA_METADATA,
+  INTROSPECTION_SCHEMA_METADATA,
+  NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  normalizeCommandPath,
+  type CommandSchemaMetadata,
+} from "./incur/commands/command-wrapper-shared.js";
 import type { CliDeps } from "./types.js";
 
 const POSITIONAL_ESCAPE_PREFIX = "__incur_positional_b64__";
@@ -322,92 +332,8 @@ interface IncurManifest {
   commands?: IncurManifestCommandEntry[];
 }
 
-interface CommandSchemaMetadata {
-  mutating: boolean;
-  supportsDryRun: boolean;
-  requiresAuth: boolean;
-  sideEffects: string[];
-}
-
-const DEFAULT_COMMAND_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: false,
-  supportsDryRun: false,
-  requiresAuth: false,
-  sideEffects: [],
-};
-
-const LOCAL_FILE_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: true,
-  supportsDryRun: false,
-  requiresAuth: false,
-  sideEffects: ["writes_local_files"],
-};
-
-const LOCAL_FILE_READ_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: false,
-  supportsDryRun: false,
-  requiresAuth: false,
-  sideEffects: ["reads_local_files"],
-};
-
-const NETWORK_READ_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: false,
-  supportsDryRun: false,
-  requiresAuth: true,
-  sideEffects: ["network"],
-};
-
-const NETWORK_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: true,
-  supportsDryRun: true,
-  requiresAuth: true,
-  sideEffects: ["network", "onchain_transaction"],
-};
-
-const NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: true,
-  supportsDryRun: true,
-  requiresAuth: true,
-  sideEffects: ["network", "writes_local_files"],
-};
-
-const NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: true,
-  supportsDryRun: false,
-  requiresAuth: false,
-  sideEffects: ["network", "writes_local_files"],
-};
-
-const NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: true,
-  supportsDryRun: false,
-  requiresAuth: true,
-  sideEffects: ["network", "writes_local_files"],
-};
-
-const INTROSPECTION_SCHEMA_METADATA: CommandSchemaMetadata = {
-  mutating: false,
-  supportsDryRun: false,
-  requiresAuth: false,
-  sideEffects: ["introspection"],
-};
-
-function addCommandSchemaMetadata(
-  metadataByCommand: Map<string, CommandSchemaMetadata>,
-  commandPaths: string[],
-  metadata: CommandSchemaMetadata
-): void {
-  for (const commandPath of commandPaths) {
-    metadataByCommand.set(normalizeCommandPath(commandPath), metadata);
-  }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function normalizeCommandPath(value: string): string {
-  return value.trim().replace(/\s+/g, " ");
 }
 
 async function readIncurManifest(cli: Cli.Cli, deps: CliDeps): Promise<IncurManifest> {
@@ -480,178 +406,28 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       suggestions: [
         "configure the Cobuild CLI",
         "search docs with cli docs",
-        "run cli wallet",
+        "run cli wallet status",
       ],
     },
   });
 
   const commandSchemaMetadata = new Map<string, CommandSchemaMetadata>();
-  const registerCommandGroup = (
-    register: () => void,
-    commandPaths: string[],
-    metadata: CommandSchemaMetadata
-  ): void => {
-    register();
-    addCommandSchemaMetadata(commandSchemaMetadata, commandPaths, metadata);
-  };
-
-  registerCommandGroup(
-    () => {
-      registerConfigCommand(root, deps);
-    },
-    ["config set"],
-    LOCAL_FILE_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["config show"], LOCAL_FILE_READ_SCHEMA_METADATA);
-
-  registerCommandGroup(
-    () => {
-      registerBudgetCommand(root, deps);
-    },
-    ["budget inspect"],
-    NETWORK_READ_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerCommunityCommand(root, deps);
-    },
-    ["community pay", "community add-to-balance"],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerFlowCommand(root, deps);
-    },
-    [
-      "flow sync-allocation",
-      "flow sync-allocation-for-account",
-      "flow clear-stale-allocation",
-    ],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerGoalCommand(root, deps);
-    },
-    ["goal create", "goal pay"],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["goal inspect"], NETWORK_READ_SCHEMA_METADATA);
-  registerCommandGroup(
-    () => {
-      registerTcrCommand(root, deps);
-    },
-    [
-      "tcr challenge",
-      "tcr evidence",
-      "tcr execute",
-      "tcr remove",
-      "tcr submit-budget",
-      "tcr submit-mechanism",
-      "tcr submit-round-submission",
-      "tcr timeout",
-      "tcr withdraw",
-    ],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["tcr inspect"], NETWORK_READ_SCHEMA_METADATA);
-  registerCommandGroup(
-    () => {
-      registerVoteCommand(root, deps);
-    },
-    [
-      "vote commit",
-      "vote commit-for",
-      "vote execute-ruling",
-      "vote invalid-round-rewards",
-      "vote reveal",
-      "vote rewards",
-    ],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["vote status"], NETWORK_READ_SCHEMA_METADATA);
-  registerCommandGroup(
-    () => {
-      registerStakeCommand(root, deps);
-    },
-    [
-      "stake deposit-cobuild",
-      "stake deposit-goal",
-      "stake opt-in-juror",
-      "stake request-juror-exit",
-      "stake finalize-juror-exit",
-      "stake set-juror-delegate",
-      "stake prepare-underwriter-withdrawal",
-      "stake withdraw-cobuild",
-      "stake withdraw-goal",
-    ],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["stake status"], NETWORK_READ_SCHEMA_METADATA);
-  registerCommandGroup(
-    () => {
-      registerPremiumCommand(root, deps);
-    },
-    ["premium checkpoint", "premium claim"],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(commandSchemaMetadata, ["premium status"], NETWORK_READ_SCHEMA_METADATA);
-  registerCommandGroup(
-    () => {
-      registerRevnetCommand(root, deps);
-    },
-    ["revnet pay", "revnet cash-out", "revnet loan"],
-    NETWORK_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerConfigCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerBudgetCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerCommunityCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerFlowCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerGoalCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerTcrCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerVoteCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerStakeCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerPremiumCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerRevnetCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerWalletCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerFarcasterCommand(root, deps));
+  addRegisteredCommandMetadata(commandSchemaMetadata, registerDocsCommand(root, deps, decodeEscapedPositional));
+  addRegisteredCommandMetadata(
     commandSchemaMetadata,
-    ["revnet issuance-terms"],
-    NETWORK_READ_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerWalletCommand(root, deps);
-    },
-    ["wallet"],
-    NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerFarcasterCommand(root, deps);
-    },
-    ["farcaster post"],
-    NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA
-  );
-  addCommandSchemaMetadata(
-    commandSchemaMetadata,
-    ["farcaster signup"],
-    {
-      mutating: true,
-      supportsDryRun: false,
-      requiresAuth: true,
-      sideEffects: ["network", "writes_local_files"],
-    }
-  );
-  registerCommandGroup(
-    () => {
-      registerDocsCommand(root, deps, decodeEscapedPositional);
-    },
-    ["docs"],
-    NETWORK_READ_SCHEMA_METADATA
-  );
-  registerCommandGroup(
-    () => {
-      registerToolsCommand(root, deps, decodeEscapedPositional);
-    },
-    [
-      "tools cast-preview",
-      "tools get-cast",
-      "tools get-treasury-stats",
-      "tools get-user",
-      "tools get-wallet-balances",
-      "tools notifications list",
-    ],
-    NETWORK_READ_SCHEMA_METADATA
+    registerToolsCommand(root, deps, decodeEscapedPositional)
   );
 
   root.command("schema", {
@@ -703,7 +479,10 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       };
     },
   });
-  addCommandSchemaMetadata(commandSchemaMetadata, ["schema"], INTROSPECTION_SCHEMA_METADATA);
+  addRegisteredCommandMetadata(
+    commandSchemaMetadata,
+    [commandMetadata("schema", INTROSPECTION_SCHEMA_METADATA)]
+  );
 
   root.command("send", {
     description: "Execute token transfer",
@@ -742,7 +521,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       );
     },
   });
-  addCommandSchemaMetadata(commandSchemaMetadata, ["send"], NETWORK_WRITE_SCHEMA_METADATA);
+  addRegisteredCommandMetadata(commandSchemaMetadata, [commandMetadata("send", NETWORK_WRITE_SCHEMA_METADATA)]);
 
   root.command("tx", {
     description: "Execute raw transaction",
@@ -777,7 +556,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       );
     },
   });
-  addCommandSchemaMetadata(commandSchemaMetadata, ["tx"], NETWORK_WRITE_SCHEMA_METADATA);
+  addRegisteredCommandMetadata(commandSchemaMetadata, [commandMetadata("tx", NETWORK_WRITE_SCHEMA_METADATA)]);
 
   if (!options.mcpMode) {
     root.command("setup", {
@@ -823,7 +602,10 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         );
       },
     });
-    addCommandSchemaMetadata(commandSchemaMetadata, ["setup"], NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA);
+    addRegisteredCommandMetadata(
+      commandSchemaMetadata,
+      [commandMetadata("setup", NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA)]
+    );
   }
 
   return root;

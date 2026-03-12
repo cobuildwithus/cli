@@ -1,4 +1,5 @@
 import type { CliDeps } from "../types.js";
+import type { CliProtocolStepAction } from "@cobuild/wire";
 import { executeProtocolPlan } from "../protocol-plan/runner.js";
 import type {
   ProtocolExecutionPlanLike,
@@ -7,7 +8,7 @@ import type {
   ProtocolPlanStepReceiptDecoder,
 } from "../protocol-plan/types.js";
 
-export type ParticipantActionFamily = "tcr" | "vote" | "stake" | "premium";
+export type ParticipantActionFamily = "tcr" | "vote" | "stake" | "premium" | "flow";
 
 export interface ParticipantPlanCommandInput {
   agent?: string;
@@ -22,12 +23,12 @@ export type ParticipantPlanCommandOutput = ProtocolPlanExecutionOutput & {
 
 export async function executeParticipantProtocolPlan(params: {
   family: ParticipantActionFamily;
-  plan: ProtocolExecutionPlanLike;
+  plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
   input: ParticipantPlanCommandInput;
   deps: CliDeps;
   outputAction?: string;
   getStepReceiptDecoder?: (context: {
-    plan: ProtocolExecutionPlanLike;
+    plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
     step: ProtocolPlanStepLike;
     stepNumber: number;
   }) => ProtocolPlanStepReceiptDecoder | null | undefined;

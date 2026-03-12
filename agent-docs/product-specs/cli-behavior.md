@@ -5,6 +5,7 @@
 - `cli` command output should remain deterministic for equivalent inputs.
 - Command failures should return actionable error messages with usage context.
 - JSON output modes should preserve stable keys and avoid ambiguous value types.
+- Protocol participant write commands should keep reusing shared `@cobuild/wire` planners and the existing hosted/local protocol-plan runner rather than introducing CLI-local calldata builders.
 
 ## Endpoint Routing Expectations
 

@@ -1,6 +1,6 @@
 ---
 name: cli
-description: Configure and operate the CLI for setup, wallet bootstrap, docs/tool lookups, send, and tx commands. Use when users ask to run cli commands, complete setup with browser approval, inspect wallet details, query docs/tool routes, or automate CLI output in JSON mode.
+description: Configure and operate the CLI for setup, wallet bootstrap, indexed protocol reads, goal/community/stake/premium participant writes, docs/tool lookups, send, and tx commands. Use when users ask to run cli commands, complete setup with browser approval, inspect wallet details, execute participant wallet actions, query docs/tool routes, or automate CLI output in JSON mode.
 ---
 
 # CLI
@@ -29,7 +29,7 @@ The CLI is backed by Incur command routing and includes built-in discovery comma
 cli --help
 cli --llms         # compact command index
 cli --llms-full    # full manifest with schemas/examples
-cli wallet --schema
+cli wallet status --schema
 cli schema <command path>
 cli completions zsh
 cli skills add
@@ -74,20 +74,33 @@ cli setup --url <interface-url> [--chat-api-url <chat-api-url>] --network <netwo
 Runtime precedence:
 
 - Agent key: `--agent` -> saved config `agent` -> `default`.
-- `send`/`tx` network: `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
+- `send`/`tx`/participant-write network: `--network` -> `COBUILD_CLI_NETWORK` -> `base`.
 
 ## Core Commands
 
 ```bash
-cli wallet --network <network> --agent <agent>
-cli wallet payer init --agent <agent> --mode hosted|local-generate|local-key [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-cli wallet payer status --agent <agent>
+cli wallet status --agent <agent>
+cli wallet init --agent <agent> --mode hosted|local-generate|local-key [--private-key-stdin|--private-key-file <path>] [--no-prompt]
 cli goal inspect <identifier>
+cli goal pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+cli community pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+cli community add-to-balance --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
 cli budget inspect <identifier>
 cli tcr inspect <identifier>
 cli vote status <identifier> [--juror <address>]
 cli stake status <identifier> <account>
+cli stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake deposit-cobuild --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake opt-in-juror --vault <address> --token <address> --goal-amount <n> --delegate <address> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake request-juror-exit --vault <address> --goal-amount <n> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake finalize-juror-exit --vault <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake set-juror-delegate --vault <address> --delegate <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake prepare-underwriter-withdrawal --vault <address> --max-budgets <n> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake withdraw-goal --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli stake withdraw-cobuild --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
 cli premium status <identifier> [--account <address>]
+cli premium checkpoint --escrow <address> --account <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli premium claim --escrow <address> --recipient <address> [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
 cli revnet pay --amount <wei> [--project-id <n>] [--beneficiary <address>] [--min-returned-tokens <n>] [--memo <text>] [--metadata <hex>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
 cli revnet cash-out --cash-out-count <n> [--project-id <n>] [--beneficiary <address>] [--min-reclaim-amount <n>] [--preferred-base-token <address>] [--metadata <hex>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
 cli revnet loan --collateral-count <n> --repay-years <n> [--project-id <n>] [--beneficiary <address>] [--min-borrow-amount <n>] [--preferred-base-token <address>] [--preferred-loan-token <address>] [--permission-mode <auto|force|skip>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
@@ -110,6 +123,7 @@ cli schema <command path>
 Validation notes:
 - `cli docs <query>` requires a non-empty query and `--limit` in `1..20`.
 - `cli tools get-cast --type` only accepts `hash` or `url`.
+- `cli stake opt-in-juror` uses atomic goal-token units for `--goal-amount` and accepts optional approval hints with `--approval-mode auto|force|skip`.
 - `cli revnet pay`, `cli revnet cash-out`, and `cli revnet loan` use atomic onchain units, not display decimals.
 - `cli revnet loan` requires a positive `--repay-years` value and only supports `--permission-mode auto|force|skip`.
 - `cli revnet issuance-terms` omits `projectId` from the canonical tool call when `--project-id` is absent so the upstream default Cobuild project is used.
@@ -123,7 +137,7 @@ Group command notes:
 
 - `goal inspect`, `budget inspect`, `tcr inspect`, `vote status`, `stake status`, `premium status`, `revnet issuance-terms`, and `docs` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
 - `tools get-user|get-cast|cast-preview|get-treasury-stats|get-wallet-balances|notifications list` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
-- `revnet pay|cash-out|loan`, `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
+- `goal pay`, `community pay`, `community add-to-balance`, `stake` write commands, `premium checkpoint|claim`, `revnet pay|cash-out|loan`, `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
 - `config set --chat-api-url` (or `setup --chat-api-url`) is the preferred way to point canonical `/v1/*` calls at a separate Chat API origin.
 - Hosted `https://co.build` may still route `/v1/*` to Chat API at the edge; self-hosted installs can use either edge rewrites or explicit `chatApiUrl` config.
 
@@ -133,7 +147,9 @@ Group command notes:
 - Setup wizard/progress/prompts are written to stderr (stdout remains machine-readable JSON).
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.
-- `wallet`, indexed protocol inspect/status commands, `revnet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- `wallet`, indexed protocol inspect/status commands, `goal`, `community`, `stake`, and `premium` participant writes, `revnet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- `goal pay`, `community pay`, and `community add-to-balance` reuse shared `@cobuild/wire` planners and execute through the shared protocol-plan runner in `raw-tx` mode with deterministic child idempotency keys.
+- `stake` and `premium` writes reuse the shared protocol-plan runner and emit the same normalized plan envelope shape in dry-run and execute modes.
 - Built-in `--schema` returns raw JSON Schema for the targeted command; custom `cli schema <command path>` adds Cobuild metadata like auth/mutation side effects.
 - `--filter-output`, `--token-count`, `--token-limit`, and `--token-offset` can be applied to any command output for agent-friendly trimming/pagination.
 - `--llms` is now the compact command index; use `--llms-full` when you need full command schemas/examples.
@@ -145,8 +161,8 @@ Group command notes:
 ## Auth and Funds Expectations
 
 - No pre-existing token required: `setup`, `config set`, and `config show`.
-- Requires saved config token + URL: `wallet`, indexed protocol inspect/status commands, `revnet`, `docs`, `tools`, `send`, `tx`.
-- Usually requires wallet funds: `send`, `revnet pay`, and most state-changing `tx` calls.
+- Requires saved config token + URL: `wallet`, indexed protocol inspect/status commands, `goal`, `community`, `stake`, `premium`, `revnet`, `docs`, `tools`, `send`, `tx`.
+- Usually requires wallet funds: `send`, state-changing `goal`, `community`, `stake`, and `premium` commands, `revnet pay`, and most state-changing `tx` calls.
 
 ## Security Guardrails
 

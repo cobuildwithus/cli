@@ -1,12 +1,17 @@
 import { Cli, z } from "incur";
 import { executeDocsCommand } from "../../commands/docs.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
 export function registerDocsCommand(
   root: Cli.Cli,
   deps: CliDeps,
   decodeEscapedPositional: (value: string) => string
-): void {
+): RegisteredCommandMetadata[] {
   const docsArgs = z.object({
     query: z.string().min(1),
   });
@@ -37,4 +42,6 @@ export function registerDocsCommand(
       );
     },
   });
+
+  return [commandMetadata("docs", NETWORK_READ_SCHEMA_METADATA)];
 }

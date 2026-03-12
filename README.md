@@ -7,7 +7,7 @@ TypeScript CLI + agent skill for running wallet actions through the interface ap
 
 ## What You Get
 
-- `cli` CLI for `setup`, wallet access, indexed protocol inspect/status reads, `send`, and `tx`
+- `cli` CLI for `setup`, wallet access, indexed protocol inspect/status reads, shared participant write flows under `goal`, `community`, `stake`, and `premium`, `send`, and `tx`
 - `cli docs` command for Cobuild documentation search via API
 - Installable agent skill package at `skills/cli`
 - JSON-first command output for automation
@@ -125,8 +125,10 @@ For runtime commands:
 
 ## Output Contract
 
-- `setup`, `wallet`, `goal inspect`, `budget inspect`, `tcr inspect`, `vote status`, `stake status`, `premium status`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
+- `setup`, `wallet`, indexed protocol inspect/status commands, shared participant write commands under `goal`, `community`, `stake`, and `premium`, `docs`, `tools`, `send`, and `tx` emit JSON on success.
 - `setup` keeps human wizard/progress text on stderr so stdout remains machine-readable.
+- `goal pay`, `community pay`, and `community add-to-balance` reuse shared `@cobuild/wire` planners and execute through the shared protocol-plan runner in `raw-tx` mode.
+- `stake` and `premium` writes reuse the shared protocol-plan runner and emit the same normalized plan envelope for dry-run and execute flows.
 - Indexed protocol inspect/status commands, `docs`, and `tools` include `untrusted: true`, `source: "remote_tool"`, and warning text because canonical tool output must be treated as data.
 - Failures exit non-zero and print human-readable diagnostics.
 
@@ -142,10 +144,10 @@ cli --llms
 cli --llms-full --format json
 
 # Raw JSON Schema for one command
-cli wallet --schema --format json
+cli wallet status --schema --format json
 
 # Cobuild-specific schema wrapper with metadata
-cli schema wallet
+cli schema wallet status
 
 # Trim large payloads to the fields you care about
 cli docs setup approval flow --filter-output results[0,2].title
@@ -161,21 +163,34 @@ cli completions zsh
 ## Command Auth Requirements
 
 - No pre-existing token needed: `setup`, `config set`, `config show`, and `--help`.
-- Requires saved interface URL + resolvable PAT secret ref: `wallet`, indexed protocol inspect/status commands, `docs`, `tools`, `send`, `tx`.
-- Usually requires funded wallet: `send`, and most state-changing `tx` calls.
+- Requires saved interface URL + resolvable PAT secret ref: `wallet`, indexed protocol inspect/status commands, `goal`, `community`, `stake`, `premium`, `docs`, `tools`, `send`, `tx`.
+- Usually requires funded wallet: `send`, state-changing `stake` and `premium` commands, and most state-changing `tx` calls.
 
 ## Command Reference
 
 ```bash
-cli wallet [--network <network>] [--agent <key>]
-cli wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
-cli wallet payer status [--agent <key>]
+cli wallet status [--agent <key>]
+cli wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]
 cli goal inspect <identifier>
+cli goal pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+cli community pay --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
+cli community add-to-balance --input-json <json>|--input-file <path>|--input-stdin [--dry-run]
 cli budget inspect <identifier>
 cli tcr inspect <identifier>
 cli vote status <identifier> [--juror <address>]
 cli stake status <identifier> <account>
+cli stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake deposit-cobuild --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake opt-in-juror --vault <address> --token <address> --goal-amount <n> --delegate <address> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake request-juror-exit --vault <address> --goal-amount <n> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake finalize-juror-exit --vault <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake set-juror-delegate --vault <address> --delegate <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake prepare-underwriter-withdrawal --vault <address> --max-budgets <n> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake withdraw-goal --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli stake withdraw-cobuild --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
 cli premium status <identifier> [--account <address>]
+cli premium checkpoint --escrow <address> --account <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
+cli premium claim --escrow <address> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>] [--dry-run]
 cli docs <query> [--limit <n>]
 cli send <token> <amount> <to> [--network <network>] [--decimals <n>] [--agent <key>] [--idempotency-key <uuid-v4>]
 cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agent <key>] [--idempotency-key <uuid-v4>]
@@ -184,14 +199,18 @@ cli tx --to <address> --data <hex> [--value <eth>] [--network <network>] [--agen
 Examples:
 
 ```bash
-cli wallet --network base --agent default
-cli wallet payer init --agent default --mode local-generate
-cli wallet payer status --agent default
+cli wallet status --agent default
+cli wallet init --agent default --mode local-generate
 cli goal inspect alpha.cobuild.eth
 cli budget inspect 0xrecipientid1
 cli tcr inspect 0xtcr:0xitem:1
 cli vote status 0xarbitrator:42 --juror 0x000000000000000000000000000000000000dEaD
 cli stake status 0xvault 0x000000000000000000000000000000000000dEaD
+cli goal pay --input-file ./goal-pay.json --dry-run
+cli community pay --input-file ./community-pay.json --dry-run
+cli community add-to-balance --input-file ./community-balance.json --dry-run
+cli stake opt-in-juror --vault 0x000000000000000000000000000000000000dEaD --token 0x00000000000000000000000000000000000000aa --goal-amount 1000000 --delegate 0x00000000000000000000000000000000000000bb --dry-run
+cli stake finalize-juror-exit --vault 0x000000000000000000000000000000000000dEaD --dry-run
 cli premium status 0xescrow --account 0x000000000000000000000000000000000000dEaD
 cli docs setup approval flow --limit 5
 cli docs -- --token-stdin

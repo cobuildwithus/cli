@@ -14,12 +14,17 @@ import {
   executeToolsTreasuryStatsCommand,
 } from "../../commands/tools.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
 export function registerToolsCommand(
   root: Cli.Cli,
   deps: CliDeps,
   decodeEscapedPositional: (value: string) => string
-): void {
+): RegisteredCommandMetadata[] {
   const toolNameArgs = z.object({
     value: z.string().min(1),
   });
@@ -204,4 +209,13 @@ export function registerToolsCommand(
     .command(notifications);
 
   root.command(tools);
+
+  return [
+    commandMetadata("tools get-user", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tools get-cast", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tools cast-preview", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tools get-treasury-stats", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tools get-wallet-balances", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("tools notifications list", NETWORK_READ_SCHEMA_METADATA),
+  ];
 }

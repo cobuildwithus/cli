@@ -1,8 +1,16 @@
 import { Cli, z } from "incur";
 import { executeGoalCreateCommand, executeGoalInspectCommand } from "../../commands/goal.js";
+import { executeGoalPayCommand } from "../../commands/goal-pay.js";
+import { participantProtocolWriteOutputSchema } from "./protocol-participant.command-shared.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerGoalCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerGoalCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const goalCreateOutput = z
     .object({
       idempotencyKey: z.string(),
@@ -64,7 +72,26 @@ export function registerGoalCommand(root: Cli.Cli, deps: CliDeps): void {
           deps
         );
       },
+    })
+    .command("pay", {
+      description: "Pay a goal through CobuildGoalTerminal",
+      options: z.object({
+        inputJson: z.string().optional().describe("Inline goal terminal JSON payload"),
+        inputFile: z.string().optional().describe("Path to goal terminal JSON payload"),
+        inputStdin: z.boolean().optional().describe("Read goal terminal JSON payload from stdin"),
+        dryRun: z.boolean().optional().describe("Print the execution plan without sending"),
+      }),
+      output: participantProtocolWriteOutputSchema,
+      run(context) {
+        return executeGoalPayCommand(context.options, deps);
+      },
     });
 
   root.command(goal);
+
+  return [
+    commandMetadata("goal inspect", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("goal create", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("goal pay", NETWORK_WRITE_SCHEMA_METADATA),
+  ];
 }

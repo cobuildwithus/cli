@@ -292,11 +292,13 @@ describe("farcaster command", () => {
     );
   });
 
-  it("validates wallet payer usage for missing/unknown actions", async () => {
+  it("rejects the removed wallet payer path after the hard cutover", async () => {
     const harness = createHarness();
-    await expect(runCli(["wallet", "payer"], harness.deps)).rejects.toThrow("cli wallet init");
+    await expect(runCli(["wallet", "payer"], harness.deps)).rejects.toThrow(
+      "Unknown wallet subcommand: payer"
+    );
     await expect(runCli(["wallet", "payer", "nope"], harness.deps)).rejects.toThrow(
-      "cli wallet init"
+      "Unknown wallet subcommand: payer"
     );
   });
 

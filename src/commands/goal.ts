@@ -28,7 +28,10 @@ import {
 } from "./shared.js";
 import { executeCanonicalToolOnly } from "./tool-execution.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
-import { executeWithConfiguredWallet, requireStoredWalletConfig } from "../wallet/payer-config.js";
+import {
+  executeWithConfiguredWallet,
+  resolveConfiguredWalletContext,
+} from "../wallet/payer-config.js";
 
 const GOAL_CREATE_USAGE =
   "Usage: cli goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
@@ -256,12 +259,13 @@ export async function executeGoalCreateCommand(
   const idempotencyKey = resolveExecIdempotencyKey(input.idempotencyKey, deps);
 
   if (input.dryRun === true) {
-    const walletConfig = requireStoredWalletConfig({
+    const walletContext = await resolveConfiguredWalletContext({
       deps,
+      currentConfig: current,
       agentKey,
     });
     const requestBody =
-      walletConfig.mode === "local"
+      walletContext.walletMode === "local"
         ? buildLocalGoalCreateRequest({
             network: goalCreatePlan.network,
             agentKey,

@@ -6,10 +6,7 @@ import {
   formatProtocolPlanPendingMessage,
   formatProtocolPlanStepFailureMessage,
 } from "../../protocol-plan/labels.js";
-import {
-  buildRawTxProtocolPlanCommandOutput,
-  executeRawTxProtocolPlan,
-} from "../../protocol-plan/executor-shared.js";
+import { executeProtocolPlan } from "../../protocol-plan/runner.js";
 import type { ProtocolPlanExecutionOutput } from "../../protocol-plan/types.js";
 import type { BudgetMaintenancePlan } from "@cobuild/wire";
 
@@ -51,9 +48,10 @@ export function requireStringArray(
 
 export function resolveBudgetMaintenancePlanNetwork(
   input: Pick<BudgetMaintenanceExecutionInput, "network">,
-  deps: Pick<CliDeps, "env">
+  deps: Pick<CliDeps, "env">,
+  plan?: { network: string }
 ): string {
-  return resolveNetwork(input.network, deps);
+  return resolveNetwork(input.network ?? plan?.network, deps);
 }
 
 export async function executeBudgetMaintenancePlan(params: {
@@ -62,17 +60,21 @@ export async function executeBudgetMaintenancePlan(params: {
   outputAction: string;
   plan: BudgetMaintenancePlan;
 }): Promise<BudgetMaintenanceCommandOutput> {
-  const execution = await executeRawTxProtocolPlan({
+  const execution = await executeProtocolPlan({
     deps: params.deps,
-    input: params.input,
     plan: params.plan,
+    mode: "raw-tx",
+    agent: params.input.agent,
+    dryRun: params.input.dryRun,
+    idempotencyKey: params.input.idempotencyKey,
+    resolvePlanNetwork: (plan, deps) => resolveBudgetMaintenancePlanNetwork(params.input, deps, plan),
     formatStepFailureMessage: formatProtocolPlanStepFailureMessage,
     formatPendingMessage: formatProtocolPlanPendingMessage,
   });
 
-  return buildRawTxProtocolPlanCommandOutput({
+  return {
+    ...execution,
     family: "budget",
     action: params.outputAction,
-    execution,
-  });
+  };
 }

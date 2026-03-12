@@ -6,8 +6,14 @@ import {
   executeRevnetPayCommand,
 } from "../../commands/revnet.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const revnetWriteOutput = z
     .object({
       idempotencyKey: z.string(),
@@ -98,4 +104,11 @@ export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(revnet);
+
+  return [
+    commandMetadata("revnet pay", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("revnet cash-out", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("revnet loan", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("revnet issuance-terms", NETWORK_READ_SCHEMA_METADATA),
+  ];
 }

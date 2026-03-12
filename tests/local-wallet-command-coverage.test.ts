@@ -4,18 +4,15 @@ import { createHarness } from "./helpers.js";
 const localExecMocks = vi.hoisted(() => ({
   executeLocalTransferMock: vi.fn(),
   executeLocalTxMock: vi.fn(),
-  buildLocalWalletSummaryMock: vi.fn(),
 }));
 
 vi.mock("../src/wallet/local-exec.js", () => ({
   executeLocalTransfer: localExecMocks.executeLocalTransferMock,
   executeLocalTx: localExecMocks.executeLocalTxMock,
-  buildLocalWalletSummary: localExecMocks.buildLocalWalletSummaryMock,
 }));
 
 import { executeSendCommand } from "../src/commands/send.js";
 import { executeTxCommand } from "../src/commands/tx.js";
-import { executeWalletCommand } from "../src/commands/wallet.js";
 
 const VALID_TO = "0x000000000000000000000000000000000000dEaD";
 
@@ -52,29 +49,10 @@ function setLocalWalletConfig(harness: ReturnType<typeof createHarness>, agentKe
   );
 }
 
-function setHostedWalletConfig(harness: ReturnType<typeof createHarness>, agentKey = "default"): void {
-  harness.files.set(
-    `/tmp/cli-tests/.cobuild-cli/agents/${agentKey}/wallet/payer.json`,
-    JSON.stringify(
-      {
-        version: 1,
-        mode: "hosted",
-        payerAddress: "0x00000000000000000000000000000000000000aa",
-        network: "base",
-        token: "usdc",
-        createdAt: "2026-03-03T00:00:00.000Z",
-      },
-      null,
-      2
-    )
-  );
-}
-
 describe("local wallet command coverage", () => {
   beforeEach(() => {
     localExecMocks.executeLocalTransferMock.mockReset();
     localExecMocks.executeLocalTxMock.mockReset();
-    localExecMocks.buildLocalWalletSummaryMock.mockReset();
   });
 
   it("routes send to local transfer execution for local wallets", async () => {
@@ -177,100 +155,5 @@ describe("local wallet command coverage", () => {
       kind: "tx",
       idempotencyKey: "8e03978e-40d5-43e8-bc93-6894a57f9324",
     });
-  });
-
-  it("returns local wallet summary when wallet mode is local", async () => {
-    const harness = createHarness({
-      config: {
-        agent: "default",
-      },
-    });
-    setLocalWalletConfig(harness);
-
-    localExecMocks.buildLocalWalletSummaryMock.mockReturnValue({
-      ok: true,
-      wallet: {
-        address: "0x00000000000000000000000000000000000000aa",
-      },
-    });
-
-    const result = await executeWalletCommand({}, harness.deps);
-
-    expect(localExecMocks.buildLocalWalletSummaryMock).toHaveBeenCalled();
-    expect(harness.fetchMock).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      ok: true,
-      walletConfig: {
-        mode: "local",
-        network: "base",
-        token: "usdc",
-      },
-    });
-  });
-
-  it("returns hosted wallet payloads wrapped when the response is not an object", async () => {
-    const harness = createHarness({
-      config: {
-        url: "https://api.example",
-        token: "bbt_secret",
-        agent: "default",
-      },
-      fetchResponder: async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify("scalar"),
-      }),
-    });
-
-    const result = await executeWalletCommand({}, harness.deps);
-
-    expect(result).toEqual({
-      result: "scalar",
-      walletConfig: {
-        mode: "hosted",
-        walletAddress: null,
-        network: "base",
-        token: "usdc",
-        costPerPaidCallMicroUsdc: "1000",
-      },
-    });
-  });
-
-  it("returns hosted wallet object payloads merged with wallet config", async () => {
-    const harness = createHarness({
-      config: {
-        url: "https://api.example",
-        token: "bbt_secret",
-        agent: "default",
-      },
-      fetchResponder: async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ ok: true, address: "0xabc" }),
-      }),
-    });
-    setHostedWalletConfig(harness);
-
-    const result = await executeWalletCommand({}, harness.deps);
-
-    expect(result).toEqual({
-      ok: true,
-      address: "0xabc",
-      walletConfig: {
-        mode: "hosted",
-        walletAddress: "0x00000000000000000000000000000000000000aa",
-        network: "base",
-        token: "usdc",
-        costPerPaidCallMicroUsdc: "1000",
-      },
-    });
-  });
-
-  it("throws clear guidance when wallet config is missing", async () => {
-    const harness = createHarness();
-
-    await expect(executeWalletCommand({}, harness.deps)).rejects.toThrow(
-      "No wallet is configured for this agent. Run `cli wallet init --mode hosted|local-generate|local-key`."
-    );
   });
 });

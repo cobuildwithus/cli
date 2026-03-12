@@ -4,9 +4,15 @@ import {
   executeConfigShowCommand,
 } from "../../commands/config.js";
 import type { CliDeps } from "../../types.js";
-import { forwardOptionsToExecutor } from "./command-wrapper-shared.js";
+import {
+  commandMetadata,
+  forwardOptionsToExecutor,
+  LOCAL_FILE_READ_SCHEMA_METADATA,
+  LOCAL_FILE_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerConfigCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerConfigCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const configSetOutput = z.object({
     ok: z.literal(true),
     path: z.string(),
@@ -50,4 +56,9 @@ export function registerConfigCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(config);
+
+  return [
+    commandMetadata("config set", LOCAL_FILE_WRITE_SCHEMA_METADATA),
+    commandMetadata("config show", LOCAL_FILE_READ_SCHEMA_METADATA),
+  ];
 }

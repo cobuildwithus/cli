@@ -37,9 +37,8 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 
 ### `wallet`
 
-- `wallet [--network <network>] [--agent <key>]`
-- `wallet payer init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
-- `wallet payer status [--agent <key>]`
+- `wallet status [--agent <key>]`
+- `wallet init [--agent <key>] [--mode hosted|local-generate|local-key] [--private-key-stdin|--private-key-file <path>] [--no-prompt]`
 - Calls `/api/cli/wallet` with agent + network context.
 - `payer init/status` persists and reports per-agent payer-mode metadata at `~/.cobuild-cli/agents/<agent>/wallet/payer.json`.
 
@@ -55,14 +54,41 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 ### `goal`
 
 - `goal create [--factory <address>] [--params-file <path>|--params-json <json>|--params-stdin] [--network <network>] [--agent <key>] [--idempotency-key <key>]`
+- `goal pay [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]`
 - Defaults to the canonical Base GoalFactory exported by `@cobuild/wire`, with `--factory` retained as an override.
 - Builds a shared `goal.create` protocol plan from JSON params through `@cobuild/wire` normalization/build helpers.
 - Hosted mode now POSTs `/api/cli/exec` with the first-class `kind: protocol-step` envelope; local mode still executes the raw viem tx path.
 - Attempts to decode `GoalDeployed` from the transaction receipt when available using shared wire decoders.
+- `pay` builds the shared `goal.pay` terminal-funding plan from JSON input and executes raw `kind: tx` wallet requests through the shared terminal-funding helper so hosted and local payer modes stay aligned.
+
+### `community`
+
+- `community pay [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]`
+- `community add-to-balance [--input-json <json>|--input-file <path>|--input-stdin] [--dry-run]`
+- Both commands build shared `@cobuild/wire` terminal-funding plans and execute through the shared protocol-plan runner in raw-tx mode.
+- `pay` preserves the canonical `abi.encode(goalIds, weights, jbMetadata)` route metadata envelope from the shared planner.
+- Token-funded `community pay` and `community add-to-balance` can include an ERC-20 approval step before the terminal call while keeping dry-run and idempotent replay output consistent.
+
+### `stake`
+
+- `stake status <identifier> <account>`
+- `stake deposit-goal --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake deposit-cobuild --vault <address> --token <address> --amount <n> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake opt-in-juror --vault <address> --token <address> --goal-amount <n> --delegate <address> [--approval-mode <auto|force|skip>] [--current-allowance <n>] [--approval-amount <n>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake request-juror-exit --vault <address> --goal-amount <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake finalize-juror-exit --vault <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake set-juror-delegate --vault <address> --delegate <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake prepare-underwriter-withdrawal --vault <address> --max-budgets <n> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake withdraw-goal --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `stake withdraw-cobuild --vault <address> --amount <n> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `status` stays read-only and uses canonical chat-api tool execution for indexed stake position state.
+- All stake write commands build `@cobuild/wire` participant plans and execute through the shared protocol-plan runner rather than a stake-specific execution stack.
+- `opt-in-juror` can include an ERC-20 approval step before locking goal stake and setting the juror delegate on the vault.
+- `request-juror-exit`, `finalize-juror-exit`, and `set-juror-delegate` map directly to the stake-vault juror lifecycle writes while preserving shared dry-run, idempotency, and hosted/local wallet behavior.
 
 ### Shared protocol plan runtime
 
-- Governance, stake, and premium participant commands now build their execution plans directly with `@cobuild/wire` helpers instead of assembling parallel CLI-local plan/approval objects.
+- Governance, stake deposit/withdraw/juror lifecycle, and premium participant commands now build their execution plans directly with `@cobuild/wire` helpers instead of assembling parallel CLI-local plan/approval objects.
 - `src/protocol-plan/runner.ts` executes structural `@cobuild/wire` `ProtocolExecutionPlan` objects through the existing hosted `/api/cli/exec` and local-wallet split.
 - The runner derives a root idempotency key plus deterministic per-step child idempotency keys so multi-step reruns replay completed steps safely.
 - Hosted protocol-plan steps preserve `action`, `riskClass`, and step metadata in a `kind: protocol-step` request; raw `kind: tx` remains the explicit generic escape hatch.
@@ -153,6 +179,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - Transport enforces default timeout+abort semantics and blocks overriding reserved auth/content headers.
 - `send`/`tx` include both `X-Idempotency-Key` and `Idempotency-Key`.
 - Shared protocol plan execution also uses both idempotency headers on hosted step calls while keeping root idempotency local to the CLI runtime for deterministic child-key derivation.
+- `goal pay`, `community pay`, `community add-to-balance`, and budget maintenance writes reuse the shared protocol-plan runner in `raw-tx` mode so hosted/local step execution stays on one engine even when the hosted request envelope remains `kind: tx`.
 
 4. Output boundary
 

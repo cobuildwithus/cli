@@ -340,6 +340,57 @@ describe("protocol plan runner", () => {
     expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
 
+  it("supports hosted raw-tx dry runs on the shared runner", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://api.example",
+        token: "bbt_secret",
+        agent: "ops",
+      },
+    });
+
+    const result = await executeProtocolPlan({
+      deps: harness.deps,
+      plan: buildPlan(),
+      mode: "raw-tx",
+      dryRun: true,
+    });
+
+    expect(result.walletMode).toBe("hosted");
+    expect(result.execution).toEqual({
+      mode: "hosted-sequential",
+      atomic: false,
+      idempotencyKey: result.idempotencyKey,
+    });
+    expect(result.steps).toMatchObject([
+      {
+        stepNumber: 1,
+        executionTarget: "hosted_api",
+        request: {
+          kind: "tx",
+          network: "base",
+          agentKey: "ops",
+          to: "0x0000000000000000000000000000000000000011",
+          valueEth: "0",
+        },
+      },
+      {
+        stepNumber: 2,
+        executionTarget: "hosted_api",
+        request: {
+          kind: "tx",
+          network: "base",
+          agentKey: "ops",
+          to: "0x0000000000000000000000000000000000000022",
+          valueEth: "0",
+        },
+      },
+    ]);
+    expect(result.steps[0]?.idempotencyKey).not.toBe(result.idempotencyKey);
+    expect(result.steps[1]?.idempotencyKey).not.toBe(result.idempotencyKey);
+    expect(harness.fetchMock).not.toHaveBeenCalled();
+  });
+
   it("executes hosted plan steps in order and attaches decoded receipt summaries", async () => {
     const txHashes = [
       `0x${"1".repeat(64)}`,

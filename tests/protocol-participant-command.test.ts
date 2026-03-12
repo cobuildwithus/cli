@@ -14,7 +14,11 @@ import {
   executePremiumCheckpointCommand,
   executeStakeDepositCobuildCommand,
   executeStakeDepositGoalCommand,
+  executeStakeFinalizeJurorExitCommand,
+  executeStakeOptInJurorCommand,
   executeStakePrepareUnderwriterWithdrawalCommand,
+  executeStakeRequestJurorExitCommand,
+  executeStakeSetJurorDelegateCommand,
 } from "../src/commands/protocol-participant-stake-premium.js";
 import {
   executeTcrChallengeCommand,
@@ -544,6 +548,48 @@ describe("protocol participant commands", () => {
     });
   });
 
+  it("routes local juror delegate updates through one local tx execution", async () => {
+    const harness = createHarness({
+      config: {
+        agent: "default",
+      },
+    });
+    setLocalWalletConfig(harness);
+    localExecMocks.executeLocalTxMock.mockResolvedValue({
+      ok: true,
+      kind: "tx",
+      transactionHash: "0x5",
+    });
+
+    await runCli(
+      [
+        "stake",
+        "set-juror-delegate",
+        "--vault",
+        REGISTRY,
+        "--delegate",
+        RECIPIENT,
+        "--idempotency-key",
+        EXPLICIT_UUID,
+      ],
+      harness.deps
+    );
+
+    expect(localExecMocks.executeLocalTxMock).toHaveBeenCalledTimes(1);
+    const output = parseLastJsonOutput(harness.outputs);
+    const outputSteps = output.steps as Array<Record<string, unknown>>;
+    expect(localExecMocks.executeLocalTxMock.mock.calls[0]?.[0]).toMatchObject({
+      idempotencyKey: outputSteps[0]?.idempotencyKey,
+      to: REGISTRY.toLowerCase(),
+    });
+    expect(output).toMatchObject({
+      ok: true,
+      family: "stake",
+      action: "stake.set-juror-delegate",
+      executedStepCount: 1,
+    });
+  });
+
   it("routes premium claims through hosted execution", async () => {
     const harness = createHarness({
       config: {
@@ -820,6 +866,59 @@ describe("protocol participant commands", () => {
         harness.deps
       )
     ).rejects.toThrow("amount must be a non-negative integer.");
+
+    await expect(
+      executeStakeOptInJurorCommand(
+        {
+          vault: REGISTRY,
+          token: TOKEN,
+          goalAmount: "5",
+          delegate: RECIPIENT,
+          currentAllowance: "1",
+          approvalAmount: "10",
+          dryRun: true,
+        },
+        harness.deps
+      )
+    ).resolves.toMatchObject({
+      ok: true,
+      dryRun: true,
+      action: "stake.opt-in-juror",
+    });
+
+    await expect(
+      executeStakeOptInJurorCommand(
+        {
+          vault: REGISTRY,
+          token: TOKEN,
+          goalAmount: -1,
+          delegate: RECIPIENT,
+          dryRun: true,
+        },
+        harness.deps
+      )
+    ).rejects.toThrow("goalAmount must be a non-negative integer.");
+
+    await expect(
+      executeStakeRequestJurorExitCommand(
+        { vault: REGISTRY, dryRun: true },
+        harness.deps
+      )
+    ).rejects.toThrow("--goal-amount is required.");
+
+    await expect(
+      executeStakeFinalizeJurorExitCommand(
+        { dryRun: true },
+        harness.deps
+      )
+    ).rejects.toThrow("--vault is required.");
+
+    await expect(
+      executeStakeSetJurorDelegateCommand(
+        { vault: REGISTRY, dryRun: true },
+        harness.deps
+      )
+    ).rejects.toThrow("--delegate is required.");
 
     await expect(
       executeStakePrepareUnderwriterWithdrawalCommand(
@@ -1256,7 +1355,7 @@ describe("protocol participant commands", () => {
     ).rejects.toThrow("requestType must be registrationRequested (2) or clearingRequested (3).");
   });
 
-  it("skips approval transactions when stake deposits do not need one", async () => {
+  it("skips approval transactions when stake deposits or juror opt-ins do not need one", async () => {
     const depositGoal = await runDryRunCommand([
       "stake",
       "deposit-goal",
@@ -1326,9 +1425,142 @@ describe("protocol participant commands", () => {
       },
     ]);
     expect(depositCobuild.harness.fetchMock).not.toHaveBeenCalled();
+
+    const optInJuror = await runDryRunCommand([
+      "stake",
+      "opt-in-juror",
+      "--vault",
+      REGISTRY,
+      "--token",
+      TOKEN,
+      "--goal-amount",
+      "13",
+      "--delegate",
+      RECIPIENT,
+      "--current-allowance",
+      "13",
+      "--approval-amount",
+      "999",
+    ]);
+    expect(optInJuror.output).toMatchObject({
+      ok: true,
+      dryRun: true,
+      family: "stake",
+      action: "stake.opt-in-juror",
+      preconditions: [],
+      expectedEvents: ["JurorOptedIn"],
+    });
+    expect(optInJuror.output.steps).toMatchObject([
+      {
+        kind: "contract-call",
+        request: {
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: REGISTRY.toLowerCase(),
+            },
+          },
+        },
+      },
+    ]);
+    expect(optInJuror.harness.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("supports dry-run juror opt-in with approval and contract-call steps", async () => {
+    const optInJuror = await runDryRunCommand([
+      "stake",
+      "opt-in-juror",
+      "--vault",
+      REGISTRY,
+      "--token",
+      TOKEN,
+      "--goal-amount",
+      "13",
+      "--delegate",
+      RECIPIENT,
+      "--approval-mode",
+      "force",
+    ]);
+
+    expect(optInJuror.output).toMatchObject({
+      ok: true,
+      dryRun: true,
+      family: "stake",
+      action: "stake.opt-in-juror",
+      preconditions: [],
+      expectedEvents: ["JurorOptedIn"],
+    });
+    expect(optInJuror.output.steps).toMatchObject([
+      {
+        kind: "erc20-approval",
+        request: {
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: TOKEN.toLowerCase(),
+            },
+          },
+        },
+      },
+      {
+        kind: "contract-call",
+        request: {
+          kind: "protocol-step",
+          step: {
+            transaction: {
+              to: REGISTRY.toLowerCase(),
+            },
+          },
+        },
+      },
+    ]);
+    expect(optInJuror.harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([
+    {
+      label: "stake request-juror-exit",
+      argv: [
+        "stake",
+        "request-juror-exit",
+        "--vault",
+        REGISTRY,
+        "--goal-amount",
+        "25",
+      ],
+      family: "stake",
+      action: "stake.request-juror-exit",
+      stepCount: 1,
+      to: REGISTRY.toLowerCase(),
+    },
+    {
+      label: "stake finalize-juror-exit",
+      argv: [
+        "stake",
+        "finalize-juror-exit",
+        "--vault",
+        REGISTRY,
+      ],
+      family: "stake",
+      action: "stake.finalize-juror-exit",
+      stepCount: 1,
+      to: REGISTRY.toLowerCase(),
+    },
+    {
+      label: "stake set-juror-delegate",
+      argv: [
+        "stake",
+        "set-juror-delegate",
+        "--vault",
+        REGISTRY,
+        "--delegate",
+        RECIPIENT,
+      ],
+      family: "stake",
+      action: "stake.set-juror-delegate",
+      stepCount: 1,
+      to: REGISTRY.toLowerCase(),
+    },
     {
       label: "stake prepare-underwriter-withdrawal",
       argv: [

@@ -27,6 +27,8 @@ export type ProtocolExecutionPlanLike<TAction extends string = string> = {
   expectedEvents?: readonly string[];
 };
 
+export type ProtocolPlanExecutionMode = "protocol-step" | "raw-tx";
+
 export type ProtocolPlanWalletMode = "hosted" | "local";
 
 export type RawTxProtocolPlanStepRequest = {

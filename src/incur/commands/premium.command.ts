@@ -10,8 +10,14 @@ import {
   participantProtocolWriteOutputSchema,
 } from "./protocol-participant.command-shared.js";
 import type { CliDeps } from "../../types.js";
+import {
+  commandMetadata,
+  NETWORK_READ_SCHEMA_METADATA,
+  NETWORK_WRITE_SCHEMA_METADATA,
+  type RegisteredCommandMetadata,
+} from "./command-wrapper-shared.js";
 
-export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
+export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): RegisteredCommandMetadata[] {
   const premiumStatusOutput = z
     .object({
       premiumEscrow: z.unknown(),
@@ -71,4 +77,10 @@ export function registerPremiumCommand(root: Cli.Cli, deps: CliDeps): void {
     });
 
   root.command(premium);
+
+  return [
+    commandMetadata("premium status", NETWORK_READ_SCHEMA_METADATA),
+    commandMetadata("premium checkpoint", NETWORK_WRITE_SCHEMA_METADATA),
+    commandMetadata("premium claim", NETWORK_WRITE_SCHEMA_METADATA),
+  ];
 }
