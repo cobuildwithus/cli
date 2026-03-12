@@ -835,6 +835,107 @@ describe("revnet command integration", () => {
     );
   });
 
+  it("changes child loan-step idempotency keys when the root key or encoded tx changes", async () => {
+    const harness = createHarness({
+      config: {
+        url: "https://interface.example",
+        token: "bbt_secret",
+        agent: "default",
+      },
+    });
+    setHostedWalletConfig(harness);
+
+    mocks.getRevnetBorrowContextMock.mockResolvedValue({
+      projectId: 138n,
+      token: {
+        balance: 20n,
+      },
+      selectedLoanSource: {
+        token: "0x00000000000000000000000000000000000000ee",
+        terminal: "0x00000000000000000000000000000000000000ff",
+      },
+      borrowableContext: {
+        token: "0x00000000000000000000000000000000000000ee",
+      },
+      borrowableAmount: 200n,
+      feeConfig: {
+        minPrepaidFeePercent: 10n,
+        maxPrepaidFeePercent: 100n,
+        liquidationDurationSeconds: 31_536_000n,
+      },
+      needsBorrowPermission: true,
+      permissionsAddress: "0x0000000000000000000000000000000000000011",
+      revLoansAddress: "0x0000000000000000000000000000000000000012",
+    });
+    mocks.getRevnetPrepaidFeePercentMock.mockReturnValue(42n);
+    mocks.buildRevnetBorrowPlanFromContextMock.mockReturnValue({
+      projectId: 138n,
+      permissionRequired: true,
+      preconditions: [],
+      quote: {
+        netBorrowableAmount: 150n,
+      },
+      steps: [
+        {
+          key: "permission",
+          label: "Grant REV loan permission",
+          intent: { address: "0x1", abi: [], functionName: "setPermissionsFor", args: [] },
+        },
+      ],
+    });
+    mocks.encodeWriteIntentMock
+      .mockReturnValueOnce({
+        to: "0x0000000000000000000000000000000000000011",
+        data: "0xperm",
+        value: 0n,
+      })
+      .mockReturnValueOnce({
+        to: "0x0000000000000000000000000000000000000011",
+        data: "0xperm-v2",
+        value: 0n,
+      })
+      .mockReturnValueOnce({
+        to: "0x0000000000000000000000000000000000000011",
+        data: "0xperm",
+        value: 0n,
+      });
+
+    const baseResult = await executeRevnetLoanCommand(
+      {
+        collateralCount: "9",
+        repayYears: "1",
+        dryRun: true,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      },
+      harness.deps
+    );
+    const encodedChangeResult = await executeRevnetLoanCommand(
+      {
+        collateralCount: "9",
+        repayYears: "1",
+        dryRun: true,
+        idempotencyKey: "11111111-1111-4111-8111-111111111111",
+      },
+      harness.deps
+    );
+    const rootChangeResult = await executeRevnetLoanCommand(
+      {
+        collateralCount: "9",
+        repayYears: "1",
+        dryRun: true,
+        idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      },
+      harness.deps
+    );
+
+    expect((baseResult.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey).not.toBe(
+      (encodedChangeResult.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey
+    );
+    expect((baseResult.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey).not.toBe(
+      (rootChangeResult.steps as Array<{ idempotencyKey: string }>)[0]?.idempotencyKey
+    );
+  });
+
   it("rejects invalid revnet command preconditions and validation errors", async () => {
     const hostedNullWalletHarness = createHarness({
       config: {

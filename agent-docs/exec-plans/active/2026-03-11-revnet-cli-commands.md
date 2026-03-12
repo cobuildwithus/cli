@@ -23,3 +23,13 @@ Add a CLI `revnet` command group for pay, cash-out, loan, and issuance-terms whi
 - `pnpm typecheck`
 - `pnpm test`
 - `pnpm test:coverage`
+
+## Status
+
+- Completed 2026-03-12.
+
+## Delivered Follow-ups
+
+- Re-keyed child loan-step idempotency off the root key, stable step key, and encoded transaction payload so label-only copy edits do not change replay semantics.
+- Added command regressions for collateral counts above wallet balance and for `revnet issuance-terms` calls that intentionally omit `--project-id`.
+- Kept the wallet execution path unchanged while tightening parity with the shared wire revnet semantics.

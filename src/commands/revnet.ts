@@ -41,8 +41,6 @@ const REVNET_CASH_OUT_USAGE =
   "Usage: cli revnet cash-out --cash-out-count <n> [--project-id <n>] [--beneficiary <address>] [--min-reclaim-amount <n>] [--preferred-base-token <address>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
 const REVNET_LOAN_USAGE =
   "Usage: cli revnet loan --collateral-count <n> --repay-years <n> [--project-id <n>] [--beneficiary <address>] [--min-borrow-amount <n>] [--preferred-base-token <address>] [--preferred-loan-token <address>] [--permission-mode <auto|force|skip>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]";
-const REVNET_ISSUANCE_TERMS_USAGE =
-  "Usage: cli revnet issuance-terms [--project-id <n>]";
 const REVNET_ISSUANCE_TERMS_CANONICAL_TOOL_NAMES = [
   "get-revnet-issuance-terms",
   "getRevnetIssuanceTerms",
