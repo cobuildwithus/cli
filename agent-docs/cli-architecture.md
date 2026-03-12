@@ -78,6 +78,16 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - If canonical `/v1/*` routes are unavailable, returns actionable guidance to configure `--chat-api-url` (or edge `/v1/*` rewrites) to Chat API.
 - Used for searchable Cobuild documentation retrieval from configured backend.
 
+### `revnet`
+
+- `revnet pay --amount <wei> [--project-id <n>] [--beneficiary <address>] [--min-returned-tokens <n>] [--memo <text>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `revnet cash-out --cash-out-count <n> [--project-id <n>] [--beneficiary <address>] [--min-reclaim-amount <n>] [--preferred-base-token <address>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `revnet loan --collateral-count <n> --repay-years <n> [--project-id <n>] [--beneficiary <address>] [--min-borrow-amount <n>] [--preferred-base-token <address>] [--preferred-loan-token <address>] [--permission-mode <auto|force|skip>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]`
+- `revnet issuance-terms [--project-id <n>]`
+- `pay`, `cash-out`, and `loan` use `@cobuild/wire` revnet reads/math/write intents, then execute through the existing raw `tx` hosted/local wallet paths.
+- `loan` derives deterministic child idempotency keys from the root key and encoded tx payloads so multi-step retries remain replay-safe without introducing a second execution stack.
+- `issuance-terms` stays read-only and uses canonical chat-api tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools`) instead of local issuance reconstruction.
+
 ### `protocol inspect/status`
 
 - `goal inspect <identifier>`
@@ -86,6 +96,7 @@ Define durable command/runtime boundaries for `cli` CLI behavior.
 - `vote status <identifier> [--juror <address>]`
 - `stake status <identifier> <account>`
 - `premium status <identifier> [--account <address>]`
+- `revnet issuance-terms [--project-id <n>]`
 - Call canonical chat-api tool execution (`POST /v1/tool-executions`) with optional tool discovery (`GET /v1/tools`) through configured chat-api routing (`chatApiUrl` when set, otherwise `url`).
 - Return untrusted wrapped tool data so downstream agents treat the payload as data rather than executable instructions.
 

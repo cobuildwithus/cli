@@ -37,6 +37,10 @@ Usage:
   cli premium status <identifier> [--account <address>]
   cli premium checkpoint --escrow <address> --account <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
   cli premium claim --escrow <address> --recipient <address> [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli revnet pay --amount <wei> [--project-id <n>] [--beneficiary <address>] [--min-returned-tokens <n>] [--memo <text>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli revnet cash-out --cash-out-count <n> [--project-id <n>] [--beneficiary <address>] [--min-reclaim-amount <n>] [--preferred-base-token <address>] [--metadata <hex>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli revnet loan --collateral-count <n> --repay-years <n> [--project-id <n>] [--beneficiary <address>] [--min-borrow-amount <n>] [--preferred-base-token <address>] [--preferred-loan-token <address>] [--permission-mode <auto|force|skip>] [--network <network>] [--agent <key>] [--idempotency-key <key>] [--dry-run]
+  cli revnet issuance-terms [--project-id <n>]
   cli docs <query> [--limit <n>]
   cli tools get-user <fname>
   cli tools get-cast <identifier> [--type <hash|url>]
@@ -73,6 +77,10 @@ Examples:
   cli vote commit --arbitrator 0x000000000000000000000000000000000000dEaD --dispute-id 1 --round 0 --voter 0x00000000000000000000000000000000000000aa --choice 1 --salt 0x1111111111111111111111111111111111111111111111111111111111111111 --dry-run
   cli stake deposit-goal --vault 0x000000000000000000000000000000000000dEaD --token 0x00000000000000000000000000000000000000aa --amount 1000000 --dry-run
   cli premium claim --escrow 0x000000000000000000000000000000000000dEaD --recipient 0x00000000000000000000000000000000000000aa --dry-run
+  cli revnet pay --amount 1000000000000000 --dry-run
+  cli revnet cash-out --cash-out-count 1000000000000000000 --dry-run
+  cli revnet loan --collateral-count 1000000000000000000 --repay-years 1 --dry-run
+  cli revnet issuance-terms --project-id 138
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin
   cli tools get-user will

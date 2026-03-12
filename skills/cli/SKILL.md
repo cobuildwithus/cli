@@ -88,6 +88,10 @@ cli tcr inspect <identifier>
 cli vote status <identifier> [--juror <address>]
 cli stake status <identifier> <account>
 cli premium status <identifier> [--account <address>]
+cli revnet pay --amount <wei> [--project-id <n>] [--beneficiary <address>] [--min-returned-tokens <n>] [--memo <text>] [--metadata <hex>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli revnet cash-out --cash-out-count <n> [--project-id <n>] [--beneficiary <address>] [--min-reclaim-amount <n>] [--preferred-base-token <address>] [--metadata <hex>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli revnet loan --collateral-count <n> --repay-years <n> [--project-id <n>] [--beneficiary <address>] [--min-borrow-amount <n>] [--preferred-base-token <address>] [--preferred-loan-token <address>] [--permission-mode <auto|force|skip>] [--network <network>] [--agent <agent>] [--idempotency-key <key>] [--dry-run]
+cli revnet issuance-terms [--project-id <n>]
 cli docs <query> [--limit <n>]
 cli tools get-user <fname>
 cli tools get-cast <identifier> [--type <hash|url>]
@@ -106,6 +110,8 @@ cli schema <command path>
 Validation notes:
 - `cli docs <query>` requires a non-empty query and `--limit` in `1..20`.
 - `cli tools get-cast --type` only accepts `hash` or `url`.
+- `cli revnet pay`, `cli revnet cash-out`, and `cli revnet loan` use atomic onchain units, not display decimals.
+- `cli revnet loan` requires a positive `--repay-years` value and only supports `--permission-mode auto|force|skip`.
 
 Group command notes:
 
@@ -114,9 +120,9 @@ Group command notes:
 
 ## Command Routing
 
-- `goal inspect`, `budget inspect`, `tcr inspect`, `vote status`, `stake status`, `premium status`, and `docs` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
+- `goal inspect`, `budget inspect`, `tcr inspect`, `vote status`, `stake status`, `premium status`, `revnet issuance-terms`, and `docs` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
 - `tools get-user|get-cast|cast-preview|get-treasury-stats|get-wallet-balances|notifications list` call canonical tool execution (`POST /v1/tool-executions`, optional `GET /v1/tools` discovery) using `chatApiUrl` when configured (fallback `url`).
-- `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
+- `revnet pay|cash-out|loan`, `wallet`, `send`, and `tx` call interface API `POST /api/cli/wallet` and `POST /api/cli/exec`.
 - `config set --chat-api-url` (or `setup --chat-api-url`) is the preferred way to point canonical `/v1/*` calls at a separate Chat API origin.
 - Hosted `https://co.build` may still route `/v1/*` to Chat API at the edge; self-hosted installs can use either edge rewrites or explicit `chatApiUrl` config.
 
@@ -126,7 +132,7 @@ Group command notes:
 - Setup wizard/progress/prompts are written to stderr (stdout remains machine-readable JSON).
 - `setup --json` remains setup-scoped machine mode (not the global Incur output-format switch).
 - `config set` returns JSON (`{ ok: true, path }`) on success.
-- `wallet`, indexed protocol inspect/status commands, `docs`, `tools`, `send`, and `tx` print JSON on success.
+- `wallet`, indexed protocol inspect/status commands, `revnet`, `docs`, `tools`, `send`, and `tx` print JSON on success.
 - Built-in `--schema` returns raw JSON Schema for the targeted command; custom `cli schema <command path>` adds Cobuild metadata like auth/mutation side effects.
 - `--filter-output`, `--token-count`, `--token-limit`, and `--token-offset` can be applied to any command output for agent-friendly trimming/pagination.
 - `--llms` is now the compact command index; use `--llms-full` when you need full command schemas/examples.
@@ -138,8 +144,8 @@ Group command notes:
 ## Auth and Funds Expectations
 
 - No pre-existing token required: `setup`, `config set`, and `config show`.
-- Requires saved config token + URL: `wallet`, indexed protocol inspect/status commands, `docs`, `tools`, `send`, `tx`.
-- Usually requires wallet funds: `send` and most state-changing `tx` calls.
+- Requires saved config token + URL: `wallet`, indexed protocol inspect/status commands, `revnet`, `docs`, `tools`, `send`, `tx`.
+- Usually requires wallet funds: `send`, `revnet pay`, and most state-changing `tx` calls.
 
 ## Security Guardrails
 

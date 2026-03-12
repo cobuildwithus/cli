@@ -8,6 +8,7 @@ import { registerDocsCommand } from "./incur/commands/docs.command.js";
 import { registerFarcasterCommand } from "./incur/commands/farcaster.command.js";
 import { registerGoalCommand } from "./incur/commands/goal.command.js";
 import { registerPremiumCommand } from "./incur/commands/premium.command.js";
+import { registerRevnetCommand } from "./incur/commands/revnet.command.js";
 import { registerStakeCommand } from "./incur/commands/stake.command.js";
 import { registerTcrCommand } from "./incur/commands/tcr.command.js";
 import { registerToolsCommand } from "./incur/commands/tools.command.js";
@@ -390,6 +391,30 @@ const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
     requiresAuth: true,
     sideEffects: ["network", "onchain_transaction"],
   },
+  "revnet pay": {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  "revnet cash-out": {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  "revnet loan": {
+    mutating: true,
+    supportsDryRun: true,
+    requiresAuth: true,
+    sideEffects: ["network", "onchain_transaction"],
+  },
+  "revnet issuance-terms": {
+    mutating: false,
+    supportsDryRun: false,
+    requiresAuth: true,
+    sideEffects: ["network"],
+  },
   schema: {
     mutating: false,
     supportsDryRun: false,
@@ -686,6 +711,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
   registerVoteCommand(root, deps);
   registerStakeCommand(root, deps);
   registerPremiumCommand(root, deps);
+  registerRevnetCommand(root, deps);
   registerWalletCommand(root, deps);
   registerFarcasterCommand(root, deps);
   registerDocsCommand(root, deps, decodeEscapedPositional);

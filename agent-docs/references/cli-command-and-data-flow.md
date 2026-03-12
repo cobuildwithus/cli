@@ -14,6 +14,7 @@
   - `vote` -> `executeVoteStatusCommand`
   - `stake` -> `executeStakeStatusCommand`
   - `premium` -> `executePremiumStatusCommand`
+  - `revnet` -> `executeRevnet*Command`
   - `docs` -> `executeDocsCommand`
   - `tools` -> `executeTools*Command`
   - `send` -> `executeSendCommand`
@@ -124,6 +125,28 @@
    - hosted mode: POST `/api/cli/exec` with `kind: protocol-step`, `action: goal.create`, and the canonical GoalFactory step payload
    - local mode: execute local wallet tx path
 6. Return normalized tx output with idempotency key and attempt receipt decode of `GoalDeployed` through shared wire decoders.
+
+## Revnet Write Flow
+
+1. Parse `revnet pay`, `revnet cash-out`, or `revnet loan` options.
+2. Resolve agent key, configured wallet mode, Base network, and root idempotency key.
+3. Resolve the executing wallet address from local payer config or the hosted wallet endpoint when the hosted payer address is not yet cached locally.
+4. Create a Base `viem` public client and read revnet execution context through canonical `@cobuild/wire` revnet helpers.
+5. Build shared revnet quotes and write intents from `@cobuild/wire`.
+6. Encode intent calldata with `encodeWriteIntent(...)`.
+7. Execute through the existing wallet split using raw tx envelopes only:
+   - hosted mode: POST `/api/cli/exec` with `kind: tx` and both idempotency headers.
+   - local mode: call the local wallet tx path with the same request shape.
+8. For `revnet loan`, derive deterministic child idempotency keys from the root key plus each encoded step request, then execute permission and borrow steps sequentially.
+
+## Revnet Issuance Terms Flow
+
+1. Parse `revnet issuance-terms` options.
+2. Validate optional `--project-id`.
+3. Optionally GET `/v1/tools` to resolve canonical tool naming.
+4. POST `/v1/tool-executions` with the canonical revnet issuance-terms tool envelope and `{ projectId? }` input.
+5. If canonical routes are unavailable (404 from discovery + execution), throw explicit cutover guidance to configure `--chat-api-url` (or route `/v1/*` to Chat API at the edge).
+6. Wrap the response as untrusted remote-tool data before printing JSON.
 
 ## Shared Protocol Plan Runtime Flow
 
