@@ -3,10 +3,9 @@ import { CLI_OAUTH_DEFAULT_SCOPE, CLI_OAUTH_WRITE_SCOPE } from "../oauth.js";
 import { printJson } from "../output.js";
 import { asRecord, isRecord } from "../transport.js";
 import type { CliDeps } from "../types.js";
+import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
 import {
   countTokenSources,
-  isLoopbackInterfaceHost,
-  normalizeApiUrl,
   normalizeTokenInput,
   readTokenFromFile,
   readTokenFromStdin,
@@ -285,7 +284,7 @@ async function runSetupCommand(
     );
   }
 
-  url = normalizeApiUrl(url, "Interface URL");
+  url = normalizeApiUrlInput(url, "Interface URL");
   const previousInterfaceOrigin = safeOrigin(storedUrl);
   const currentInterfaceOrigin = safeOrigin(url);
   const interfaceOriginChanged =
@@ -299,9 +298,9 @@ async function runSetupCommand(
   }
   if (!chatApiUrl) {
     const hostname = new URL(url).hostname;
-    chatApiUrl = isLoopbackInterfaceHost(hostname) ? DEFAULT_DEV_CHAT_API_URL : DEFAULT_CHAT_API_URL;
+    chatApiUrl = isLoopbackHost(hostname) ? DEFAULT_DEV_CHAT_API_URL : DEFAULT_CHAT_API_URL;
   }
-  chatApiUrl = normalizeApiUrl(chatApiUrl, "Chat API URL");
+  chatApiUrl = normalizeApiUrlInput(chatApiUrl, "Chat API URL");
 
   /* c8 ignore start */
   if (interactive && networkSource === "env") {

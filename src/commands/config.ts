@@ -11,7 +11,6 @@ import {
 import type { CliConfig, CliDeps, SecretRef } from "../types.js";
 import {
   countTokenSources,
-  normalizeApiUrl,
   normalizeTokenInput,
   readTokenFromFile,
   readTokenFromStdin,
@@ -19,6 +18,7 @@ import {
 } from "./shared.js";
 import { isSecretRef, resolveDefaultSecretProviderAlias } from "../secrets/ref-contract.js";
 import { withDefaultSecretProviders } from "../secrets/runtime.js";
+import { normalizeApiUrlInput } from "../url.js";
 
 const CONFIG_SET_USAGE =
   "Usage: cli config set --url <interface-url> [--chat-api-url <chat-api-url>] [--token <refresh-token>|--token-file <path>|--token-stdin|--token-env <ENV_VAR>|--token-exec <provider:id>|--token-ref-json <json>] [--agent <key>]";
@@ -241,11 +241,11 @@ export async function executeConfigSetCommand(
   let shouldClearPersistedAuth = false;
   let normalizedInterfaceUrl: string | undefined;
   if (typeof input.url === "string") {
-    normalizedInterfaceUrl = normalizeApiUrl(input.url, "Interface URL");
+    normalizedInterfaceUrl = normalizeApiUrlInput(input.url, "Interface URL");
     next.url = normalizedInterfaceUrl;
   }
   if (typeof input.chatApiUrl === "string") {
-    next.chatApiUrl = normalizeApiUrl(input.chatApiUrl, "Chat API URL");
+    next.chatApiUrl = normalizeApiUrlInput(input.chatApiUrl, "Chat API URL");
   }
   if (normalizedInterfaceUrl !== undefined && typeof input.chatApiUrl !== "string") {
     const currentInterfaceUrl = resolveInterfaceUrl(current.url);

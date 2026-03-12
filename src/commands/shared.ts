@@ -5,28 +5,18 @@ import {
   parseBaseOnlyNetwork,
 } from "@cobuild/wire";
 import { isHex, type Address } from "viem";
-import { isLoopbackHost, normalizeApiUrlInput } from "../url.js";
 import {
   buildIdempotencyRequestHeaders,
   IDEMPOTENCY_KEY_VALIDATION_ERROR,
   isIdempotencyKey,
 } from "../idempotency-contract.js";
 
-export type CliApiUrlLabel = "Interface URL" | "Chat API URL";
 const CONTROL_CHARS_REGEX = /[\u0000-\u001f\u007f-\u009f]/;
 const SAFE_PATH_SEGMENT_REGEX = /^[A-Za-z0-9._-]+$/;
 const MAX_AGENT_KEY_LENGTH = 64;
 
 function getEnv(deps: Pick<CliDeps, "env">): NodeJS.ProcessEnv {
   return deps.env ?? process.env;
-}
-
-export function isLoopbackInterfaceHost(hostname: string): boolean {
-  return isLoopbackHost(hostname);
-}
-
-export function normalizeApiUrl(rawValue: string, label: CliApiUrlLabel): string {
-  return normalizeApiUrlInput(rawValue, label);
 }
 
 export function normalizeTokenInput(token: string): string {
