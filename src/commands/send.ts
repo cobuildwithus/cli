@@ -3,7 +3,6 @@ import {
   normalizeEvmAddress,
   parseIntegerOption,
   validateNonNegativeDecimal,
-  withIdempotencyKey,
 } from "./shared.js";
 import {
   readOptionalStringFromInputJson,
@@ -12,9 +11,7 @@ import {
   resolveJsonOrFlagInput,
 } from "./input-validation.js";
 import {
-  buildExecDryRunOutput,
-  executeWalletWrite,
-  resolveWalletWriteExecutionContext,
+  executeWalletWriteCommand,
 } from "./wallet-write-shared.js";
 import { executeLocalTransfer } from "../wallet/local-exec.js";
 
@@ -105,30 +102,23 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
   validateNonNegativeDecimal(amount, "amount");
   const normalizedTo = normalizeEvmAddress(to, "to");
 
-  const execution = resolveWalletWriteExecutionContext(resolvedInput, deps);
-  const requestBody = {
-    kind: "transfer",
-    network: execution.network,
-    agentKey: execution.agentKey,
-    token,
-    amount,
-    to: normalizedTo,
-    ...(decimals !== undefined ? { decimals } : {}),
-  };
-
-  if (input.dryRun === true) {
-    return buildExecDryRunOutput({
-      idempotencyKey: execution.idempotencyKey,
-      requestBody,
-    }) as SendCommandOutput;
-  }
-
-  const response = await executeWalletWrite({
+  return executeWalletWriteCommand<SendCommandOutput>({
     deps,
-    context: execution,
-    requestBody,
-    onLocal: async ({ privateKeyHex }) => {
-      return await executeLocalTransfer({
+    input: {
+      ...resolvedInput,
+      dryRun: input.dryRun,
+    },
+    buildRequestBody: (execution) => ({
+      kind: "transfer",
+      network: execution.network,
+      agentKey: execution.agentKey,
+      token,
+      amount,
+      to: normalizedTo,
+      ...(decimals !== undefined ? { decimals } : {}),
+    }),
+    onLocal: ({ privateKeyHex, execution }) =>
+      executeLocalTransfer({
         deps,
         agentKey: execution.agentKey,
         privateKeyHex,
@@ -138,9 +128,6 @@ export async function executeSendCommand(input: SendCommandInput, deps: CliDeps)
         to: normalizedTo,
         decimals,
         idempotencyKey: execution.idempotencyKey,
-      });
-    },
+      }),
   });
-
-  return withIdempotencyKey(execution.idempotencyKey, response) as SendCommandOutput;
 }

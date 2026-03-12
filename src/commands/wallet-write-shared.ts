@@ -9,6 +9,7 @@ import {
   resolveExecIdempotencyKey,
   resolveNetwork,
   throwWithIdempotencyKey,
+  withIdempotencyKey,
 } from "./shared.js";
 
 export interface WalletWriteExecutionInput {
@@ -85,4 +86,38 @@ export async function executeWalletWrite(params: {
       }
     },
   })) as Record<string, unknown>;
+}
+
+export async function executeWalletWriteCommand<TOutput extends Record<string, unknown>>(params: {
+  deps: CliDeps;
+  input: WalletWriteExecutionInput & { dryRun?: boolean };
+  buildRequestBody: (context: WalletWriteExecutionContext) => Record<string, unknown>;
+  onLocal: (context: {
+    walletConfig: StoredX402PayerConfig;
+    privateKeyHex: HexString;
+    execution: WalletWriteExecutionContext;
+  }) => Promise<unknown>;
+}): Promise<TOutput> {
+  const execution = resolveWalletWriteExecutionContext(params.input, params.deps);
+  const requestBody = params.buildRequestBody(execution);
+
+  if (params.input.dryRun === true) {
+    return buildExecDryRunOutput({
+      idempotencyKey: execution.idempotencyKey,
+      requestBody,
+    }) as TOutput;
+  }
+
+  const response = await executeWalletWrite({
+    deps: params.deps,
+    context: execution,
+    requestBody,
+    onLocal: (localContext) =>
+      params.onLocal({
+        ...localContext,
+        execution,
+      }),
+  });
+
+  return withIdempotencyKey(execution.idempotencyKey, response) as TOutput;
 }

@@ -3,7 +3,6 @@ import {
   normalizeEvmAddress,
   validateHexData,
   validateNonNegativeDecimal,
-  withIdempotencyKey,
 } from "./shared.js";
 import {
   readOptionalStringFromInputJson,
@@ -11,9 +10,7 @@ import {
   resolveJsonOrFlagInput,
 } from "./input-validation.js";
 import {
-  buildExecDryRunOutput,
-  executeWalletWrite,
-  resolveWalletWriteExecutionContext,
+  executeWalletWriteCommand,
 } from "./wallet-write-shared.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
 
@@ -94,29 +91,22 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
   const valueEth = resolvedInput.value ?? "0";
   validateNonNegativeDecimal(valueEth, "--value");
 
-  const execution = resolveWalletWriteExecutionContext(resolvedInput, deps);
-  const requestBody = {
-    kind: "tx",
-    network: execution.network,
-    agentKey: execution.agentKey,
-    to: normalizedTo,
-    data,
-    valueEth,
-  };
-
-  if (input.dryRun === true) {
-    return buildExecDryRunOutput({
-      idempotencyKey: execution.idempotencyKey,
-      requestBody,
-    }) as TxCommandOutput;
-  }
-
-  const response = await executeWalletWrite({
+  return executeWalletWriteCommand<TxCommandOutput>({
     deps,
-    context: execution,
-    requestBody,
-    onLocal: async ({ privateKeyHex }) => {
-      return await executeLocalTx({
+    input: {
+      ...resolvedInput,
+      dryRun: input.dryRun,
+    },
+    buildRequestBody: (execution) => ({
+      kind: "tx",
+      network: execution.network,
+      agentKey: execution.agentKey,
+      to: normalizedTo,
+      data,
+      valueEth,
+    }),
+    onLocal: ({ privateKeyHex, execution }) =>
+      executeLocalTx({
         deps,
         agentKey: execution.agentKey,
         privateKeyHex,
@@ -125,9 +115,6 @@ export async function executeTxCommand(input: TxCommandInput, deps: CliDeps): Pr
         valueEth,
         data,
         idempotencyKey: execution.idempotencyKey,
-      });
-    },
+      }),
   });
-
-  return withIdempotencyKey(execution.idempotencyKey, response) as TxCommandOutput;
 }
