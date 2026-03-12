@@ -4,8 +4,10 @@ import { executeSetupCommand } from "./commands/setup.js";
 import { executeTxCommand } from "./commands/tx.js";
 import { registerConfigCommand } from "./incur/commands/config.command.js";
 import { registerBudgetCommand } from "./incur/commands/budget.command.js";
+import { registerCommunityCommand } from "./incur/commands/community.command.js";
 import { registerDocsCommand } from "./incur/commands/docs.command.js";
 import { registerFarcasterCommand } from "./incur/commands/farcaster.command.js";
+import { registerFlowCommand } from "./incur/commands/flow.command.js";
 import { registerGoalCommand } from "./incur/commands/goal.command.js";
 import { registerPremiumCommand } from "./incur/commands/premium.command.js";
 import { registerRevnetCommand } from "./incur/commands/revnet.command.js";
@@ -100,74 +102,42 @@ function normalizeFarcasterPostArgv(argv: string[]): string[] {
   return normalized;
 }
 
-function normalizeDocsArgv(argv: string[]): string[] {
-  if (argv[0] !== "docs") return argv;
-
-  const normalized = ["docs"];
-  const queryWords: string[] = [];
-  let positionalOnly = false;
-  for (let index = 1; index < argv.length; index += 1) {
-    const current = argv[index]!;
-    if (current === "--") {
-      positionalOnly = true;
-      continue;
-    }
-
-    if (!positionalOnly && current === "--limit") {
-      normalized.push(current);
-      const next = argv[index + 1];
-      if (typeof next === "string") {
-        normalized.push(next);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (!positionalOnly && current.startsWith("-")) {
-      normalized.push(current);
-      continue;
-    }
-
-    queryWords.push(current);
-  }
-
-  if (queryWords.length > 0) {
-    normalized.push(encodeEscapedPositional(queryWords.join(" ")));
-  }
-
-  return normalized;
+interface EscapedPositionalFlagConsumption {
+  consumed: number;
+  tokens: string[];
 }
 
-function normalizeToolsArgv(argv: string[]): string[] {
-  if (argv[0] !== "tools") return argv;
-  const subcommand = argv[1];
-  if (subcommand !== "get-user" && subcommand !== "get-cast") {
+function normalizeEscapedPositionalTailArgv(
+  argv: string[],
+  prefix: string[],
+  consumeFlag?: (
+    argv: string[],
+    index: number,
+    positionalOnly: boolean
+  ) => EscapedPositionalFlagConsumption | null
+): string[] {
+  if (
+    prefix.length === 0 ||
+    prefix.some((segment, index) => argv[index] !== segment)
+  ) {
     return argv;
   }
 
-  const normalized = ["tools", subcommand];
-  const queryWords: string[] = [];
+  const normalized = [...prefix];
+  const positionalWords: string[] = [];
   let positionalOnly = false;
 
-  for (let index = 2; index < argv.length; index += 1) {
+  for (let index = prefix.length; index < argv.length; index += 1) {
     const current = argv[index]!;
     if (current === "--") {
       positionalOnly = true;
       continue;
     }
 
-    if (!positionalOnly && subcommand === "get-cast" && current === "--type") {
-      normalized.push(current);
-      const next = argv[index + 1];
-      if (typeof next === "string") {
-        normalized.push(next);
-        index += 1;
-      }
-      continue;
-    }
-
-    if (!positionalOnly && subcommand === "get-cast" && current.startsWith("--type=")) {
-      normalized.push(current);
+    const consumed = consumeFlag?.(argv, index, positionalOnly);
+    if (consumed) {
+      normalized.push(...consumed.tokens);
+      index += consumed.consumed - 1;
       continue;
     }
 
@@ -176,49 +146,96 @@ function normalizeToolsArgv(argv: string[]): string[] {
       continue;
     }
 
-    queryWords.push(current);
+    positionalWords.push(current);
   }
 
-  if (queryWords.length > 0) {
-    normalized.push(encodeEscapedPositional(queryWords.join(" ")));
+  if (positionalWords.length > 0) {
+    normalized.push(encodeEscapedPositional(positionalWords.join(" ")));
   }
 
   return normalized;
 }
 
+function normalizeDocsArgv(argv: string[]): string[] {
+  return normalizeEscapedPositionalTailArgv(argv, ["docs"], (tokens, index, positionalOnly) => {
+    if (positionalOnly || tokens[index] !== "--limit") {
+      return null;
+    }
+
+    const consumedTokens = ["--limit"];
+    const next = tokens[index + 1];
+    let consumed = 1;
+    if (typeof next === "string") {
+      consumedTokens.push(next);
+      consumed += 1;
+    }
+
+    return {
+      consumed,
+      tokens: consumedTokens,
+    };
+  });
+}
+
+function normalizeToolsArgv(argv: string[]): string[] {
+  const subcommand = argv[1];
+  if (argv[0] !== "tools" || (subcommand !== "get-user" && subcommand !== "get-cast")) {
+    return argv;
+  }
+
+  return normalizeEscapedPositionalTailArgv(
+    argv,
+    ["tools", subcommand],
+    (tokens, index, positionalOnly) => {
+      if (positionalOnly || subcommand !== "get-cast") {
+        return null;
+      }
+
+      const current = tokens[index]!;
+      if (current === "--type") {
+        const consumedTokens = ["--type"];
+        const next = tokens[index + 1];
+        let consumed = 1;
+        if (typeof next === "string") {
+          consumedTokens.push(next);
+          consumed += 1;
+        }
+
+        return {
+          consumed,
+          tokens: consumedTokens,
+        };
+      }
+
+      if (current.startsWith("--type=")) {
+        return {
+          consumed: 1,
+          tokens: [current],
+        };
+      }
+
+      return null;
+    }
+  );
+}
+
 function normalizeSchemaArgv(argv: string[]): string[] {
-  if (argv[0] !== "schema") return argv;
-
-  const normalized = ["schema"];
-  const commandPathWords: string[] = [];
-  let positionalOnly = false;
-
-  for (let index = 1; index < argv.length; index += 1) {
-    const current = argv[index]!;
-    if (current === "--") {
-      positionalOnly = true;
-      continue;
-    }
-
-    if (!positionalOnly && current.startsWith("-")) {
-      normalized.push(current);
-      continue;
-    }
-
-    commandPathWords.push(current);
-  }
-
-  if (commandPathWords.length > 0) {
-    normalized.push(encodeEscapedPositional(commandPathWords.join(" ")));
-  }
-
-  return normalized;
+  return normalizeEscapedPositionalTailArgv(argv, ["schema"]);
 }
 
 function normalizeSetupArgv(argv: string[]): string[] {
   if (argv[0] !== "setup") return argv;
   return argv.map((token) => (token === "--json" ? "--setup-json" : token));
 }
+
+const COMMAND_TAIL_NORMALIZERS = [
+  normalizeFarcasterSignupArgv,
+  normalizeFarcasterPostArgv,
+  normalizeDocsArgv,
+  normalizeToolsArgv,
+  normalizeSchemaArgv,
+  normalizeSetupArgv,
+] as const;
 
 function consumeLeadingGlobalFlag(argv: string[], index: number): number {
   const token = argv[index]!;
@@ -285,14 +302,9 @@ export function preprocessIncurArgv(argv: string[]): string[] {
     }
   }
 
-  const commandNormalizedTail = normalizeSetupArgv(
-    normalizeSchemaArgv(
-      normalizeToolsArgv(
-        normalizeDocsArgv(
-          normalizeFarcasterPostArgv(normalizeFarcasterSignupArgv(normalizedTail))
-        )
-      )
-    )
+  const commandNormalizedTail = COMMAND_TAIL_NORMALIZERS.reduce(
+    (currentArgv, normalize) => normalize(currentArgv),
+    normalizedTail
   );
 
   return [...normalizedLeading, ...commandNormalizedTail];
@@ -324,302 +336,71 @@ const DEFAULT_COMMAND_SCHEMA_METADATA: CommandSchemaMetadata = {
   sideEffects: [],
 };
 
-const COMMAND_SCHEMA_METADATA: Record<string, CommandSchemaMetadata> = {
-  "budget inspect": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "config set": {
-    mutating: true,
-    supportsDryRun: false,
-    requiresAuth: false,
-    sideEffects: ["writes_local_files"],
-  },
-  "config show": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: false,
-    sideEffects: ["reads_local_files"],
-  },
-  docs: {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "farcaster signup": {
-    mutating: true,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network", "writes_local_files"],
-  },
-  "farcaster post": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "writes_local_files"],
-  },
-  "goal create": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "goal inspect": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "premium status": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "premium checkpoint": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "premium claim": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "revnet pay": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "revnet cash-out": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "revnet loan": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "revnet issuance-terms": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  schema: {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: false,
-    sideEffects: ["introspection"],
-  },
-  send: {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "stake status": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "stake deposit-cobuild": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "stake deposit-goal": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "stake prepare-underwriter-withdrawal": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "stake withdraw-cobuild": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "stake withdraw-goal": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  setup: {
-    mutating: true,
-    supportsDryRun: false,
-    requiresAuth: false,
-    sideEffects: ["network", "writes_local_files"],
-  },
-  "tcr inspect": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tcr challenge": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr evidence": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr execute": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr remove": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr submit-budget": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr submit-mechanism": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr submit-round-submission": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr timeout": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tcr withdraw": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "tools cast-preview": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tools get-cast": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tools get-treasury-stats": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tools get-user": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tools get-wallet-balances": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "tools notifications list": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "vote status": {
-    mutating: false,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network"],
-  },
-  "vote commit": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "vote commit-for": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "vote execute-ruling": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "vote invalid-round-rewards": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "vote reveal": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  "vote rewards": {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  tx: {
-    mutating: true,
-    supportsDryRun: true,
-    requiresAuth: true,
-    sideEffects: ["network", "onchain_transaction"],
-  },
-  wallet: {
-    mutating: true,
-    supportsDryRun: false,
-    requiresAuth: true,
-    sideEffects: ["network", "writes_local_files"],
-  },
+const LOCAL_FILE_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: true,
+  supportsDryRun: false,
+  requiresAuth: false,
+  sideEffects: ["writes_local_files"],
 };
+
+const LOCAL_FILE_READ_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: false,
+  supportsDryRun: false,
+  requiresAuth: false,
+  sideEffects: ["reads_local_files"],
+};
+
+const NETWORK_READ_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: false,
+  supportsDryRun: false,
+  requiresAuth: true,
+  sideEffects: ["network"],
+};
+
+const NETWORK_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: true,
+  supportsDryRun: true,
+  requiresAuth: true,
+  sideEffects: ["network", "onchain_transaction"],
+};
+
+const NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: true,
+  supportsDryRun: true,
+  requiresAuth: true,
+  sideEffects: ["network", "writes_local_files"],
+};
+
+const NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: true,
+  supportsDryRun: false,
+  requiresAuth: false,
+  sideEffects: ["network", "writes_local_files"],
+};
+
+const NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: true,
+  supportsDryRun: false,
+  requiresAuth: true,
+  sideEffects: ["network", "writes_local_files"],
+};
+
+const INTROSPECTION_SCHEMA_METADATA: CommandSchemaMetadata = {
+  mutating: false,
+  supportsDryRun: false,
+  requiresAuth: false,
+  sideEffects: ["introspection"],
+};
+
+function addCommandSchemaMetadata(
+  metadataByCommand: Map<string, CommandSchemaMetadata>,
+  commandPaths: string[],
+  metadata: CommandSchemaMetadata
+): void {
+  for (const commandPath of commandPaths) {
+    metadataByCommand.set(normalizeCommandPath(commandPath), metadata);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -704,18 +485,174 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
     },
   });
 
-  registerConfigCommand(root, deps);
-  registerBudgetCommand(root, deps);
-  registerGoalCommand(root, deps);
-  registerTcrCommand(root, deps);
-  registerVoteCommand(root, deps);
-  registerStakeCommand(root, deps);
-  registerPremiumCommand(root, deps);
-  registerRevnetCommand(root, deps);
-  registerWalletCommand(root, deps);
-  registerFarcasterCommand(root, deps);
-  registerDocsCommand(root, deps, decodeEscapedPositional);
-  registerToolsCommand(root, deps, decodeEscapedPositional);
+  const commandSchemaMetadata = new Map<string, CommandSchemaMetadata>();
+  const registerCommandGroup = (
+    register: () => void,
+    commandPaths: string[],
+    metadata: CommandSchemaMetadata
+  ): void => {
+    register();
+    addCommandSchemaMetadata(commandSchemaMetadata, commandPaths, metadata);
+  };
+
+  registerCommandGroup(
+    () => {
+      registerConfigCommand(root, deps);
+    },
+    ["config set"],
+    LOCAL_FILE_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["config show"], LOCAL_FILE_READ_SCHEMA_METADATA);
+
+  registerCommandGroup(
+    () => {
+      registerBudgetCommand(root, deps);
+    },
+    ["budget inspect"],
+    NETWORK_READ_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerCommunityCommand(root, deps);
+    },
+    ["community pay", "community add-to-balance"],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerFlowCommand(root, deps);
+    },
+    [
+      "flow sync-allocation",
+      "flow sync-allocation-for-account",
+      "flow clear-stale-allocation",
+    ],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerGoalCommand(root, deps);
+    },
+    ["goal create", "goal pay"],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["goal inspect"], NETWORK_READ_SCHEMA_METADATA);
+  registerCommandGroup(
+    () => {
+      registerTcrCommand(root, deps);
+    },
+    [
+      "tcr challenge",
+      "tcr evidence",
+      "tcr execute",
+      "tcr remove",
+      "tcr submit-budget",
+      "tcr submit-mechanism",
+      "tcr submit-round-submission",
+      "tcr timeout",
+      "tcr withdraw",
+    ],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["tcr inspect"], NETWORK_READ_SCHEMA_METADATA);
+  registerCommandGroup(
+    () => {
+      registerVoteCommand(root, deps);
+    },
+    [
+      "vote commit",
+      "vote commit-for",
+      "vote execute-ruling",
+      "vote invalid-round-rewards",
+      "vote reveal",
+      "vote rewards",
+    ],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["vote status"], NETWORK_READ_SCHEMA_METADATA);
+  registerCommandGroup(
+    () => {
+      registerStakeCommand(root, deps);
+    },
+    [
+      "stake deposit-cobuild",
+      "stake deposit-goal",
+      "stake opt-in-juror",
+      "stake request-juror-exit",
+      "stake finalize-juror-exit",
+      "stake set-juror-delegate",
+      "stake prepare-underwriter-withdrawal",
+      "stake withdraw-cobuild",
+      "stake withdraw-goal",
+    ],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["stake status"], NETWORK_READ_SCHEMA_METADATA);
+  registerCommandGroup(
+    () => {
+      registerPremiumCommand(root, deps);
+    },
+    ["premium checkpoint", "premium claim"],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(commandSchemaMetadata, ["premium status"], NETWORK_READ_SCHEMA_METADATA);
+  registerCommandGroup(
+    () => {
+      registerRevnetCommand(root, deps);
+    },
+    ["revnet pay", "revnet cash-out", "revnet loan"],
+    NETWORK_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(
+    commandSchemaMetadata,
+    ["revnet issuance-terms"],
+    NETWORK_READ_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerWalletCommand(root, deps);
+    },
+    ["wallet"],
+    NETWORK_AND_LOCAL_AUTH_WRITE_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerFarcasterCommand(root, deps);
+    },
+    ["farcaster post"],
+    NETWORK_AND_LOCAL_WRITE_SCHEMA_METADATA
+  );
+  addCommandSchemaMetadata(
+    commandSchemaMetadata,
+    ["farcaster signup"],
+    {
+      mutating: true,
+      supportsDryRun: false,
+      requiresAuth: true,
+      sideEffects: ["network", "writes_local_files"],
+    }
+  );
+  registerCommandGroup(
+    () => {
+      registerDocsCommand(root, deps, decodeEscapedPositional);
+    },
+    ["docs"],
+    NETWORK_READ_SCHEMA_METADATA
+  );
+  registerCommandGroup(
+    () => {
+      registerToolsCommand(root, deps, decodeEscapedPositional);
+    },
+    [
+      "tools cast-preview",
+      "tools get-cast",
+      "tools get-treasury-stats",
+      "tools get-user",
+      "tools get-wallet-balances",
+      "tools notifications list",
+    ],
+    NETWORK_READ_SCHEMA_METADATA
+  );
 
   root.command("schema", {
     description: "Print input/output schema and metadata for one command path",
@@ -760,10 +697,13 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         ...(typeof entry.description === "string" ? { description: entry.description } : {}),
         schema: entry.schema ?? null,
         ...(Array.isArray(entry.examples) ? { examples: entry.examples } : {}),
-        metadata: COMMAND_SCHEMA_METADATA[entry.name] ?? DEFAULT_COMMAND_SCHEMA_METADATA,
+        metadata:
+          commandSchemaMetadata.get(normalizeCommandPath(entry.name)) ??
+          DEFAULT_COMMAND_SCHEMA_METADATA,
       };
     },
   });
+  addCommandSchemaMetadata(commandSchemaMetadata, ["schema"], INTROSPECTION_SCHEMA_METADATA);
 
   root.command("send", {
     description: "Execute token transfer",
@@ -802,6 +742,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       );
     },
   });
+  addCommandSchemaMetadata(commandSchemaMetadata, ["send"], NETWORK_WRITE_SCHEMA_METADATA);
 
   root.command("tx", {
     description: "Execute raw transaction",
@@ -836,6 +777,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
       );
     },
   });
+  addCommandSchemaMetadata(commandSchemaMetadata, ["tx"], NETWORK_WRITE_SCHEMA_METADATA);
 
   if (!options.mcpMode) {
     root.command("setup", {
@@ -881,6 +823,7 @@ export function createCobuildIncurCli(deps: CliDeps, options: CobuildIncurCliOpt
         );
       },
     });
+    addCommandSchemaMetadata(commandSchemaMetadata, ["setup"], NETWORK_AND_LOCAL_SETUP_SCHEMA_METADATA);
   }
 
   return root;

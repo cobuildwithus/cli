@@ -1,7 +1,6 @@
 import { readConfig } from "../config.js";
-import { resolveLocalPayerPrivateKey } from "../farcaster/payer.js";
 import { apiPost, asRecord } from "../transport.js";
-import type { CliConfig, CliDeps } from "../types.js";
+import type { CliDeps } from "../types.js";
 import {
   buildCliProtocolPlanRequest,
   buildCliProtocolStepRequest,
@@ -11,15 +10,22 @@ import {
   buildIdempotencyHeaders,
   resolveAgentKey,
   resolveExecIdempotencyKey,
+  resolveNetwork,
 } from "../commands/shared.js";
 import { executeLocalTx } from "../wallet/local-exec.js";
-import { requireStoredWalletConfig } from "../wallet/payer-config.js";
 import { deriveProtocolPlanStepIdempotencyKey } from "./idempotency.js";
 import {
   formatProtocolPlanResumeHint,
   formatProtocolPlanStepFailureMessage,
-  formatProtocolPlanStepLabel,
 } from "./labels.js";
+import {
+  buildProtocolPlanStepOutputBase,
+  buildRawTxProtocolPlanStepRequest,
+  buildSucceededProtocolPlanStepOutput,
+  isHostedPendingStepResult,
+  resolveStoredProtocolPlanWalletContext,
+  type ResolvedProtocolPlanWalletContext,
+} from "./executor-shared.js";
 import { tryDecodeProtocolPlanStepReceipt } from "./receipt.js";
 import type {
   HostedProtocolPlanRequest,
@@ -33,70 +39,12 @@ import type {
   ProtocolPlanStepReceiptDecoder,
   ProtocolPlanStepRequest,
   ProtocolPlanWalletMode,
-  RawTxProtocolPlanStepRequest,
 } from "./types.js";
 import {
   buildProtocolPlanWarnings,
   collectProtocolPlanStepWarnings,
+  DRY_RUN_ONLY_WARNING,
 } from "./warnings.js";
-
-type ResolvedWalletContext =
-  | {
-      walletMode: "hosted";
-    }
-  | {
-      walletMode: "local";
-      privateKeyHex: ReturnType<typeof resolveLocalPayerPrivateKey>;
-    };
-
-function resolveProtocolPlanNetwork(inputNetwork: string | undefined, deps: Pick<CliDeps, "env">): string {
-  const envNetwork = deps.env?.COBUILD_CLI_NETWORK;
-  const rawNetwork = inputNetwork ?? envNetwork ?? "base";
-  const normalized = rawNetwork.trim().toLowerCase();
-  if (normalized === "base" || normalized === "base-mainnet") {
-    return "base";
-  }
-  throw new Error(`Unsupported network "${rawNetwork}". Only "base" is supported.`);
-}
-
-function resolveProtocolPlanWalletContext(params: {
-  deps: Pick<CliDeps, "fs" | "homedir" | "env">;
-  currentConfig: CliConfig;
-  agentKey: string;
-}): ResolvedWalletContext {
-  const walletConfig = requireStoredWalletConfig({
-    deps: params.deps,
-    agentKey: params.agentKey,
-  });
-  if (walletConfig.mode === "local") {
-    return {
-      walletMode: "local",
-      privateKeyHex: resolveLocalPayerPrivateKey({
-        deps: params.deps,
-        currentConfig: params.currentConfig,
-        payerConfig: walletConfig,
-      }),
-    };
-  }
-  return {
-    walletMode: "hosted",
-  };
-}
-
-function buildRawTxProtocolPlanStepRequest(params: {
-  network: string;
-  agentKey: string;
-  step: ProtocolPlanStepLike;
-}): RawTxProtocolPlanStepRequest {
-  return {
-    kind: "tx",
-    network: params.network,
-    agentKey: params.agentKey,
-    to: params.step.transaction.to,
-    data: params.step.transaction.data,
-    valueEth: params.step.transaction.valueEth,
-  };
-}
 
 function buildHostedProtocolPlanStepRequest(params: {
   network: string;
@@ -166,59 +114,6 @@ function buildProtocolPlanStepRequest(params: {
   });
 }
 
-function buildProtocolPlanStepOutputBase(params: {
-  step: ProtocolPlanStepLike;
-  stepNumber: number;
-  stepCount: number;
-  idempotencyKey: string;
-  executionTarget: "hosted_api" | "local_wallet";
-  request: ProtocolPlanStepRequest;
-}): Omit<
-  ProtocolPlanStepOutput,
-  | "status"
-  | "warnings"
-  | "result"
-  | "transactionHash"
-  | "explorerUrl"
-  | "replayed"
-  | "receiptSummary"
-  | "receiptDecodeError"
-> {
-  const common = {
-    stepNumber: params.stepNumber,
-    label: params.step.label,
-    displayLabel: formatProtocolPlanStepLabel({
-      stepNumber: params.stepNumber,
-      stepCount: params.stepCount,
-      label: params.step.label,
-    }),
-    kind: params.step.kind,
-    idempotencyKey: params.idempotencyKey,
-    executionTarget: params.executionTarget,
-    transaction: params.step.transaction,
-    request: params.request,
-  };
-
-  if (params.step.kind === "contract-call") {
-    return {
-      ...common,
-      contract: params.step.contract,
-      functionName: params.step.functionName,
-    };
-  }
-
-  return {
-    ...common,
-    tokenAddress: params.step.tokenAddress,
-    spenderAddress: params.step.spenderAddress,
-    amount: params.step.amount,
-  };
-}
-
-function isHostedPendingResult(result: Record<string, unknown>): boolean {
-  return result.pending === true || result.status === "pending";
-}
-
 function resolveProtocolPlanStepIdempotencyKey(params: {
   walletMode: ProtocolPlanWalletMode;
   rootIdempotencyKey: string;
@@ -252,7 +147,7 @@ async function executeHostedProtocolPlan(params: {
 
 async function executeLocalProtocolPlanStep(params: {
   deps: Pick<CliDeps, "fetch" | "fs" | "homedir" | "env">;
-  walletContext: Extract<ResolvedWalletContext, { walletMode: "local" }>;
+  walletContext: Extract<ResolvedProtocolPlanWalletContext, { walletMode: "local" }>;
   agentKey: string;
   network: string;
   step: ProtocolPlanStepLike;
@@ -294,11 +189,11 @@ async function attachReceiptSummaryIfPresent(params: {
   deps: Pick<CliDeps, "env">;
   network: string;
   stepOutput: ProtocolPlanStepOutput;
-  plan: ProtocolExecutionPlanLike;
+  plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
   step: ProtocolPlanStepLike;
   stepNumber: number;
   getStepReceiptDecoder?: (context: {
-    plan: ProtocolExecutionPlanLike;
+    plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
     step: ProtocolPlanStepLike;
     stepNumber: number;
   }) => ProtocolPlanStepReceiptDecoder | null | undefined;
@@ -331,7 +226,7 @@ async function attachReceiptSummaryIfPresent(params: {
 }
 
 function buildProtocolPlanOutput(params: {
-  plan: ProtocolExecutionPlanLike;
+  plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
   idempotencyKey: string;
   agentKey: string;
   walletMode: ProtocolPlanWalletMode;
@@ -364,21 +259,21 @@ function buildProtocolPlanOutput(params: {
 
 export async function executeProtocolPlan(params: {
   deps: CliDeps;
-  plan: ProtocolExecutionPlanLike;
+  plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
   agent?: string;
   idempotencyKey?: string;
   dryRun?: boolean;
   getStepReceiptDecoder?: (context: {
-    plan: ProtocolExecutionPlanLike;
+    plan: ProtocolExecutionPlanLike<CliProtocolStepAction>;
     step: ProtocolPlanStepLike;
     stepNumber: number;
   }) => ProtocolPlanStepReceiptDecoder | null | undefined;
 }): Promise<ProtocolPlanExecutionOutput> {
   const currentConfig = readConfig(params.deps);
   const agentKey = resolveAgentKey(params.agent, currentConfig.agent);
-  const network = resolveProtocolPlanNetwork(params.plan.network, params.deps);
+  const network = resolveNetwork(params.plan.network, params.deps);
   const rootIdempotencyKey = resolveExecIdempotencyKey(params.idempotencyKey, params.deps);
-  const walletContext = resolveProtocolPlanWalletContext({
+  const walletContext = resolveStoredProtocolPlanWalletContext({
     deps: params.deps,
     currentConfig,
     agentKey,
@@ -390,7 +285,7 @@ export async function executeProtocolPlan(params: {
       ? buildHostedProtocolPlanExecutionRequest({
           network,
           agentKey,
-          plan: params.plan as ProtocolExecutionPlanLike<CliProtocolStepAction>,
+          plan: params.plan,
         })
       : null;
 
@@ -408,7 +303,7 @@ export async function executeProtocolPlan(params: {
         walletMode: walletContext.walletMode,
         network,
         agentKey,
-        plan: params.plan as ProtocolExecutionPlanLike<CliProtocolStepAction>,
+        plan: params.plan,
         step,
       });
 
@@ -446,7 +341,7 @@ export async function executeProtocolPlan(params: {
               atomic: false,
               idempotencyKey: rootIdempotencyKey,
             },
-      warnings: [...planWarnings, "Dry run only; no transactions were broadcast."],
+      warnings: [...planWarnings, DRY_RUN_ONLY_WARNING],
       dryRun: true,
     });
   }
@@ -468,7 +363,7 @@ export async function executeProtocolPlan(params: {
       );
     }
 
-    if (isHostedPendingResult(result)) {
+    if (isHostedPendingStepResult(result)) {
       const userOpHash =
         typeof result.userOpHash === "string" && result.userOpHash.length > 0
           ? result.userOpHash
@@ -492,11 +387,11 @@ export async function executeProtocolPlan(params: {
       const request = buildHostedProtocolPlanStepRequest({
         network,
         agentKey,
-        plan: params.plan as ProtocolExecutionPlanLike<CliProtocolStepAction>,
+        plan: params.plan,
         step,
       });
-      const stepOutput: ProtocolPlanStepOutput = {
-        ...buildProtocolPlanStepOutputBase({
+      const stepOutput = buildSucceededProtocolPlanStepOutput({
+        baseOutput: buildProtocolPlanStepOutputBase({
           step,
           stepNumber,
           stepCount: params.plan.steps.length,
@@ -504,13 +399,8 @@ export async function executeProtocolPlan(params: {
           executionTarget,
           request,
         }),
-        status: "succeeded",
-        warnings: [],
         result,
-        ...(transactionHash ? { transactionHash } : {}),
-        ...(explorerUrl ? { explorerUrl } : {}),
-        ...(replayed ? { replayed: true } : {}),
-      };
+      });
 
       await attachReceiptSummaryIfPresent({
         deps: params.deps,
@@ -561,7 +451,7 @@ export async function executeProtocolPlan(params: {
       walletMode: walletContext.walletMode,
       network,
       agentKey,
-      plan: params.plan as ProtocolExecutionPlanLike<CliProtocolStepAction>,
+      plan: params.plan,
       step,
     });
     const baseOutput = buildProtocolPlanStepOutputBase({
@@ -594,21 +484,10 @@ export async function executeProtocolPlan(params: {
       );
     }
 
-    const stepOutput: ProtocolPlanStepOutput = {
-      ...baseOutput,
-      status: "succeeded",
-      warnings: [],
+    const stepOutput = buildSucceededProtocolPlanStepOutput({
+      baseOutput,
       result,
-    };
-    if (typeof result.transactionHash === "string") {
-      stepOutput.transactionHash = result.transactionHash;
-    }
-    if (typeof result.explorerUrl === "string") {
-      stepOutput.explorerUrl = result.explorerUrl;
-    }
-    if (result.replayed === true) {
-      stepOutput.replayed = true;
-    }
+    });
 
     await attachReceiptSummaryIfPresent({
       deps: params.deps,

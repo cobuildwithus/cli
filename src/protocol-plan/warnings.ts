@@ -1,7 +1,14 @@
 import { formatProtocolPlanReceiptDecodeWarning } from "./labels.js";
-import type { ProtocolExecutionPlanLike, ProtocolPlanStepOutput } from "./types.js";
+import type { ProtocolPlanStepLike, ProtocolPlanStepOutput } from "./types.js";
 
-export function buildProtocolPlanWarnings(plan: ProtocolExecutionPlanLike): string[] {
+export const DRY_RUN_ONLY_WARNING = "Dry run only; no transactions were broadcast.";
+
+export interface ProtocolPlanWarningsInput {
+  preconditions: readonly string[];
+  steps: readonly ProtocolPlanStepLike[];
+}
+
+export function buildProtocolPlanWarnings<TPlan extends ProtocolPlanWarningsInput>(plan: TPlan): string[] {
   const warnings: string[] = [];
   if (plan.preconditions.length > 0) {
     warnings.push(
