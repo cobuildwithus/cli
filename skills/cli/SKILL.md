@@ -112,6 +112,7 @@ Validation notes:
 - `cli tools get-cast --type` only accepts `hash` or `url`.
 - `cli revnet pay`, `cli revnet cash-out`, and `cli revnet loan` use atomic onchain units, not display decimals.
 - `cli revnet loan` requires a positive `--repay-years` value and only supports `--permission-mode auto|force|skip`.
+- `cli revnet issuance-terms` omits `projectId` from the canonical tool call when `--project-id` is absent so the upstream default Cobuild project is used.
 
 Group command notes:
 

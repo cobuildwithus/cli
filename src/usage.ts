@@ -80,6 +80,7 @@ Examples:
   cli revnet pay --amount 1000000000000000 --dry-run
   cli revnet cash-out --cash-out-count 1000000000000000000 --dry-run
   cli revnet loan --collateral-count 1000000000000000000 --repay-years 1 --dry-run
+  cli revnet issuance-terms
   cli revnet issuance-terms --project-id 138
   cli docs setup approval flow --limit 5
   cli docs -- --token-stdin

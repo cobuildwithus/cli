@@ -42,21 +42,7 @@ export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): void {
       }),
       output: revnetWriteOutput,
       run(context) {
-        return executeRevnetPayCommand(
-          {
-            amount: context.options.amount,
-            projectId: context.options.projectId,
-            beneficiary: context.options.beneficiary,
-            minReturnedTokens: context.options.minReturnedTokens,
-            memo: context.options.memo,
-            metadata: context.options.metadata,
-            network: context.options.network,
-            agent: context.options.agent,
-            idempotencyKey: context.options.idempotencyKey,
-            dryRun: context.options.dryRun,
-          },
-          deps
-        );
+        return executeRevnetPayCommand(context.options, deps);
       },
     })
     .command("cash-out", {
@@ -75,21 +61,7 @@ export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): void {
       }),
       output: revnetWriteOutput,
       run(context) {
-        return executeRevnetCashOutCommand(
-          {
-            cashOutCount: context.options.cashOutCount,
-            projectId: context.options.projectId,
-            beneficiary: context.options.beneficiary,
-            minReclaimAmount: context.options.minReclaimAmount,
-            preferredBaseToken: context.options.preferredBaseToken,
-            metadata: context.options.metadata,
-            network: context.options.network,
-            agent: context.options.agent,
-            idempotencyKey: context.options.idempotencyKey,
-            dryRun: context.options.dryRun,
-          },
-          deps
-        );
+        return executeRevnetCashOutCommand(context.options, deps);
       },
     })
     .command("loan", {
@@ -110,38 +82,18 @@ export function registerRevnetCommand(root: Cli.Cli, deps: CliDeps): void {
       }),
       output: revnetWriteOutput,
       run(context) {
-        return executeRevnetLoanCommand(
-          {
-            collateralCount: context.options.collateralCount,
-            repayYears: context.options.repayYears,
-            projectId: context.options.projectId,
-            beneficiary: context.options.beneficiary,
-            minBorrowAmount: context.options.minBorrowAmount,
-            preferredBaseToken: context.options.preferredBaseToken,
-            preferredLoanToken: context.options.preferredLoanToken,
-            permissionMode: context.options.permissionMode,
-            network: context.options.network,
-            agent: context.options.agent,
-            idempotencyKey: context.options.idempotencyKey,
-            dryRun: context.options.dryRun,
-          },
-          deps
-        );
+        return executeRevnetLoanCommand(context.options, deps);
       },
     })
     .command("issuance-terms", {
-      description: "Fetch indexed revnet issuance terms through canonical tool execution",
+      description:
+        "Fetch indexed revnet issuance terms through canonical tool execution (defaults to the configured Cobuild project)",
       options: z.object({
         projectId: z.string().optional(),
       }),
       output: issuanceTermsOutput,
       run(context) {
-        return executeRevnetIssuanceTermsCommand(
-          {
-            projectId: context.options.projectId,
-          },
-          deps
-        );
+        return executeRevnetIssuanceTermsCommand(context.options, deps);
       },
     });
 
