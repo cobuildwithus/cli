@@ -1,4 +1,5 @@
 import type {
+  CliProtocolPlanRequest,
   CliProtocolStepAction,
   CliProtocolStepRequest,
   ProtocolContractCallStep,
@@ -16,7 +17,7 @@ export type ProtocolErc20ApprovalStepLike = ProtocolErc20ApprovalStep;
 
 export type ProtocolPlanStepLike = ProtocolContractCallStepLike | ProtocolErc20ApprovalStepLike;
 
-export type ProtocolExecutionPlanLike<TAction extends CliProtocolStepAction = CliProtocolStepAction> = {
+export type ProtocolExecutionPlanLike<TAction extends string = string> = {
   network: string;
   action: TAction;
   riskClass: ProtocolPlanRiskClass;
@@ -42,6 +43,27 @@ export type HostedProtocolPlanStepRequest = CliProtocolStepRequest<CliProtocolSt
 };
 
 export type ProtocolPlanStepRequest = RawTxProtocolPlanStepRequest | HostedProtocolPlanStepRequest;
+
+export type HostedProtocolPlanRequest = CliProtocolPlanRequest<CliProtocolStepAction> & {
+  agentKey: string;
+};
+
+export type ProtocolPlanExecutionRequest = {
+  method: "POST";
+  path: "/api/cli/exec";
+  body: HostedProtocolPlanRequest;
+};
+
+export type ProtocolPlanExecutionInfo = {
+  mode: "local-sequential" | "hosted-sequential" | "hosted-batch";
+  atomic: boolean;
+  request?: ProtocolPlanExecutionRequest;
+  idempotencyKey?: string;
+  userOpHash?: string;
+  transactionHash?: string | null;
+  explorerUrl?: string | null;
+  replayed?: boolean;
+};
 
 export interface ProtocolPlanStepReceiptDecoder<TSummary = unknown> {
   decode(params: {
@@ -93,6 +115,7 @@ export interface ProtocolPlanExecutionOutput extends Record<string, unknown> {
   stepCount: number;
   executedStepCount: number;
   replayedStepCount: number;
+  execution?: ProtocolPlanExecutionInfo;
   warnings: string[];
   steps: ProtocolPlanStepOutput[];
 }

@@ -224,6 +224,22 @@ describe("protocol plan runner", () => {
       stepCount: 2,
       executedStepCount: 0,
       replayedStepCount: 0,
+      execution: {
+        mode: "hosted-batch",
+        atomic: true,
+        idempotencyKey: "8e03978e-40d5-43e8-bc93-6894a57f9324",
+        request: {
+          method: "POST",
+          path: "/api/cli/exec",
+          body: {
+            kind: "protocol-plan",
+            network: "base",
+            action: "stake.deposit-goal",
+            riskClass: "stake",
+            agentKey: "ops",
+          },
+        },
+      },
     });
     expect(result.warnings).toContain(
       "Plan declares 1 precondition(s) that the CLI does not verify automatically."
@@ -266,7 +282,8 @@ describe("protocol plan runner", () => {
     expect(result.steps[0]?.idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
     );
-    expect(result.steps[0]?.idempotencyKey).not.toBe(result.steps[1]?.idempotencyKey);
+    expect(result.steps[0]?.idempotencyKey).toBe(result.idempotencyKey);
+    expect(result.steps[1]?.idempotencyKey).toBe(result.idempotencyKey);
     expect(harness.fetchMock).not.toHaveBeenCalled();
     expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
@@ -287,6 +304,11 @@ describe("protocol plan runner", () => {
     });
 
     expect(result.walletMode).toBe("local");
+    expect(result.execution).toEqual({
+      mode: "local-sequential",
+      atomic: false,
+      idempotencyKey: result.idempotencyKey,
+    });
     expect(result.steps).toMatchObject([
       {
         stepNumber: 1,
@@ -311,6 +333,9 @@ describe("protocol plan runner", () => {
         },
       },
     ]);
+    expect(result.execution?.request).toBeUndefined();
+    expect(result.steps[0]?.idempotencyKey).not.toBe(result.idempotencyKey);
+    expect(result.steps[1]?.idempotencyKey).not.toBe(result.idempotencyKey);
     expect(harness.fetchMock).not.toHaveBeenCalled();
     expect(localExecMocks.executeLocalTxMock).not.toHaveBeenCalled();
   });
@@ -355,14 +380,14 @@ describe("protocol plan runner", () => {
               headers: requestHeaders,
               body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
             });
-            const callIndex = hostedCalls.length - 1;
             return {
               ok: true,
               status: 200,
               text: async () =>
                 JSON.stringify({
                   ok: true,
-                  transactionHash: txHashes[callIndex],
+                  transactionHash: txHashes[1],
+                  userOpHash: `0x${"f".repeat(64)}`,
                 }),
             };
           },
@@ -384,19 +409,12 @@ describe("protocol plan runner", () => {
           }),
         });
 
-        expect(hostedCalls).toHaveLength(2);
-        expect(hostedCalls.map((call) => call.url)).toEqual([
-          "https://api.example/api/cli/exec",
-          "https://api.example/api/cli/exec",
-        ]);
-        expect(hostedCalls.map((call) => call.body)).toEqual(result.steps.map((step) => step.request));
-        expect(hostedCalls.map((call) => call.headers[IDEMPOTENCY_PRIMARY_HEADER])).toEqual(
-          result.steps.map((step) => step.idempotencyKey)
-        );
-        expect(hostedCalls.map((call) => call.headers[IDEMPOTENCY_DEPRECATED_HEADER])).toEqual(
-          result.steps.map((step) => step.idempotencyKey)
-        );
-        expect(harness.fetchMock).toHaveBeenCalledTimes(2);
+        expect(hostedCalls).toHaveLength(1);
+        expect(hostedCalls[0]?.url).toBe("https://api.example/api/cli/exec");
+        expect(hostedCalls[0]?.body).toEqual(result.execution?.request?.body);
+        expect(hostedCalls[0]?.headers[IDEMPOTENCY_PRIMARY_HEADER]).toBe(ROOT_IDEMPOTENCY_KEY);
+        expect(hostedCalls[0]?.headers[IDEMPOTENCY_DEPRECATED_HEADER]).toBe(ROOT_IDEMPOTENCY_KEY);
+        expect(harness.fetchMock).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({
           ok: true,
           idempotencyKey: ROOT_IDEMPOTENCY_KEY,
@@ -404,6 +422,13 @@ describe("protocol plan runner", () => {
           stepCount: 2,
           executedStepCount: 2,
           replayedStepCount: 0,
+          execution: {
+            mode: "hosted-batch",
+            atomic: true,
+            idempotencyKey: ROOT_IDEMPOTENCY_KEY,
+            userOpHash: `0x${"f".repeat(64)}`,
+            transactionHash: txHashes[1],
+          },
           warnings: [
             "Plan declares 1 precondition(s) that the CLI does not verify automatically.",
             "Plan includes 1 ERC-20 approval step(s); verify spender addresses and allowance amounts before execution.",
@@ -413,7 +438,7 @@ describe("protocol plan runner", () => {
           {
             stepNumber: 1,
             status: "succeeded",
-            transactionHash: txHashes[0],
+            transactionHash: txHashes[1],
             receiptSummary: {
               stepNumber: 1,
               kind: "erc20-approval",
@@ -431,6 +456,92 @@ describe("protocol plan runner", () => {
             },
           },
         ]);
+      }
+    );
+  });
+
+  it("marks hosted batched replay at the root execution level and for every logical step", async () => {
+    const transactionHash = `0x${"5".repeat(64)}` as const;
+    const userOpHash = `0x${"6".repeat(64)}` as const;
+    const plan = buildPlan();
+    type HostedCall = {
+      url: string;
+      headers: Record<string, string>;
+      body: Record<string, unknown>;
+    };
+
+    await withRpcServer(
+      async (method, params) => {
+        if (method !== "eth_getTransactionReceipt") {
+          throw new Error(`Unsupported method: ${method}`);
+        }
+        if (params?.[0] === transactionHash) {
+          return buildReceipt(transactionHash, "9");
+        }
+        throw new Error(`Unexpected tx hash: ${String(params?.[0])}`);
+      },
+      async (rpcUrl) => {
+        const hostedCalls: HostedCall[] = [];
+        const harness = createHarness({
+          config: {
+            url: "https://api.example",
+            token: "bbt_secret",
+          },
+          fetchResponder: async (input, init) => {
+            const requestHeaders = (init?.headers ?? {}) as Record<string, string>;
+            hostedCalls.push({
+              url: input instanceof URL ? input.toString() : String(input),
+              headers: requestHeaders,
+              body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+            });
+            return {
+              ok: true,
+              status: 200,
+              text: async () =>
+                JSON.stringify({
+                  ok: true,
+                  replayed: true,
+                  transactionHash,
+                  explorerUrl: `https://basescan.org/tx/${transactionHash}`,
+                  userOpHash,
+                }),
+            };
+          },
+        });
+        harness.deps.env = {
+          COBUILD_CLI_BASE_RPC_URL: rpcUrl,
+        };
+
+        const result = await executeProtocolPlan({
+          deps: harness.deps,
+          plan,
+          idempotencyKey: ROOT_IDEMPOTENCY_KEY,
+          getStepReceiptDecoder: ({ step, stepNumber }) => ({
+            decode: ({ logs }) => ({
+              stepNumber,
+              kind: step.kind,
+              logCount: logs.length,
+            }),
+          }),
+        });
+
+        expect(hostedCalls).toHaveLength(1);
+        expect(hostedCalls[0]?.url).toBe("https://api.example/api/cli/exec");
+        expect(hostedCalls[0]?.body).toEqual(result.execution?.request?.body);
+        expect(hostedCalls[0]?.headers[IDEMPOTENCY_PRIMARY_HEADER]).toBe(ROOT_IDEMPOTENCY_KEY);
+        expect(hostedCalls[0]?.headers[IDEMPOTENCY_DEPRECATED_HEADER]).toBe(ROOT_IDEMPOTENCY_KEY);
+        expect(result.execution).toMatchObject({
+          mode: "hosted-batch",
+          atomic: true,
+          idempotencyKey: ROOT_IDEMPOTENCY_KEY,
+          replayed: true,
+          userOpHash,
+          transactionHash,
+          explorerUrl: `https://basescan.org/tx/${transactionHash}`,
+        });
+        expect(result.replayedStepCount).toBe(result.stepCount);
+        expect(result.steps.every((step) => step.idempotencyKey === ROOT_IDEMPOTENCY_KEY)).toBe(true);
+        expect(result.steps.every((step) => step.replayed === true)).toBe(true);
       }
     );
   });
@@ -489,10 +600,18 @@ describe("protocol plan runner", () => {
       ok: true,
       walletMode: "local",
       replayedStepCount: 0,
+      execution: {
+        mode: "local-sequential",
+        atomic: false,
+        idempotencyKey: ROOT_IDEMPOTENCY_KEY,
+      },
     });
+    expect(result.execution?.request).toBeUndefined();
+    expect(result.steps[0]?.idempotencyKey).not.toBe(ROOT_IDEMPOTENCY_KEY);
+    expect(result.steps[1]?.idempotencyKey).not.toBe(ROOT_IDEMPOTENCY_KEY);
   });
 
-  it("uses deterministic child idempotency keys so reruns resume safely after a failed step", async () => {
+  it("keeps deterministic child idempotency keys for local reruns so completed steps replay safely", async () => {
     const plan = buildPlan();
     const firstStepKey = deriveProtocolPlanStepIdempotencyKey({
       rootIdempotencyKey: ROOT_IDEMPOTENCY_KEY,
@@ -513,56 +632,44 @@ describe("protocol plan runner", () => {
     };
     const harness = createHarness({
       config: {
-        url: "https://api.example",
-        token: "bbt_secret",
+        agent: "pilot",
       },
-      fetchResponder: async (_input, init) => {
-        const requestHeaders = (init?.headers ?? {}) as Record<string, string>;
-        const key = requestHeaders["X-Idempotency-Key"] ?? "";
+    });
+    setLocalWalletConfig(harness, "pilot");
+    localExecMocks.executeLocalTxMock.mockImplementation(async (params: { idempotencyKey: string }) => {
+        const key = params.idempotencyKey;
         const nextCount = (attemptCounts.get(key) ?? 0) + 1;
         attemptCounts.set(key, nextCount);
 
         if (key === firstStepKey) {
           return {
             ok: true,
-            status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                transactionHash: txHashes.first,
-                ...(nextCount > 1 ? { replayed: true } : {}),
-              }),
-          };
+            kind: "tx",
+            transactionHash: txHashes.first,
+            ...(nextCount > 1 ? { replayed: true } : {}),
+          } as const;
         }
 
         if (key === secondStepKey && nextCount === 1) {
-          return {
-            ok: false,
-            status: 500,
-            text: async () => JSON.stringify({ error: "boom" }),
-          };
+          throw new Error("Request failed (status 500): boom");
         }
 
         if (key === secondStepKey) {
           return {
             ok: true,
-            status: 200,
-            text: async () =>
-              JSON.stringify({
-                ok: true,
-                transactionHash: txHashes.second,
-              }),
-          };
+            kind: "tx",
+            transactionHash: txHashes.second,
+          } as const;
         }
 
         throw new Error(`Unexpected idempotency key: ${key}`);
-      },
     });
 
     await expect(
       executeProtocolPlan({
         deps: harness.deps,
         plan,
+        agent: "pilot",
         idempotencyKey: ROOT_IDEMPOTENCY_KEY,
       })
     ).rejects.toThrow(
@@ -572,6 +679,7 @@ describe("protocol plan runner", () => {
     const resumed = await executeProtocolPlan({
       deps: harness.deps,
       plan,
+      agent: "pilot",
       idempotencyKey: ROOT_IDEMPOTENCY_KEY,
     });
 
@@ -587,6 +695,7 @@ describe("protocol plan runner", () => {
       idempotencyKey: secondStepKey,
       transactionHash: txHashes.second,
     });
+    expect(harness.fetchMock).not.toHaveBeenCalled();
   });
 
   it("canonicalizes supported network aliases when deriving child idempotency keys", () => {
@@ -635,14 +744,14 @@ describe("protocol plan runner", () => {
   it("promotes step receipt decode failures into step and aggregate warnings", async () => {
     const harness = createHarness({
       config: {
-        url: "https://api.example",
-        token: "bbt_secret",
+        agent: "pilot",
       },
-      fetchResponder: async () => ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ ok: true, transactionHash: "0x1234" }),
-      }),
+    });
+    setLocalWalletConfig(harness, "pilot");
+    localExecMocks.executeLocalTxMock.mockResolvedValue({
+      ok: true,
+      kind: "tx",
+      transactionHash: "0x1234",
     });
 
     const result = await executeProtocolPlan({
@@ -651,6 +760,7 @@ describe("protocol plan runner", () => {
         ...buildPlan(),
         steps: [buildPlan().steps[0]!],
       },
+      agent: "pilot",
       getStepReceiptDecoder: () => ({
         decode: () => ({ ok: true }),
       }),

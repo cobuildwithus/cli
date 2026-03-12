@@ -10,7 +10,6 @@ import { runCli } from "../src/cli.js";
 import {
   executeParticipantProtocolPlan,
 } from "../src/commands/protocol-participant-runtime.js";
-import { deriveProtocolPlanStepIdempotencyKey } from "../src/protocol-plan/idempotency.js";
 import {
   executePremiumCheckpointCommand,
   executeStakeDepositCobuildCommand,
@@ -359,18 +358,12 @@ describe("protocol participant commands", () => {
       harness.deps
     );
 
-    expect(harness.fetchMock).toHaveBeenCalledTimes(2);
-    const [, firstInit] = harness.fetchMock.mock.calls[0]!;
-    const [, secondInit] = harness.fetchMock.mock.calls[1]!;
+    expect(harness.fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = harness.fetchMock.mock.calls[0]!;
     const output = parseLastJsonOutput(harness.outputs);
-    const outputSteps = output.steps as Array<Record<string, unknown>>;
-    expect(firstInit?.headers).toMatchObject({
-      "X-Idempotency-Key": outputSteps[0]?.idempotencyKey,
-      "Idempotency-Key": outputSteps[0]?.idempotencyKey,
-    });
-    expect(secondInit?.headers).toMatchObject({
-      "X-Idempotency-Key": outputSteps[1]?.idempotencyKey,
-      "Idempotency-Key": outputSteps[1]?.idempotencyKey,
+    expect(init?.headers).toMatchObject({
+      "X-Idempotency-Key": output.idempotencyKey,
+      "Idempotency-Key": output.idempotencyKey,
     });
     expect(output).toMatchObject({
       ok: true,
@@ -378,6 +371,11 @@ describe("protocol participant commands", () => {
       family: "tcr",
       action: "tcr.challenge",
       executedStepCount: 2,
+      execution: {
+        mode: "hosted-batch",
+        atomic: true,
+        idempotencyKey: EXPLICIT_UUID,
+      },
     });
   });
 
@@ -411,12 +409,7 @@ describe("protocol participant commands", () => {
         plan: pendingPlan,
       })
     ).rejects.toThrow(
-      `Step 1/2: Approve token is still pending on the hosted wallet (step idempotency key: ${deriveProtocolPlanStepIdempotencyKey({
-        rootIdempotencyKey: EXPLICIT_UUID,
-        plan: pendingPlan,
-        step: pendingPlan.steps[0]!,
-        stepNumber: 1,
-      })}, root idempotency key: ${EXPLICIT_UUID}, userOpHash: 0xpending-user-op). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
+      `Hosted protocol plan is still pending (root idempotency key: ${EXPLICIT_UUID}, userOpHash: 0xpending-user-op). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
     );
 
     expect(harness.fetchMock).toHaveBeenCalledTimes(1);
@@ -760,7 +753,9 @@ describe("protocol participant commands", () => {
         },
         plan: coveragePlan,
       })
-    ).rejects.toThrow(`idempotency key: ${EXPLICIT_UUID}`);
+    ).rejects.toThrow(
+      `Hosted protocol plan failed: Request failed (status 503): temporarily_unavailable (root idempotency key: ${EXPLICIT_UUID}). Re-run the same command with --idempotency-key ${EXPLICIT_UUID} to resume safely.`
+    );
   });
 
   it("covers stake and premium validation branches without changing command behavior", async () => {
